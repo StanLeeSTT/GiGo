@@ -8,15 +8,12 @@ export interface Env {
 type JsonRecord = Record<string, unknown>;
 
 function json(data: JsonRecord, status = 200, headers: HeadersInit = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-      ...headers,
-    },
-  });
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("content-type", "application/json; charset=utf-8");
+  responseHeaders.set("cache-control", "no-store");
+  responseHeaders.set("x-content-type-options", "nosniff");
+
+  return new Response(JSON.stringify(data), { status, headers: responseHeaders });
 }
 
 function allowedOrigin(origin: string | null, env: Env): string | null {
@@ -44,7 +41,7 @@ function corsHeaders(origin: string | null, env: Env): Headers {
 function bearerToken(request: Request): string | null {
   const value = request.headers.get("authorization");
   if (!value) return null;
-  const match = value.match(/^Bearer\s+(.+)$/i);
+  const match = value.match(/^Bearer\\s+(.+)$/i);
   return match?.[1] ?? null;
 }
 
