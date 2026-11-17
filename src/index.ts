@@ -3,6 +3,7 @@ export interface Env {
   SUPABASE_ANON_KEY?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
+  OWNER_EMAIL?: string;
   ASSETS?: Fetcher;
 }
 
@@ -80,7 +81,7 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
     const token = bearerToken(request);
     if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "No active session was supplied." } }, 401, headers);
     try {
-      const response = await fetch(new URL("/auth/v1/logout", env.SUPABASE_URL), {
+      const response = await fetch(new URL("/auth/v1/logout", env.SUPABASE_URL!), {
         method: "POST",
         headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}` },
       });
@@ -104,6 +105,11 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
     }
     if (password.length < 8 || password.length > 128) {
       return json({ error: { code: "INVALID_PASSWORD", message: "Password must be between 8 and 128 characters." } }, 400, headers);
+    }
+    if (action === "signup") {
+      const ownerEmail = env.OWNER_EMAIL?.trim().toLowerCase();
+      if (!ownerEmail) return json({ error: { code: "OWNER_NOT_CONFIGURED", message: "Owner-only account creation is not configured yet. Set OWNER_EMAIL on the Worker before creating the owner account." } }, 503, headers);
+      if (email !== ownerEmail) return json({ error: { code: "SIGNUP_NOT_ALLOWED", message: "GiGo is a private owner workspace. This email is not authorised to create its account." } }, 403, headers);
     }
     path = action === "signup" ? "/auth/v1/signup" : "/auth/v1/token?grant_type=password";
     body = { email, password };
