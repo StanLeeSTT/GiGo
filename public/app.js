@@ -162,8 +162,8 @@ authForm?.addEventListener("submit", async (event) => {
       await loadIdentity();
       showMessage(authMode === "signup" ? "Account created and signed in." : "Signed in successfully.", true);
     } else if (authMode === "signup") {
-      showMessage("Account created. Check your email for the confirmation link, then return here to sign in.", true);
       setAuthMode("login");
+      showMessage("Account created. Check your email for the confirmation link, then return here to sign in.", true);
     } else {
       throw new Error("The provider did not return a session. Check your email confirmation settings and try again.");
     }
