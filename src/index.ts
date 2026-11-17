@@ -61,7 +61,7 @@ function authErrorMessage(payload: JsonRecord, fallback: string): string {
 }
 
 async function authRequest(path: string, env: Env, body: JsonRecord): Promise<Response> {
-  return fetch(new URL(path, env.SUPABASE_URL), {
+  return fetch(new URL(path, env.SUPABASE_URL!), {
     method: "POST",
     headers: {
       apikey: env.SUPABASE_ANON_KEY!,
@@ -133,7 +133,7 @@ async function handleMe(request: Request, env: Env, headers: Headers): Promise<R
   if (!configured(env)) return json({ error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured." } }, 503, headers);
 
   try {
-    const response = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL), {
+    const response = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL!), {
       method: "GET",
       headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}` },
     });
