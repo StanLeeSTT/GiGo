@@ -3,6 +3,7 @@ export interface Env {
   SUPABASE_ANON_KEY?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
+  ASSETS?: Fetcher;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -112,6 +113,8 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/v1/me") {
       return handleMe(request, env, headers);
     }
+
+    if (env.ASSETS) return env.ASSETS.fetch(request);
 
     return json({ error: { code: "NOT_FOUND", message: "The requested endpoint does not exist." } }, 404, headers);
   },
