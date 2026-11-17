@@ -47,7 +47,7 @@ npx wrangler secret put SUPABASE_ANON_KEY
 
 Paste the Project URL when prompted for the first value and the publishable/anon public API key when prompted for the second. Do not commit either value to this repository.
 
-Set `ALLOWED_ORIGINS` to the exact URL of the deployed GiGo frontend. The current local values are only for local development.
+Set `ALLOWED_ORIGINS` to the exact URL of the deployed GiGo frontend. The current local values are only for local development.\n\nSet the Worker variable `OWNER_EMAIL` to the exact email address you will use for your private GiGo owner account. The signup endpoint refuses all account creation until this value is configured, and rejects signup attempts from any other email address.
 
 ## 5. Authentication behaviour
 - A new account may require email confirmation depending on the Supabase Auth settings.
