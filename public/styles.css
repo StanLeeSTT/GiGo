@@ -175,3 +175,15 @@ h2{font-size:18px;letter-spacing:-.4px;margin-bottom:0}
 .record-actions button{cursor:pointer;color:var(--accent)}
 .empty-record{padding:20px;text-align:center;color:#81958b;background:var(--panel);border:1px dashed #354541;border-radius:10px;font-size:11px}
 @media(max-width:760px){.inline-form,.task-form{grid-template-columns:1fr}.record-card{align-items:flex-start;flex-direction:column}.record-actions{width:100%}.record-actions select{flex:1}}
+
+
+.assistant-panel{background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:18px;padding:18px;display:grid;gap:14px}
+.assistant-status{font-size:.85rem;color:var(--muted,#64748b);padding-bottom:10px;border-bottom:1px solid var(--border,#e5e7eb)}
+.assistant-messages{display:flex;flex-direction:column;gap:10px;max-height:420px;min-height:120px;overflow:auto;padding:4px}
+.assistant-bubble{align-self:flex-start;max-width:min(90%,760px);white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 14px;border-radius:14px;background:var(--surface,#f1f5f9);line-height:1.55}
+.assistant-bubble.assistant-user{align-self:flex-end;background:var(--accent,#dcefe8)}
+.assistant-bubble.assistant-note{font-size:.9rem;color:var(--muted,#64748b)}
+.assistant-form{display:grid;gap:10px}
+.assistant-form textarea{width:100%;resize:vertical;min-height:78px;border:1px solid var(--border,#d8dee4);border-radius:12px;padding:12px;font:inherit;background:var(--surface,#fff);color:inherit}
+.assistant-form button{justify-self:end}
+@media(max-width:640px){.assistant-panel{padding:12px}.assistant-form button{width:100%}.assistant-bubble{max-width:96%}}
