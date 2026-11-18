@@ -2,6 +2,7 @@
 
 :root{color-scheme:dark;--bg:#101718;--panel:#172122;--panel-2:#1b2929;--line:#293737;--text:#edf5f1;--muted:#91a49d;--accent:#8be0b4;--accent-dark:#173e32;--amber:#e7c98a}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px}
 a{color:inherit;text-decoration:none}
