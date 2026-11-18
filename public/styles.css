@@ -99,3 +99,6 @@ h2{font-size:18px;letter-spacing:-.4px;margin-bottom:0}
 .signed-in-state strong{font-size:13px;overflow-wrap:anywhere}
 .signed-in-state p{font-size:10px;color:#91a49b;margin:0 0 5px}
 @media(max-width:850px){.auth-panel{grid-template-columns:1fr;gap:13px}.auth-copy>p:not(.eyebrow){max-width:none}.auth-security{margin-top:10px}}
+
+/* Honour the HTML hidden attribute even on elements with explicit display rules. */
+[hidden]{display:none!important}
