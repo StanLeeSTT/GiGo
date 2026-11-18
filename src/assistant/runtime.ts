@@ -1,8 +1,10 @@
 import { getAssistantCapabilities } from "./registry";
+import { callAIModel, providerPoolStatus } from "./providers";
 
 export interface AssistantRuntimeEnv {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
+  AI_PROVIDER_POOL?: string;
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_MODEL?: string;
@@ -98,26 +100,12 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
   return { error: "This tool is not on GiGo's executable allowlist." };
 }
 
-async function callModel(env: AssistantRuntimeEnv, messages: Row[], withTools: boolean): Promise<Row> {
-  const base = env.AI_API_BASE_URL!.replace(/\/+$/, "");
-  const result = await fetch(base.endsWith("/chat/completions") ? base : base + "/chat/completions", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.AI_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: env.AI_MODEL, messages, temperature: 0.3, ...(withTools ? { tools: TOOL_DEFINITIONS, tool_choice: "auto" } : {}) })
-  });
-  const payload = await result.json() as Row;
-  if (!result.ok) throw new Error("AI provider request failed.");
-  const choices = payload.choices as Row[] | undefined;
-  const choice = choices?.[0] as Row | undefined;
-  const message = choice?.message as Row | undefined;
-  if (!message) throw new Error("AI provider returned an invalid response.");
-  return message;
-}
+
 
 export async function handleAssistantChat(request: Request, env: AssistantRuntimeEnv, token: string): Promise<Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return response({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo storage is not configured." } }, 503);
-  if (!env.AI_API_BASE_URL || !env.AI_API_KEY || !env.AI_MODEL) {
-    return response({ error: { code: "AI_NOT_CONFIGURED", message: "GiGo's AI engine is not connected yet. Configure AI_API_BASE_URL, AI_API_KEY and AI_MODEL as Cloudflare Worker variables/secrets." } }, 503);
+  if (!providerPoolStatus(env).configured) {
+    return response({ error: { code: "AI_NOT_CONFIGURED", message: "GiGo has no eligible free AI provider configured. Add AI_PROVIDER_POOL as a Cloudflare Worker secret, or use the legacy single-provider settings." } }, 503);
   }
   let input: Row;
   try {
@@ -173,8 +161,13 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     ];
 
     let finalAnswer = "";
+    let selectedProvider = "";
+    let selectedModel = "";
     for (let round = 0; round < 4; round++) {
-      const modelMessage = await callModel(env, messages, true);
+      const modelResult = await callAIModel(env, messages, TOOL_DEFINITIONS, true);
+      const modelMessage = modelResult.message;
+      selectedProvider = modelResult.provider;
+      selectedModel = modelResult.model;
       const toolCalls = Array.isArray(modelMessage.tool_calls) ? modelMessage.tool_calls as ToolCall[] : [];
       if (!toolCalls.length) {
         finalAnswer = typeof modelMessage.content === "string" ? modelMessage.content.trim() : "";
@@ -206,12 +199,14 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
       }
     }
     if (!finalAnswer) {
-      const finalMessage = await callModel(env, messages, false);
-      finalAnswer = typeof finalMessage.content === "string" ? finalMessage.content.trim() : "";
+      const finalResult = await callAIModel(env, messages, TOOL_DEFINITIONS, false);
+      selectedProvider = finalResult.provider;
+      selectedModel = finalResult.model;
+      finalAnswer = typeof finalResult.message.content === "string" ? finalResult.message.content.trim() : "";
     }
     if (!finalAnswer) return response({ error: { code: "EMPTY_AI_RESPONSE", message: "The AI provider returned an empty response." } }, 502);
-    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "assistant", content: finalAnswer, metadata: { model: env.AI_MODEL } });
-    return response({ data: { conversation_id: conversationId, message: finalAnswer, model: env.AI_MODEL } });
+    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "assistant", content: finalAnswer, metadata: { provider: selectedProvider, model: selectedModel } });
+    return response({ data: { conversation_id: conversationId, message: finalAnswer, provider: selectedProvider, model: selectedModel } });
   } catch {
     return response({ error: { code: "ASSISTANT_RUNTIME_ERROR", message: "GiGo could not complete this request. Your saved workspace data remains protected; please try again." } }, 502);
   }
