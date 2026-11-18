@@ -37,7 +37,7 @@ function setAuthMode(mode) {
   if (password) password.autocomplete = mode === "login" ? "current-password" : "new-password";
   if (authSubmit) authSubmit.textContent = mode === "login" ? "Sign in to GiGo" : "Create my account";
   showMessage("");
-  if (resendButton) resendButton.hidden = true;
+  if (resendButton) resendButton.hidden = mode !== "login";
 }
 
 // Supabase email confirmation returns session tokens in the URL fragment.
