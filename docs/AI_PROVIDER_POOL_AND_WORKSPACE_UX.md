@@ -46,7 +46,8 @@ The Worker reads the secret `AI_PROVIDER_POOL` as a JSON array. Each entry repre
 - Multiple credentials from the same provider are supported. They must be legitimately authorised, separately provisioned where required, and used in accordance with the provider's terms.
 - A provider HTTP 429 response is not bypassed by cycling keys. GiGo cools down that provider for the current Worker isolate and moves to a different provider. This is not a mechanism to evade account or project quotas.
 - Invalid credentials (401/403), transient network failures and provider 5xx responses may fall through to another configured credential/provider.
-- The protected endpoint `GET /api/v1/assistant/providers` returns provider names, key counts and model names only. It never returns API keys.
+- The protected endpoint `GET /api/v1/assistant/providers` returns provider names, key counts, safe key IDs and model names only. It never returns API keys.
+- Migration `0004_ai_usage_ledger.sql` adds a row-level-secured token-usage ledger by provider/model/key ID. It records token counts returned by compatible providers; it does not reveal or estimate provider-side remaining quota.
 - Legacy `AI_API_BASE_URL`, `AI_API_KEY`, `AI_MODEL` configuration remains supported as a temporary single-provider fallback.
 
 The router assumes an OpenAI-compatible chat-completions endpoint and function-calling support. Not every model/provider supports tool calls equally. Confirm each model's API compatibility and free pricing before adding it. Never rely on a model name alone to establish that a request is free.
@@ -88,7 +89,8 @@ This is a prototype, not yet a guaranteed high-accuracy transcription service. B
 ## Verification still required
 
 1. GitHub TypeScript CI must pass on the latest commit.
-2. Cloudflare must deploy the latest `main` branch.
+2. Apply Supabase migrations `0002`, `0003` and `0004` if they have not already been applied (in order).
+3. Cloudflare must deploy the latest `main` branch.
 3. Confirm each page route loads on mobile and desktop.
 4. Confirm manual project/task create/list/status update.
 5. Configure one eligible free provider, then test plain chat.
