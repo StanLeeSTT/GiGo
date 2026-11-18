@@ -185,7 +185,14 @@ export default {
     const authAction = authRoutes[url.pathname];
     if (request.method === "POST" && authAction) return handleAuth(request, env, headers, authAction);
 
-    if (env.ASSETS) {\n      if (request.method === "GET" && (url.pathname === "/login" || url.pathname === "/overview")) {\n        const assetUrl = new URL(request.url);\n        assetUrl.pathname = url.pathname + ".html";\n        return env.ASSETS.fetch(new Request(assetUrl.toString(), request));\n      }\n      return env.ASSETS.fetch(request);\n    }
+    if (env.ASSETS) {
+      if (request.method === "GET" && (url.pathname === "/login" || url.pathname === "/overview")) {
+        const assetUrl = new URL(request.url);
+        assetUrl.pathname = url.pathname + ".html";
+        return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+      }
+      return env.ASSETS.fetch(request);
+    }
     return json({ error: { code: "NOT_FOUND", message: "The requested endpoint does not exist." } }, 404, headers);
   },
 };
