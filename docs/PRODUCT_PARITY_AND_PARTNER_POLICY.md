@@ -174,14 +174,14 @@ Current implementation after the first workspace build:
 - a central assistant capability registry that distinguishes working tools from planned modules and marks external actions that will require approval;
 - a protected capability-discovery endpoint for the signed-in owner;
 - a database trigger that moves a conversation to the top of the list when a new message is saved;
-- a GitHub Actions TypeScript-check workflow.
+- a GitHub Actions TypeScript-check workflow (the run covering the assistant API and UI passed; the latest runtime ownership fix is awaiting its own run).
 - owner identity is verified server-side before inserting project/task rows;
 - project and task create/list flows in the overview, task status updates, and live active-project/open-task counts;
 - an additional database migration enforces that a task can only reference a project owned by the same account.
 
 Not yet implemented/verified:
 - end-to-end runtime verification of the new project/task flows after applying migration 0002 and deploying the latest Worker;
-- connected AI runtime/model provider and tool-execution loop (the registry is groundwork, not a functioning AI chat yet);
+- an OpenAI-compatible AI chat runtime and mobile-friendly workspace chat UI are now implemented in code; provider credentials/model are not configured, and no live model request has yet been verified;\n- automatic model tool-calling/execution loop is not yet implemented: the current chat runtime receives workspace memory and capability context but cannot yet create/update projects or tasks through model-selected tools;
 - research, product, partner, lead, CRM, offer, outreach, launch, store/payment, fulfilment, creative and analytics modules;
 - partner scoring and evidence store;
 - approval workflow UI and external action integrations;
