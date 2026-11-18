@@ -72,7 +72,7 @@ async function authRequest(path: string, env: Env, body: JsonRecord): Promise<Re
   });
 }
 
-async function handleAuth(request: Request, env: Env, headers: Headers, action: "signup" | "login" | "refresh" | "logout"): Promise<Response> {
+async function handleAuth(request: Request, env: Env, headers: Headers, action: "signup" | "login" | "refresh" | "logout" | "resend"): Promise<Response> {
   if (!configured(env)) {
     return json({ error: { code: "AUTH_NOT_CONFIGURED", message: "GiGo authentication is not connected yet. Configure the Supabase project URL and anon key first." } }, 503, headers);
   }
@@ -97,7 +97,14 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
 
   let path = "";
   let body: JsonRecord = {};
-  if (action === "signup" || action === "login") {
+  if (action === "resend") {
+    const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      return json({ error: { code: "INVALID_EMAIL", message: "Enter a valid email address." } }, 400, headers);
+    }
+    path = `/auth/v1/resend?redirect_to=${encodeURIComponent(new URL(request.url).origin)}`;
+    body = { email, type: "signup" };
+  } else if (action === "signup" || action === "login") {
     const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
     const password = typeof input.password === "string" ? input.password : "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -168,11 +175,12 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/api/v1/me") return handleMe(request, env, headers);
 
-    const authRoutes: Record<string, "signup" | "login" | "refresh" | "logout"> = {
+    const authRoutes: Record<string, "signup" | "login" | "refresh" | "logout" | "resend"> = {
       "/api/v1/auth/signup": "signup",
       "/api/v1/auth/login": "login",
       "/api/v1/auth/refresh": "refresh",
       "/api/v1/auth/logout": "logout",
+      "/api/v1/auth/resend": "resend",
     };
     const authAction = authRoutes[url.pathname];
     if (request.method === "POST" && authAction) return handleAuth(request, env, headers, authAction);
