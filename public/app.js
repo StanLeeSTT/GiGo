@@ -38,6 +38,20 @@ function setAuthMode(mode) {
   showMessage("");
 }
 
+// Supabase email confirmation returns session tokens in the URL fragment.
+// Capture them before the normal API/session check, then remove them from browser history.
+function captureConfirmationSession() {
+  if (!window.location.hash || !window.location.hash.includes("access_token=")) return;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const accessToken = params.get("access_token");
+  const refreshToken = params.get("refresh_token");
+  if (accessToken && refreshToken) {
+    storeSession({ access_token: accessToken, refresh_token: refreshToken });
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    showMessage("Email confirmed. Your GiGo session is being verified.", true);
+  }
+}
+
 function storeSession(session) {
   if (!session?.access_token || !session?.refresh_token) return false;
   sessionStorage.setItem("gigo_access_token", session.access_token);
@@ -195,4 +209,5 @@ signoutButton?.addEventListener("click", async () => {
   }
 });
 
+captureConfirmationSession();
 checkApi();
