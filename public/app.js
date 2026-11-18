@@ -9,6 +9,7 @@ const signedInState = document.querySelector("#signed-in-state");
 const signedInEmail = document.querySelector("#signed-in-email");
 const signoutButton = document.querySelector("#signout-button");
 const authDescription = document.querySelector("#auth-description");
+const authTabs = document.querySelector(".auth-tabs");
 const resendButton = document.querySelector("#resend-confirmation");
 
 let authMode = "login";
@@ -109,6 +110,7 @@ async function loadIdentity() {
 
 function showSignedIn(email) {
   if (authForm) authForm.hidden = true;
+  if (authTabs) authTabs.hidden = true;
   if (signedInState) signedInState.hidden = false;
   if (signedInEmail) signedInEmail.textContent = email;
   if (authDescription) authDescription.textContent = "Your private GiGo account is connected.";
@@ -119,6 +121,7 @@ function showSignedIn(email) {
 
 function showLoginForm() {
   if (authForm) authForm.hidden = false;
+  if (authTabs) authTabs.hidden = false;
   if (signedInState) signedInState.hidden = true;
   if (authDescription) authDescription.textContent = authConfigured
     ? "Sign in to your private GiGo owner account, or create your account to get started."
