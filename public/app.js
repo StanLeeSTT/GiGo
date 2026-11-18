@@ -9,6 +9,7 @@ const signedInState = document.querySelector("#signed-in-state");
 const signedInEmail = document.querySelector("#signed-in-email");
 const signoutButton = document.querySelector("#signout-button");
 const authDescription = document.querySelector("#auth-description");
+const resendButton = document.querySelector("#resend-confirmation");
 
 let authMode = "login";
 let authConfigured = false;
@@ -36,6 +37,7 @@ function setAuthMode(mode) {
   if (password) password.autocomplete = mode === "login" ? "current-password" : "new-password";
   if (authSubmit) authSubmit.textContent = mode === "login" ? "Sign in to GiGo" : "Create my account";
   showMessage("");
+  if (resendButton) resendButton.hidden = true;
 }
 
 // Supabase email confirmation returns session tokens in the URL fragment.
@@ -152,6 +154,26 @@ async function checkApi() {
   }
 }
 
+resendButton?.addEventListener("click", async () => {
+  const email = document.querySelector("#auth-email")?.value.trim();
+  if (!email) return showMessage("Enter your account email first.");
+  resendButton.disabled = true;
+  try {
+    const response = await fetch("/api/v1/auth/resend", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ email })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload?.error?.message || "Could not resend confirmation email.");
+    showMessage("If this account is still awaiting confirmation, a new email has been requested. Check your inbox and spam folder.", true);
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : "Could not resend confirmation email.");
+  } finally {
+    resendButton.disabled = false;
+  }
+});
+
 loginTab?.addEventListener("click", () => setAuthMode("login"));
 signupTab?.addEventListener("click", () => setAuthMode("signup"));
 
@@ -177,7 +199,8 @@ authForm?.addEventListener("submit", async (event) => {
       showMessage(authMode === "signup" ? "Account created and signed in." : "Signed in successfully.", true);
     } else if (authMode === "signup") {
       setAuthMode("login");
-      showMessage("Account created. Check your email for the confirmation link, then return here to sign in.", true);
+      showMessage("Account created. Check your email for the confirmation link, then return here to sign in. If the link was sent before the redirect fix, request a new one below.", true);
+      if (resendButton) resendButton.hidden = false;
     } else {
       throw new Error("The provider did not return a session. Check your email confirmation settings and try again.");
     }
