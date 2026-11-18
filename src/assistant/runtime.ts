@@ -200,8 +200,8 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
         const toolContent = JSON.stringify(result);
         messages.push({ role: "tool", tool_call_id: callId, content: toolContent });
         await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", {
-          user_id: ownerId, conversation_id: conversationId, role: "tool", content: toolContent,
-          metadata: { tool_name: name, tool_call_id: callId }
+          user_id: ownerId, conversation_id: conversationId, role: "assistant", content: `[Tool result: ${name}] ${toolContent}`,
+          metadata: { kind: "tool_result", tool_name: name, tool_call_id: callId }
         });
       }
     }
