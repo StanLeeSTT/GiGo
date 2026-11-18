@@ -238,6 +238,85 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
   }
 }
 
+
+type AssistantResource = "assistant_conversations" | "assistant_messages" | "memory_items";
+async function verifiedUserId(token: string, env: Env): Promise<string | null> {
+  const response = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL!), {
+    headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return null;
+  const user = await response.json() as JsonRecord;
+  return typeof user.id === "string" ? user.id : null;
+}
+async function handleAssistantResource(request: Request, env: Env, headers: Headers, resource: AssistantResource): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access assistant data." } }, 401, headers);
+  const url = new URL(request.url);
+  const method = request.method;
+  if (!["GET", "POST", "PATCH"].includes(method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } }, 405, headers);
+  let endpoint = "";
+  let select = "";
+  if (resource === "assistant_conversations") {
+    select = "id,title,context,created_at,updated_at";
+    endpoint = `/rest/v1/assistant_conversations?select=${select}&order=updated_at.desc&limit=50`;
+  } else if (resource === "assistant_messages") {
+    select = "id,conversation_id,role,content,metadata,created_at";
+    const conversationId = url.searchParams.get("conversation_id");
+    if (!conversationId || !/^[0-9a-f-]{36}$/i.test(conversationId)) return json({ error: { code: "CONVERSATION_REQUIRED", message: "A valid conversation_id is required." } }, 400, headers);
+    endpoint = `/rest/v1/assistant_messages?select=${select}&conversation_id=eq.${encodeURIComponent(conversationId)}&order=created_at.asc&limit=200`;
+  } else {
+    select = "id,category,content,source,confidence,is_active,created_at,updated_at";
+    endpoint = `/rest/v1/memory_items?select=${select}&order=updated_at.desc&limit=100`;
+  }
+  const requestHeaders: Record<string,string> = { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}`, accept: "application/json" };
+  let body: JsonRecord | undefined;
+  if (method === "POST" || method === "PATCH") {
+    const input = await readJson(request);
+    if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+    if (resource === "assistant_conversations") {
+      if (method !== "POST" || Object.keys(input).some(k => !["title","context"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Only title and context can be supplied when creating a conversation." } }, 400, headers);
+      if (input.title !== undefined && input.title !== null && (typeof input.title !== "string" || input.title.length > 160)) return json({ error: { code: "INVALID_BODY", message: "Conversation title must be at most 160 characters." } }, 400, headers);
+      if (input.context !== undefined && (!input.context || typeof input.context !== "object" || Array.isArray(input.context))) return json({ error: { code: "INVALID_BODY", message: "Conversation context must be an object." } }, 400, headers);
+      body = { title: input.title ?? null, context: input.context ?? {} };
+    } else if (resource === "assistant_messages") {
+      if (method !== "POST" || Object.keys(input).some(k => !["role","content","metadata"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Only role, content and metadata can be supplied for a message." } }, 400, headers);
+      if (!["user","assistant"].includes(String(input.role)) || typeof input.content !== "string" || !input.content.trim() || input.content.length > 20000) return json({ error: { code: "INVALID_BODY", message: "Message role or content is invalid." } }, 400, headers);
+      if (input.metadata !== undefined && (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata))) return json({ error: { code: "INVALID_BODY", message: "Message metadata must be an object." } }, 400, headers);
+      body = { conversation_id: url.searchParams.get("conversation_id"), role: input.role, content: input.content, metadata: input.metadata ?? {} };
+    } else {
+      if (Object.keys(input).some(k => !["category","content","source","confidence","is_active"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Unsupported memory field." } }, 400, headers);
+      if (method === "POST" && (typeof input.content !== "string" || !input.content.trim() || input.content.length > 5000)) return json({ error: { code: "INVALID_BODY", message: "Memory content must be 1–5,000 characters." } }, 400, headers);
+      if (method === "PATCH" && (typeof input.is_active !== "boolean" || Object.keys(input).length !== 1)) return json({ error: { code: "INVALID_BODY", message: "Memory updates currently support only is_active." } }, 400, headers);
+      if (input.category !== undefined && (typeof input.category !== "string" || input.category.length > 80)) return json({ error: { code: "INVALID_BODY", message: "Memory category must be at most 80 characters." } }, 400, headers);
+      if (input.source !== undefined && (typeof input.source !== "string" || input.source.length > 80)) return json({ error: { code: "INVALID_BODY", message: "Memory source must be at most 80 characters." } }, 400, headers);
+      body = method === "POST" ? { category: input.category ?? "general", content: input.content, source: input.source ?? "user", confidence: input.confidence ?? 1, is_active: true } : { is_active: input.is_active };
+      if (input.confidence !== undefined && (typeof input.confidence !== "number" || input.confidence < 0 || input.confidence > 1)) return json({ error: { code: "INVALID_BODY", message: "Confidence must be between 0 and 1." } }, 400, headers);
+      const memoryId = url.searchParams.get("id");
+      if (method === "PATCH" && (!memoryId || !/^[0-9a-f-]{36}$/i.test(memoryId))) return json({ error: { code: "INVALID_ID", message: "A valid memory ID is required." } }, 400, headers);
+      if (method === "PATCH") endpoint += `&id=eq.${encodeURIComponent(memoryId!)}`;
+    }
+    if (method === "POST") {
+      let userId: string | null = null;
+      try { userId = await verifiedUserId(token, env); } catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
+      if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+      body!.user_id = userId;
+    }
+    requestHeaders["content-type"] = "application/json";
+    requestHeaders.prefer = "return=representation";
+  }
+  try {
+    const response = await fetch(new URL(endpoint, env.SUPABASE_URL!), { method, headers: requestHeaders, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const raw = await response.text();
+    const payload = raw ? JSON.parse(raw) : null;
+    if (!response.ok) return json({ error: { code: "DATABASE_REQUEST_FAILED", message: response.status >= 500 ? "The database request could not be completed." : (payload?.message ?? "The request was rejected.") } }, response.status >= 500 ? 502 : response.status, headers);
+    if (method === "PATCH" && Array.isArray(payload) && payload.length === 0) return json({ error: { code: "NOT_FOUND", message: "That memory item was not found." } }, 404, headers);
+    return json({ data: payload ?? [] }, method === "POST" ? 201 : 200, headers);
+  } catch {
+    return json({ error: { code: "DATABASE_UNAVAILABLE", message: "Assistant storage is temporarily unavailable." } }, 502, headers);
+  }
+}
+
 async function handleMe(request: Request, env: Env, headers: Headers): Promise<Response> {
   const token = bearerToken(request);
   if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "A valid bearer token is required." } }, 401, headers);
@@ -277,6 +356,14 @@ export default {
     };
     const resource = resourceRoutes[url.pathname];
     if (resource) return handleResource(request, env, headers, resource);
+
+    const assistantRoutes: Record<string, AssistantResource> = {
+      "/api/v1/conversations": "assistant_conversations",
+      "/api/v1/messages": "assistant_messages",
+      "/api/v1/memory": "memory_items",
+    };
+    const assistantResource = assistantRoutes[url.pathname];
+    if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
 
     if (request.method === "GET" && url.pathname === "/api/v1/me") return handleMe(request, env, headers);
 
