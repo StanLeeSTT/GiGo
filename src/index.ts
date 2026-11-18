@@ -184,6 +184,16 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
   const method = request.method;
   if (!["GET", "POST", "PATCH", "DELETE"].includes(method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } }, 405, headers);
   if ((method === "PATCH" || method === "DELETE") && (!id || !/^[0-9a-f-]{36}$/i.test(id))) return json({ error: { code: "INVALID_ID", message: "A valid record ID is required." } }, 400, headers);
+  let ownerId: string | null = null;
+  if (method === "POST") {
+    try {
+      const identity = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL!), { headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}` } });
+      if (!identity.ok) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+      const user = await identity.json() as JsonRecord;
+      ownerId = typeof user.id === "string" ? user.id : null;
+      if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your account could not be verified." } }, 401, headers);
+    } catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
+  }
   let endpoint = `/rest/v1/${resource}?select=${RESOURCE_COLUMNS[resource]}`;
   const requestHeaders: Record<string, string> = {
     apikey: env.SUPABASE_ANON_KEY!,
@@ -200,7 +210,8 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
     const issue = validateResourceBody(resource, input, method === "PATCH");
     if (issue) return json({ error: { code: "INVALID_BODY", message: issue } }, 400, headers);
     body = { ...input };
-    if (method === "POST") body.user_id = undefined;
+    if (method === "POST") body.user_id = ownerId;
+    if (resource === "tasks" && "status" in body) body.completed_at = body.status === "done" ? new Date().toISOString() : null;
     if (method === "PATCH") endpoint += `&id=eq.${encodeURIComponent(id!)}`;
     requestHeaders["content-type"] = "application/json";
     requestHeaders.prefer = "return=representation";
