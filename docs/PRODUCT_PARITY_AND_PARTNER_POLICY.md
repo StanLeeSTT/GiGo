@@ -174,7 +174,7 @@ Current implementation after the first workspace build:
 - a central assistant capability registry that distinguishes working tools from planned modules and marks external actions that will require approval;
 - a protected capability-discovery endpoint for the signed-in owner;
 - a database trigger that moves a conversation to the top of the list when a new message is saved;
-- a GitHub Actions TypeScript-check workflow (the run covering the assistant API and UI passed; the latest runtime ownership fix is awaiting its own run).
+- a GitHub Actions TypeScript-check workflow; previous assistant API/UI runs passed, and the new tool-runtime run is being checked.
 - owner identity is verified server-side before inserting project/task rows;
 - project and task create/list flows in the overview, task status updates, and live active-project/open-task counts;
 - an additional database migration enforces that a task can only reference a project owned by the same account.
@@ -187,7 +187,7 @@ Not yet implemented/verified:
 - approval workflow UI and external action integrations;
 - durable job execution/worker orchestration.
 
-The next engineering sequence should establish secure database CRUD and shared assistant/tool foundations first, then deliver complete vertical workflows. Do not build disconnected placeholder pages and call them finished features.
+The next engineering sequence should verify the tool loop with a configured model provider, then add durable job execution and build complete vertical workflows one at a time. Do not build disconnected placeholder pages and call them finished features.
 
 ## 7. Source notes
 
