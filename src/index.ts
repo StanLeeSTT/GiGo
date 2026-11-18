@@ -111,7 +111,7 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
       if (!ownerEmail) return json({ error: { code: "OWNER_NOT_CONFIGURED", message: "Owner-only account creation is not configured yet. Set OWNER_EMAIL on the Worker before creating the owner account." } }, 503, headers);
       if (email !== ownerEmail) return json({ error: { code: "SIGNUP_NOT_ALLOWED", message: "GiGo is a private owner workspace. This email is not authorised to create its account." } }, 403, headers);
     }
-    path = action === "signup" ? "/auth/v1/signup" : "/auth/v1/token?grant_type=password";
+    path = action === "signup" ? `/auth/v1/signup?redirect_to=${encodeURIComponent(new URL(request.url).origin)}` : "/auth/v1/token?grant_type=password";
     body = { email, password };
   } else {
     const refreshToken = typeof input.refresh_token === "string" ? input.refresh_token : "";
