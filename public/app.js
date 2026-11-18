@@ -11,6 +11,7 @@ const signoutButton = document.querySelector("#signout-button");
 const authDescription = document.querySelector("#auth-description");
 const authTabs = document.querySelector(".auth-tabs");
 const resendButton = document.querySelector("#resend-confirmation");
+const authTabs = document.querySelector(".auth-tabs");
 
 let authMode = "login";
 let authConfigured = false;
@@ -109,6 +110,7 @@ async function loadIdentity() {
 }
 
 function showSignedIn(email) {
+  if (authTabs) authTabs.hidden = true;
   if (authForm) authForm.hidden = true;
   if (authTabs) authTabs.hidden = true;
   if (signedInState) signedInState.hidden = false;
@@ -120,6 +122,7 @@ function showSignedIn(email) {
 }
 
 function showLoginForm() {
+  if (authTabs) authTabs.hidden = false;
   if (authForm) authForm.hidden = false;
   if (authTabs) authTabs.hidden = false;
   if (signedInState) signedInState.hidden = true;
