@@ -170,13 +170,18 @@ Current implementation after the first workspace build:
 - initial Supabase schema for profiles, projects, tasks, conversations/messages, memory, jobs and audit events;
 - Cloudflare Worker API and static assets;
 - authenticated project and task API routes using the signed-in user's Supabase bearer token and Row Level Security;
+- authenticated conversation, message and memory APIs, with user-owned rows and validation;
+- a central assistant capability registry that distinguishes working tools from planned modules and marks external actions that will require approval;
+- a protected capability-discovery endpoint for the signed-in owner;
+- a database trigger that moves a conversation to the top of the list when a new message is saved;
+- a GitHub Actions TypeScript-check workflow.
 - owner identity is verified server-side before inserting project/task rows;
 - project and task create/list flows in the overview, task status updates, and live active-project/open-task counts;
 - an additional database migration enforces that a task can only reference a project owned by the same account.
 
 Not yet implemented/verified:
 - end-to-end runtime verification of the new project/task flows after applying migration 0002 and deploying the latest Worker;
-- central AI assistant and model/provider adapters;
+- connected AI runtime/model provider and tool-execution loop (the registry is groundwork, not a functioning AI chat yet);
 - research, product, partner, lead, CRM, offer, outreach, launch, store/payment, fulfilment, creative and analytics modules;
 - partner scoring and evidence store;
 - approval workflow UI and external action integrations;
