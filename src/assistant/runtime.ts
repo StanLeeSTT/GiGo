@@ -102,6 +102,20 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
 
 
 
+async function recordUsage(env: AssistantRuntimeEnv, token: string, ownerId: string, usage: unknown, provider: string, model: string, keyId: string): Promise<void> {
+  if (!isObject(usage)) return;
+  const prompt = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
+  const completion = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
+  const total = Number(usage.total_tokens ?? (prompt + completion));
+  if (![prompt, completion, total].every(value => Number.isFinite(value) && value >= 0)) return;
+  try {
+    await db(env, token, "/rest/v1/ai_usage_events", "POST", {
+      user_id: ownerId, provider, model, key_id: keyId,
+      prompt_tokens: Math.trunc(prompt), completion_tokens: Math.trunc(completion), total_tokens: Math.trunc(total)
+    });
+  } catch { /* Usage telemetry must never break an otherwise successful assistant response. */ }
+}
+
 export async function handleAssistantChat(request: Request, env: AssistantRuntimeEnv, token: string): Promise<Response> {
   if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return response({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo storage is not configured." } }, 503);
   if (!providerPoolStatus(env).configured) {
@@ -163,11 +177,14 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     let finalAnswer = "";
     let selectedProvider = "";
     let selectedModel = "";
+    let selectedKeyId = "";
     for (let round = 0; round < 4; round++) {
       const modelResult = await callAIModel(env, messages, TOOL_DEFINITIONS, true);
       const modelMessage = modelResult.message;
       selectedProvider = modelResult.provider;
       selectedModel = modelResult.model;
+      selectedKeyId = modelResult.keyId;
+      await recordUsage(env, token, ownerId, modelResult.usage, selectedProvider, selectedModel, selectedKeyId);
       const toolCalls = Array.isArray(modelMessage.tool_calls) ? modelMessage.tool_calls as ToolCall[] : [];
       if (!toolCalls.length) {
         finalAnswer = typeof modelMessage.content === "string" ? modelMessage.content.trim() : "";
@@ -202,11 +219,13 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
       const finalResult = await callAIModel(env, messages, TOOL_DEFINITIONS, false);
       selectedProvider = finalResult.provider;
       selectedModel = finalResult.model;
+      selectedKeyId = finalResult.keyId;
+      await recordUsage(env, token, ownerId, finalResult.usage, selectedProvider, selectedModel, selectedKeyId);
       finalAnswer = typeof finalResult.message.content === "string" ? finalResult.message.content.trim() : "";
     }
     if (!finalAnswer) return response({ error: { code: "EMPTY_AI_RESPONSE", message: "The AI provider returned an empty response." } }, 502);
-    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "assistant", content: finalAnswer, metadata: { provider: selectedProvider, model: selectedModel } });
-    return response({ data: { conversation_id: conversationId, message: finalAnswer, provider: selectedProvider, model: selectedModel } });
+    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "assistant", content: finalAnswer, metadata: { provider: selectedProvider, model: selectedModel, key_id: selectedKeyId } });
+    return response({ data: { conversation_id: conversationId, message: finalAnswer, provider: selectedProvider, model: selectedModel, key_id: selectedKeyId } });
   } catch {
     return response({ error: { code: "ASSISTANT_RUNTIME_ERROR", message: "GiGo could not complete this request. Your saved workspace data remains protected; please try again." } }, 502);
   }
