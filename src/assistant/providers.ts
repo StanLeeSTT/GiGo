@@ -4,7 +4,7 @@ export interface ProviderEnv {
   AI_API_KEY?: string;
   AI_MODEL?: string;
 }
-export interface ProviderResult { message: Record<string, unknown>; provider: string; model: string; usage?: unknown }
+export interface ProviderResult { message: Record<string, unknown>; provider: string; model: string; keyId: string; usage?: unknown }
 type PoolEntry = { provider: string; keyId?: string; baseUrl: string; apiKey: string; model: string; enabled?: boolean; freeOnly?: boolean; priority?: number };
 function pool(env: ProviderEnv): PoolEntry[] {
   if (env.AI_PROVIDER_POOL) {
@@ -61,7 +61,7 @@ export async function callAIModel(env: ProviderEnv, messages: Record<string, unk
         const choices = payload.choices as Record<string, unknown>[] | undefined;
         const message = choices?.[0]?.message as Record<string, unknown> | undefined;
         if (!message) { lastError = `Provider ${entry.provider} returned an invalid chat response.`; break; }
-        return { message, provider: entry.provider, model: key.model, usage: payload.usage };
+        return { message, provider: entry.provider, model: key.model, keyId: key.keyId ?? "default", usage: payload.usage };
       } catch {
         lastError = `Provider ${entry.provider} could not be reached.`;
       }
@@ -69,9 +69,9 @@ export async function callAIModel(env: ProviderEnv, messages: Record<string, unk
   }
   throw new Error(lastError);
 }
-export function providerPoolStatus(env: ProviderEnv): { configured: boolean; providers: { provider: string; key_count: number; models: string[] }[] } {
+export function providerPoolStatus(env: ProviderEnv): { configured: boolean; providers: { provider: string; key_count: number; key_ids: string[]; models: string[] }[] } {
   const entries = pool(env);
   const grouped = new Map<string, PoolEntry[]>();
   for (const entry of entries) grouped.set(entry.provider, [...(grouped.get(entry.provider) ?? []), entry]);
-  return { configured: entries.length > 0, providers: [...grouped.entries()].map(([provider, keys]) => ({ provider, key_count: keys.length, models: [...new Set(keys.map(key => key.model))] })) };
+  return { configured: entries.length > 0, providers: [...grouped.entries()].map(([provider, keys]) => ({ provider, key_count: keys.length, key_ids: keys.map(key => key.keyId ?? "default"), models: [...new Set(keys.map(key => key.model))] })) };
 }
