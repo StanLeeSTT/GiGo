@@ -29,7 +29,7 @@ function corsHeaders(origin: string | null, env: Env): Headers {
   if (accepted) {
     headers.set("access-control-allow-origin", accepted);
     headers.set("vary", "Origin");
-    headers.set("access-control-allow-methods", "GET, POST, OPTIONS");
+    headers.set("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
     headers.set("access-control-allow-headers", "Authorization, Content-Type");
     headers.set("access-control-max-age", "86400");
   }
