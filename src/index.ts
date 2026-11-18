@@ -102,7 +102,7 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
     if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
       return json({ error: { code: "INVALID_EMAIL", message: "Enter a valid email address." } }, 400, headers);
     }
-    path = `/auth/v1/resend?redirect_to=${encodeURIComponent(new URL(request.url).origin)}`;
+    path = `/auth/v1/resend?redirect_to=${encodeURIComponent(new URL("/login", request.url).toString())}`;
     body = { email, type: "signup" };
   } else if (action === "signup" || action === "login") {
     const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
@@ -118,7 +118,7 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
       if (!ownerEmail) return json({ error: { code: "OWNER_NOT_CONFIGURED", message: "Owner-only account creation is not configured yet. Set OWNER_EMAIL on the Worker before creating the owner account." } }, 503, headers);
       if (email !== ownerEmail) return json({ error: { code: "SIGNUP_NOT_ALLOWED", message: "GiGo is a private owner workspace. This email is not authorised to create its account." } }, 403, headers);
     }
-    path = action === "signup" ? `/auth/v1/signup?redirect_to=${encodeURIComponent(new URL(request.url).origin)}` : "/auth/v1/token?grant_type=password";
+    path = action === "signup" ? `/auth/v1/signup?redirect_to=${encodeURIComponent(new URL("/login", request.url).toString())}` : "/auth/v1/token?grant_type=password";
     body = { email, password };
   } else {
     const refreshToken = typeof input.refresh_token === "string" ? input.refresh_token : "";
@@ -185,7 +185,7 @@ export default {
     const authAction = authRoutes[url.pathname];
     if (request.method === "POST" && authAction) return handleAuth(request, env, headers, authAction);
 
-    if (env.ASSETS) return env.ASSETS.fetch(request);
+    if (env.ASSETS) {\n      if (request.method === "GET" && (url.pathname === "/login" || url.pathname === "/overview")) {\n        const assetUrl = new URL(request.url);\n        assetUrl.pathname = url.pathname + ".html";\n        return env.ASSETS.fetch(new Request(assetUrl.toString(), request));\n      }\n      return env.ASSETS.fetch(request);\n    }
     return json({ error: { code: "NOT_FOUND", message: "The requested endpoint does not exist." } }, 404, headers);
   },
 };
