@@ -164,14 +164,18 @@ A module is not considered integrated merely because a page exists. It is integr
 
 ## 6. Current GiGo implementation comparison
 
-At the time this document was added, GiGo has:
+Current implementation after the first workspace build:
 - separate landing, login and private overview pages;
 - Supabase authentication and owner account flow;
 - initial Supabase schema for profiles, projects, tasks, conversations/messages, memory, jobs and audit events;
-- Cloudflare Worker API and static assets.
+- Cloudflare Worker API and static assets;
+- authenticated project and task API routes using the signed-in user's Supabase bearer token and Row Level Security;
+- owner identity is verified server-side before inserting project/task rows;
+- project and task create/list flows in the overview, task status updates, and live active-project/open-task counts;
+- an additional database migration enforces that a task can only reference a project owned by the same account.
 
 Not yet implemented/verified:
-- authenticated CRUD endpoints and dashboard data loading;
+- end-to-end runtime verification of the new project/task flows after applying migration 0002 and deploying the latest Worker;
 - central AI assistant and model/provider adapters;
 - research, product, partner, lead, CRM, offer, outreach, launch, store/payment, fulfilment, creative and analytics modules;
 - partner scoring and evidence store;
