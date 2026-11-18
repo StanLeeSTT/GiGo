@@ -1,3 +1,4 @@
+import { getAssistantCapabilities } from "./assistant/registry";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -317,6 +318,20 @@ async function handleAssistantResource(request: Request, env: Env, headers: Head
   }
 }
 
+
+async function handleCapabilities(request: Request, env: Env, headers: Headers): Promise<Response> {
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view GiGo assistant capabilities." } }, 401, headers);
+  if (!configured(env)) return json({ error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured." } }, 503, headers);
+  try {
+    const userId = await verifiedUserId(token, env);
+    if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    return json({ data: getAssistantCapabilities() }, 200, headers);
+  } catch {
+    return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
+  }
+}
+
 async function handleMe(request: Request, env: Env, headers: Headers): Promise<Response> {
   const token = bearerToken(request);
   if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "A valid bearer token is required." } }, 401, headers);
@@ -364,6 +379,8 @@ export default {
     };
     const assistantResource = assistantRoutes[url.pathname];
     if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
+
+    if (request.method === "GET" && url.pathname === "/api/v1/assistant/capabilities") return handleCapabilities(request, env, headers);
 
     if (request.method === "GET" && url.pathname === "/api/v1/me") return handleMe(request, env, headers);
 
