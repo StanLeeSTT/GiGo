@@ -185,6 +185,7 @@ export default {
     const authAction = authRoutes[url.pathname];
     if (request.method === "POST" && authAction) return handleAuth(request, env, headers, authAction);
 
+    // Serve dedicated public landing, login, and overview routes.
     if (env.ASSETS) {
       if (request.method === "GET" && (url.pathname === "/login" || url.pathname === "/overview")) {
         const assetUrl = new URL(request.url);
