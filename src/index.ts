@@ -1,11 +1,13 @@
 import { getAssistantCapabilities } from "./assistant/registry";
 import { handleAssistantChat } from "./assistant/runtime";
+import { providerPoolStatus } from "./assistant/providers";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
   OWNER_EMAIL?: string;
+  AI_PROVIDER_POOL?: string;
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_MODEL?: string;
@@ -385,6 +387,18 @@ export default {
     if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
 
     if (request.method === "GET" && url.pathname === "/api/v1/assistant/capabilities") return handleCapabilities(request, env, headers);
+
+    if (request.method === "GET" && url.pathname === "/api/v1/assistant/providers") {
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view AI provider status." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        return json({ data: providerPoolStatus(env) }, 200, headers);
+      } catch {
+        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
+      }
+    }
 
     if (request.method === "POST" && url.pathname === "/api/v1/assistant/chat") {
       const token = bearerToken(request);
