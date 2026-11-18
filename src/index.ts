@@ -430,7 +430,8 @@ export default {
 
     // Serve dedicated public landing, login, and overview routes.
     if (env.ASSETS) {
-      if (request.method === "GET" && (url.pathname === "/login" || url.pathname === "/overview")) {
+      const pageRoutes = new Set(["/login", "/overview", "/assistant", "/projects", "/tasks", "/research", "/products", "/partners", "/leads", "/offers", "/marketing", "/outreach", "/launch", "/commerce", "/creative", "/customers", "/analytics", "/learning", "/settings"]);
+      if (request.method === "GET" && pageRoutes.has(url.pathname)) {
         const assetUrl = new URL(request.url);
         assetUrl.pathname = url.pathname + ".html";
         return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
