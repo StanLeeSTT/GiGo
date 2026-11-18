@@ -99,7 +99,7 @@ async function handleAuth(request: Request, env: Env, headers: Headers, action: 
   let body: JsonRecord = {};
   if (action === "resend") {
     const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return json({ error: { code: "INVALID_EMAIL", message: "Enter a valid email address." } }, 400, headers);
     }
     path = `/auth/v1/resend?redirect_to=${encodeURIComponent(new URL("/login", request.url).toString())}`;
