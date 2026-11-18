@@ -1,10 +1,14 @@
 import { getAssistantCapabilities } from "./assistant/registry";
+import { handleAssistantChat } from "./assistant/runtime";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
   OWNER_EMAIL?: string;
+  AI_API_BASE_URL?: string;
+  AI_API_KEY?: string;
+  AI_MODEL?: string;
   ASSETS?: Fetcher;
 }
 
@@ -381,6 +385,22 @@ export default {
     if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
 
     if (request.method === "GET" && url.pathname === "/api/v1/assistant/capabilities") return handleCapabilities(request, env, headers);
+
+    if (request.method === "POST" && url.pathname === "/api/v1/assistant/chat") {
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to chat with GiGo." } }, 401, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo storage is not configured." } }, 503, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const result = await handleAssistantChat(request, env, token);
+        const responseHeaders = new Headers(result.headers);
+        headers.forEach((value, key) => responseHeaders.set(key, value));
+        return new Response(result.body, { status: result.status, headers: responseHeaders });
+      } catch {
+        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
+      }
+    }
 
     if (request.method === "GET" && url.pathname === "/api/v1/me") return handleMe(request, env, headers);
 
