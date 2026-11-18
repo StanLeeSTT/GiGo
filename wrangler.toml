@@ -4,8 +4,8 @@ compatibility_date = "2026-11-17"
 workers_dev = true
 
 [vars]
-APP_ENV = "development"
-ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+APP_ENV = "production"
+ALLOWED_ORIGINS = "https://gigo-api.thegreatmind601.workers.dev"
 
 [assets]
 directory = "./public"
