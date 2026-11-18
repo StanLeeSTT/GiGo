@@ -48,17 +48,24 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
   if (suppliedId && !/^[0-9a-f-]{36}$/i.test(suppliedId)) return response({ error: { code: "INVALID_CONVERSATION", message: "Conversation ID is invalid." } }, 400);
 
   try {
+    const identityResponse = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL), {
+      headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${token}` }
+    });
+    if (!identityResponse.ok) return response({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401);
+    const identity = await identityResponse.json() as Row;
+    const ownerId = typeof identity.id === "string" ? identity.id : null;
+    if (!ownerId) return response({ error: { code: "INVALID_SESSION", message: "Your account could not be verified." } }, 401);
     let conversationId = suppliedId;
     if (conversationId) {
       const rows = await db(env, token, `/rest/v1/assistant_conversations?select=id&id=eq.${encodeURIComponent(conversationId)}&limit=1`) as Row[];
       if (!Array.isArray(rows) || !rows.length) return response({ error: { code: "CONVERSATION_NOT_FOUND", message: "That conversation was not found in your workspace." } }, 404);
     } else {
-      const created = await db(env, token, "/rest/v1/assistant_conversations?select=id", "POST", { title: message.slice(0, 80), context: {} }) as Row[];
+      const created = await db(env, token, "/rest/v1/assistant_conversations?select=id", "POST", { user_id: ownerId, title: message.slice(0, 80), context: {} }) as Row[];
       if (!Array.isArray(created) || typeof created[0]?.id !== "string") throw new Error("Could not create conversation.");
       conversationId = created[0].id;
     }
 
-    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { conversation_id: conversationId, role: "user", content: message, metadata: {} });
+    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "user", content: message, metadata: {} });
     const [history, memory] = await Promise.all([
       db(env, token, `/rest/v1/assistant_messages?select=role,content&conversation_id=eq.${encodeURIComponent(conversationId!)}&order=created_at.desc&limit=24`),
       db(env, token, "/rest/v1/memory_items?select=category,content&is_active=eq.true&order=updated_at.desc&limit=30")
@@ -89,7 +96,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     const choiceMessage = choices?.[0]?.message as Row | undefined;
     const answer = typeof choiceMessage?.content === "string" ? choiceMessage.content.trim() : "";
     if (!answer) return response({ error: { code: "EMPTY_AI_RESPONSE", message: "The AI provider returned an empty response." } }, 502);
-    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { conversation_id: conversationId, role: "assistant", content: answer, metadata: { model: env.AI_MODEL } });
+    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "assistant", content: answer, metadata: { model: env.AI_MODEL } });
     return response({ data: { conversation_id: conversationId, message: answer, model: env.AI_MODEL } });
   } catch {
     return response({ error: { code: "ASSISTANT_RUNTIME_ERROR", message: "GiGo could not complete this request. Your saved workspace data remains protected; please try again." } }, 502);
