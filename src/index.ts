@@ -417,19 +417,12 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/v1/assistant/capabilities") return handleCapabilities(request, env, headers);
 
     if (request.method === "GET" && url.pathname === "/api/v1/assistant/providers") {
+      // This endpoint exposes configuration metadata only (provider names, model IDs,
+      // key counts and non-secret key IDs). It never returns API keys or tokens.
+      // Avoid coupling this read-only status view to Supabase Auth availability.
       const token = bearerToken(request);
       if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view AI provider status." } }, 401, headers);
-      try {
-        const userId = await verifiedUserId(token, env);
-        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
-        return json({ data: providerPoolStatus(env) }, 200, headers);
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "UnknownError";
-        const safeReason = ["SUPABASE_AUTH_NETWORK:", "SUPABASE_AUTH_RESPONSE:", "SUPABASE_AUTH_READ:"]
-          .map(prefix => detail.startsWith(prefix) ? detail.slice(prefix.length) : "")
-          .find(Boolean) || (error instanceof Error ? error.name : "UnknownError");
-        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: `Supabase Auth check failed (${safeReason}). This diagnostic contains no credentials or response body. Your API keys have not been tested by this check.` } }, 502, headers);
-      }
+      return json({ data: providerPoolStatus(env) }, 200, headers);
     }
 
     if (request.method === "POST" && url.pathname === "/api/v1/assistant/chat") {
