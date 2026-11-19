@@ -265,7 +265,13 @@ async function verifiedUserId(token: string, env: Env): Promise<string | null> {
     throw new Error(`SUPABASE_AUTH_NETWORK:${reason}`);
   }
   if (!response.ok) return null;
-  const raw = await response.text();
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch (error) {
+    const reason = error instanceof Error ? error.name : "UnknownError";
+    throw new Error(`SUPABASE_AUTH_READ:${reason}`);
+  }
   let user: JsonRecord;
   try {
     user = JSON.parse(raw) as JsonRecord;
@@ -416,11 +422,9 @@ export default {
         return json({ data: providerPoolStatus(env) }, 200, headers);
       } catch (error) {
         const detail = error instanceof Error ? error.message : "UnknownError";
-        const safeReason = detail.startsWith("SUPABASE_AUTH_NETWORK:")
-          ? detail.slice("SUPABASE_AUTH_NETWORK:".length)
-          : detail.startsWith("SUPABASE_AUTH_RESPONSE:")
-            ? detail.slice("SUPABASE_AUTH_RESPONSE:".length)
-            : "UnexpectedAuthResponse";
+        const safeReason = ["SUPABASE_AUTH_NETWORK:", "SUPABASE_AUTH_RESPONSE:", "SUPABASE_AUTH_READ:"]
+          .map(prefix => detail.startsWith(prefix) ? detail.slice(prefix.length) : "")
+          .find(Boolean) || (error instanceof Error ? error.name : "UnknownError");
         return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: `Supabase Auth check failed (${safeReason}). This diagnostic contains no credentials or response body. Your API keys have not been tested by this check.` } }, 502, headers);
       }
     }
