@@ -422,7 +422,13 @@ export default {
       // Avoid coupling this read-only status view to Supabase Auth availability.
       const token = bearerToken(request);
       if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view AI provider status." } }, 401, headers);
-      return json({ data: providerPoolStatus(env) }, 200, headers);
+      try {
+        return json({ data: providerPoolStatus(env) }, 200, headers);
+      } catch (error) {
+        // Provider pool errors are configuration diagnostics only; never return secret values.
+        const message = error instanceof Error ? error.message : "Unknown provider configuration error.";
+        return json({ error: { code: "PROVIDER_CONFIGURATION_INVALID", message } }, 500, headers);
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/api/v1/assistant/chat") {
