@@ -270,7 +270,10 @@ async function verifiedUserId(token: string, env: Env): Promise<string | null> {
     raw = await response.text();
   } catch (error) {
     const reason = error instanceof Error ? error.name : "UnknownError";
-    throw new Error(`SUPABASE_AUTH_READ:${reason}`);
+    const message = error instanceof Error ? error.message : "";
+    // Include only a short, sanitised runtime error hint; never include response data or credentials.
+    const hint = message.replace(/https?:\/\/\S+/gi, "[url]").replace(/[A-Za-z0-9_-]{24,}/g, "[redacted]").slice(0, 100);
+    throw new Error(`SUPABASE_AUTH_READ:${reason};hint=${hint || "no-message"}`);
   }
   let user: JsonRecord;
   try {
