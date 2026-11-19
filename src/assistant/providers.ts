@@ -15,7 +15,24 @@ function pool(env: ProviderEnv): PoolEntry[] {
   let configured: unknown[] = [];
   if (env.AI_PROVIDER_POOL) {
     let parsed: unknown;
-    try { parsed = JSON.parse(env.AI_PROVIDER_POOL); } catch { throw new Error("AI provider pool configuration is invalid JSON."); }
+    try {
+      // Accept a UTF-8 BOM and accidental surrounding whitespace, but require plain JSON
+      // (not Markdown fences, comments, or JavaScript object syntax).
+      const source = env.AI_PROVIDER_POOL.replace(/^\\uFEFF/, "").trim();
+      parsed = JSON.parse(source);
+    } catch (error) {
+      const source = env.AI_PROVIDER_POOL.replace(/^\\uFEFF/, "").trim();
+      const detail = error instanceof Error ? error.message : "";
+      const match = detail.match(/position (\\d+)/i);
+      if (match) {
+        const position = Math.min(Number(match[1]), source.length);
+        const before = source.slice(0, position);
+        const line = before.split("\\n").length;
+        const column = position - before.lastIndexOf("\\n");
+        throw new Error(`AI_PROVIDER_POOL is not valid JSON (line ${line}, column ${column}). Check for a missing comma, extra comma, unescaped quote, or Markdown code fence. Do not share the secret value.`);
+      }
+      throw new Error("AI_PROVIDER_POOL is not valid JSON. Paste only the raw JSON array, beginning with [ and ending with ], without Markdown fences.");
+    }
     if (!Array.isArray(parsed)) throw new Error("AI provider pool must be a JSON array.");
     configured = parsed;
   }
