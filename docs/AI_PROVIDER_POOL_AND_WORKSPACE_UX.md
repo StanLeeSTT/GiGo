@@ -1,6 +1,6 @@
 # GiGo AI Provider Pool and Workspace Interface
 
-**Status:** Foundation implementation committed; live providers and voice quality not yet verified.
+**Status:** Foundation implementation committed; provider credentials have not yet been added to the Worker, and live providers/voice quality are not yet verified.
 
 ## Multi-provider, multi-key configuration
 
@@ -51,6 +51,42 @@ The Worker reads the secret `AI_PROVIDER_POOL` as a JSON array. Each entry repre
 - Legacy `AI_API_BASE_URL`, `AI_API_KEY`, `AI_MODEL` configuration remains supported as a temporary single-provider fallback.
 
 The router assumes an OpenAI-compatible chat-completions endpoint and function-calling support. Not every model/provider supports tool calls equally. Confirm each model's API compatibility and free pricing before adding it. Never rely on a model name alone to establish that a request is free.
+
+### Current provider plan (credentials not yet configured)
+
+Qwen/Alibaba Cloud Model Studio has been removed from GiGo's plan because its account activation requires a payment card the owner cannot provide. Its replacement provider set is:
+- Google Gemini (3 keys obtained)
+- Groq (3 keys obtained)
+- OpenRouter (3 keys obtained)
+- Zhipu GLM (3 keys obtained)
+- Cloudflare Workers AI (credential/account setup created; not yet added to the Worker pool)
+- NVIDIA NIM (Nemotron 3 Ultra API key obtained; not yet added to the Worker pool)
+
+**Important:** None of these API credentials has yet been added to the Cloudflare Worker. The list above records credentials obtained or provider setup completed, not active integrations.
+
+NVIDIA Nemotron 3 Ultra entry reference (placeholder values only; never commit real credentials):
+```json
+{
+  "provider": "nvidia-nim",
+  "keyId": "nvidia-nemotron-ultra-main",
+  "baseUrl": "https://integrate.api.nvidia.com/v1",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "apiKey": "REPLACE_WITH_SECRET_IN_CLOUDFLARE",
+  "freeOnly": true,
+  "enabled": true,
+  "priority": 20
+}
+```
+NVIDIA currently describes this hosted model endpoint as a free prototype endpoint. This is not a promise of unlimited or production-grade free capacity. Confirm account limits and terms before use. Do not duplicate the same NVIDIA key to simulate additional quota.
+
+Cloudflare Workers AI Qwen replacement reference:
+- Provider: `cloudflare-workers-ai`
+- Model: `@cf/zai-org/glm-4.7-flash`
+- Base URL: `https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1`
+- Use a Cloudflare API token as the Bearer credential.
+- Keep the Worker on its Free plan; do not enable paid billing without explicit approval.
+
+See `docs/FREE_AI_PROVIDER_MODEL_PLAN.md` for the full provider/model matrix, free-tier cautions and validation checklist.
 
 ## Workspace interface
 
