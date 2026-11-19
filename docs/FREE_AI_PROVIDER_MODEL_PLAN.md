@@ -65,3 +65,53 @@ Do not enable a model for assistant tool execution until those tests pass. A mod
 ## Current implementation boundary
 
 The provider pool in `src/assistant/providers.ts` already accepts multiple providers, models and keys. The next implementation task is to configure one credential per provider and run the tests above. The router currently uses the OpenAI-compatible chat-completions shape; provider-specific differences (including native Gemini API semantics) must be tested before production use. This document does not claim that credentials have been configured or live model calls have succeeded.
+
+
+## Qwen replacement: Cloudflare Workers AI (recommended)
+
+Because Alibaba Model Studio is asking for a payment card, do not spend more time trying to force Qwen activation. Use **Cloudflare Workers AI** as an additional provider instead. GiGo already runs on Cloudflare, and Workers AI offers a documented Free Workers allocation of **10,000 Neurons per day**. On the Workers Free plan, exceeding that daily allocation causes requests to fail until reset; it does not automatically become paid usage. Do not upgrade the Worker to a paid plan for this project without the owner's explicit approval.
+
+Recommended model:
+- Model: `@cf/zai-org/glm-4.7-flash`
+- Purpose: reasoning, coding, multilingual responses and assistant tool calls.
+- Official model page identifies function calling support and 131,072-token context.
+- Cloudflare lists this model among those still available on the Workers Free plan (unlike some larger GLM/DeepSeek models).
+
+OpenAI-compatible endpoint:
+- Base URL: `https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1`
+- GiGo appends `/chat/completions` automatically.
+- Authentication: Cloudflare API token with the minimum required Workers AI permissions.
+- Model ID: `@cf/zai-org/glm-4.7-flash`
+
+The free allocation is shared across Workers AI usage, resets daily at 00:00 UTC, and is not 10,000 neurons per model. Some other models (including GLM-5.2 and newer DeepSeek V4 variants) require a paid Workers plan or prepaid AI Gateway credits. Do not select them for this zero-budget configuration.
+
+Cloudflare official references:
+- Free allocation and billing: https://developers.cloudflare.com/workers-ai/platform/pricing/
+- Model free-plan availability: https://developers.cloudflare.com/changelog/post/2026-07-28-models-require-workers-paid/
+- GLM-4.7-Flash model capabilities: https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/
+- OpenAI-compatible endpoint: https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
+
+## DeepSeek assessment
+
+DeepSeek is an excellent model family, but the **direct DeepSeek API is not a zero-cost solution**. Its official API pricing is token-based and requests are deducted from topped-up or granted balance. The current API models are `deepseek-flash` and `deepseek-v4-pro`; do not rely on older `deepseek-chat` or `deepseek-reasoner` aliases. We can use a DeepSeek-branded model only when a third-party provider (for example, an eligible OpenRouter free route) explicitly lists a free variant and its limits are acceptable. Do not create a direct DeepSeek API key expecting free ongoing API calls.
+
+Official pricing: https://api-docs.deepseek.com/quick_start/pricing/
+
+## Other candidates
+
+- **NVIDIA NIM API Catalog:** NVIDIA documents free developer-program access to NIM API endpoints for prototyping. This is a useful optional test provider, but free access is rate-limited and intended for prototyping, not a dependable production quota. Check the model's current access conditions before wiring it into GiGo: https://build.nvidia.com/explore/discover and https://docs.api.nvidia.com/nim/docs/product
+- **Hugging Face Inference Providers:** free accounts receive only $0.10 monthly credits, and requests can become pay-as-you-go after credits are exhausted. This is useful for small experiments, not a meaningful free production provider: https://huggingface.co/docs/inference-providers/pricing
+- **SambaNova Cloud:** its published Free plan requires adding a payment method and purchasing credits before first requests; not suitable for this no-card requirement: https://cloud.sambanova.ai/plans
+- **Direct DeepSeek API:** paid per-token, not a permanent free API tier: https://api-docs.deepseek.com/quick_start/pricing/
+
+## Revised zero-budget provider pool
+
+Keep the user's existing credentials:
+- Google Gemini: 3 keys
+- Groq: 3 keys
+- OpenRouter: 3 keys
+- Zhipu BigModel GLM: 3 keys
+
+Add one **Cloudflare Workers AI** credential (Cloudflare account API token + account ID) and start with `@cf/zai-org/glm-4.7-flash`. This replaces Alibaba Qwen for the moment. The same underlying GLM model family through Cloudflare is a separate inference route with a separate Cloudflare quota; it does not create more quota for the user's existing Zhipu GLM keys.
+
+Do not add more providers just to increase the key count. First test one model from each existing provider and the Cloudflare Workers AI route for plain chat, function calling, usage reporting, 429 behaviour and no-paid-fallback enforcement. Multiple keys under one provider generally share provider/account quota and must not be rotated to evade limits.
