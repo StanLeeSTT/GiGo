@@ -54,7 +54,7 @@ The router assumes an OpenAI-compatible chat-completions endpoint and function-c
 
 ### Current provider plan (credentials not yet configured)
 
-Qwen/Alibaba Cloud Model Studio has been removed from GiGo's plan because its account activation requires a payment card the owner cannot provide. Its replacement provider set is:
+The current provider set for GiGo is:
 - Google Gemini (3 keys obtained)
 - Groq (3 keys obtained)
 - OpenRouter (3 keys obtained)
