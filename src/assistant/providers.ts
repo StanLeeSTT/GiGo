@@ -58,7 +58,7 @@ function pool(env: ProviderEnv): PoolEntry[] {
 }
 const providerCooldown = new Map<string, number>();
 function endpoint(base: string): string {
-  const clean = base.replace(/\\/+$/, "");
+  const clean = base.replace(/\/+$/, "");
   return clean.endsWith("/chat/completions") ? clean : clean + "/chat/completions";
 }
 export async function callAIModel(env: ProviderEnv, messages: Record<string, unknown>[], tools: unknown[], withTools: boolean): Promise<ProviderResult> {
