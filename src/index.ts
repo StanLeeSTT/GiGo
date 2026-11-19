@@ -265,7 +265,13 @@ async function verifiedUserId(token: string, env: Env): Promise<string | null> {
     throw new Error(`SUPABASE_AUTH_NETWORK:${reason}`);
   }
   if (!response.ok) return null;
-  const user = await response.json() as JsonRecord;
+  const raw = await response.text();
+  let user: JsonRecord;
+  try {
+    user = JSON.parse(raw) as JsonRecord;
+  } catch {
+    throw new Error(`SUPABASE_AUTH_RESPONSE:status=${response.status};content_type=${response.headers.get("content-type") ?? "unknown"};body_length=${raw.length}`);
+  }
   return typeof user.id === "string" ? user.id : null;
 }
 async function handleAssistantResource(request: Request, env: Env, headers: Headers, resource: AssistantResource): Promise<Response> {
@@ -409,10 +415,13 @@ export default {
         if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
         return json({ data: providerPoolStatus(env) }, 200, headers);
       } catch (error) {
-        const reason = error instanceof Error && error.message.startsWith("SUPABASE_AUTH_NETWORK:")
-          ? error.message.slice("SUPABASE_AUTH_NETWORK:".length)
-          : "UnknownError";
-        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: `GiGo could not reach Supabase Auth from the Worker (${reason}). Your API keys have not been tested by this check.` } }, 502, headers);
+        const detail = error instanceof Error ? error.message : "UnknownError";
+        const safeReason = detail.startsWith("SUPABASE_AUTH_NETWORK:")
+          ? detail.slice("SUPABASE_AUTH_NETWORK:".length)
+          : detail.startsWith("SUPABASE_AUTH_RESPONSE:")
+            ? detail.slice("SUPABASE_AUTH_RESPONSE:".length)
+            : "UnexpectedAuthResponse";
+        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: `Supabase Auth check failed (${safeReason}). This diagnostic contains no credentials or response body. Your API keys have not been tested by this check.` } }, 502, headers);
       }
     }
 
