@@ -45,7 +45,14 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "projects_create", description: "Create a project in the owner's GiGo workspace.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 160 }, description: { type: ["string", "null"], maxLength: 5000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "tasks_list", description: "List the owner's tasks. Optionally filter by project_id or status.", parameters: { type: "object", properties: { project_id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, additionalProperties: false } } },
   { type: "function", function: { name: "tasks_create", description: "Create a task in the owner's GiGo workspace.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 240 }, description: { type: ["string", "null"], maxLength: 5000 }, project_id: { type: ["string", "null"] }, priority: { type: "string", enum: ["low", "normal", "high", "urgent"] }, due_at: { type: ["string", "null"] } }, required: ["title"], additionalProperties: false } } },
-  { type: "function", function: { name: "tasks_update_status", description: "Update the status of one existing task owned by the user.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, required: ["id", "status"], additionalProperties: false } } }
+  { type: "function", function: { name: "tasks_update_status", description: "Update the status of one existing task owned by the user.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, required: ["id", "status"], additionalProperties: false } } },
+  { type: "function", function: { name: "conversations_list", description: "List the owner's saved GiGo conversations.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "conversations_create", description: "Create a saved GiGo conversation.", parameters: { type: "object", properties: { title: { type: ["string", "null"], maxLength: 160 } }, additionalProperties: false } } },
+  { type: "function", function: { name: "messages_list", description: "Read messages from one conversation owned by the user.", parameters: { type: "object", properties: { conversation_id: { type: "string" } }, required: ["conversation_id"], additionalProperties: false } } },
+  { type: "function", function: { name: "messages_add", description: "Save a user or assistant message in an owned conversation.", parameters: { type: "object", properties: { conversation_id: { type: "string" }, role: { type: "string", enum: ["user", "assistant"] }, content: { type: "string", minLength: 1, maxLength: 20000 } }, required: ["conversation_id", "role", "content"], additionalProperties: false } } },
+  { type: "function", function: { name: "memory_list", description: "List the owner's active saved memory items.", parameters: { type: "object", properties: { include_archived: { type: "boolean" } }, additionalProperties: false } } },
+  { type: "function", function: { name: "memory_create", description: "Save a useful fact or preference to the owner's GiGo memory.", parameters: { type: "object", properties: { category: { type: "string", maxLength: 80 }, content: { type: "string", minLength: 1, maxLength: 5000 }, source: { type: "string", maxLength: 80 } }, required: ["content"], additionalProperties: false } } },
+  { type: "function", function: { name: "memory_archive", description: "Archive one of the owner's saved memory items without deleting it.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } }
 ];
 
 function isObject(value: unknown): value is Row {
@@ -101,6 +108,45 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       status: args.status, completed_at: args.status === "done" ? new Date().toISOString() : null
     }) as Row[];
     return rows?.length ? { updated: rows[0] } : { error: "Task not found in this workspace." };
+  }
+  if (name === "conversations_list") {
+    return { conversations: await db(env, token, "/rest/v1/assistant_conversations?select=id,title,created_at,updated_at&order=updated_at.desc&limit=50") as Row[] };
+  }
+  if (name === "conversations_create") {
+    const title = args.title ?? null;
+    if (title !== null && (typeof title !== "string" || title.length > 160)) return { error: "Conversation title must be text up to 160 characters or null." };
+    const rows = await db(env, token, "/rest/v1/assistant_conversations?select=id,title,context,created_at", "POST", { user_id: ownerId, title, context: {} }) as Row[];
+    return { created: rows?.[0] ?? null };
+  }
+  if (name === "messages_list") {
+    if (!validUuid(args.conversation_id)) return { error: "A valid conversation_id is required." };
+    const params = new URLSearchParams({ select: "id,conversation_id,role,content,metadata,created_at", conversation_id: `eq.${args.conversation_id}`, order: "created_at.asc", limit: "200" });
+    return { messages: await db(env, token, `/rest/v1/assistant_messages?${params.toString()}`) as Row[] };
+  }
+  if (name === "messages_add") {
+    if (!validUuid(args.conversation_id)) return { error: "A valid conversation_id is required." };
+    if (!["user", "assistant"].includes(String(args.role))) return { error: "Message role must be user or assistant." };
+    if (typeof args.content !== "string" || !args.content.trim() || args.content.length > 20000) return { error: "Message content must be 1–20,000 characters." };
+    const rows = await db(env, token, "/rest/v1/assistant_messages?select=id,conversation_id,role,content,created_at", "POST", { user_id: ownerId, conversation_id: args.conversation_id, role: args.role, content: args.content, metadata: {} }) as Row[];
+    return { created: rows?.[0] ?? null };
+  }
+  if (name === "memory_list") {
+    const params = new URLSearchParams({ select: "id,category,content,source,confidence,is_active,created_at,updated_at", order: "updated_at.desc", limit: "100" });
+    if (args.include_archived !== true) params.set("is_active", "eq.true");
+    return { memory: await db(env, token, `/rest/v1/memory_items?${params.toString()}`) as Row[] };
+  }
+  if (name === "memory_create") {
+    if (typeof args.content !== "string" || !args.content.trim() || args.content.length > 5000) return { error: "Memory content must be 1–5,000 characters." };
+    const category = args.category ?? "general";
+    const source = args.source ?? "assistant";
+    if (typeof category !== "string" || category.length > 80 || typeof source !== "string" || source.length > 80) return { error: "Category and source must be text up to 80 characters." };
+    const rows = await db(env, token, "/rest/v1/memory_items?select=id,category,content,source,confidence,is_active,created_at", "POST", { user_id: ownerId, category, content: args.content.trim(), source, confidence: 1, is_active: true }) as Row[];
+    return { created: rows?.[0] ?? null };
+  }
+  if (name === "memory_archive") {
+    if (!validUuid(args.id)) return { error: "A valid memory item id is required." };
+    const rows = await db(env, token, `/rest/v1/memory_items?id=eq.${encodeURIComponent(args.id)}&select=id,category,content,is_active,updated_at`, "PATCH", { is_active: false }) as Row[];
+    return rows?.length ? { archived: rows[0] } : { error: "Memory item not found in this workspace." };
   }
   return { error: "This tool is not on GiGo's executable allowlist." };
 }
@@ -167,9 +213,9 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     const system = [
       "You are GiGo, the user's private personal AI assistant and business operating system.",
       "Be practical, honest and clear. Never claim an action was completed unless an executable tool returned confirmation.",
-      "You may use the tools provided to read or change the user's own projects and tasks. Use them when the user asks you to inspect, create or update those records.",
+      "You may use the tools provided to read or change the user's own projects, tasks, saved conversations, messages and memory. Use them when the user asks you to inspect, create or update those records.",
       "Never invent tool results. Ask a concise clarifying question when required arguments are missing. Never attempt external actions such as sending email, publishing, spending money or signing agreements; those capabilities are not executable.",
-      "GiGo is intended to support research, digital product creation, creator partnerships, lead management, offers, marketing, outreach, launches, commerce, creative work, customer support, analytics and learning. These wider modules are not yet executable.",
+      "GiGo's research, product, creator partnership, lead, offer, marketing, outreach, launch, commerce, creative, customer support, analytics and learning modules are not yet executable.",
       "Currently executable capability registry: " + JSON.stringify(available),
       "Relevant saved user memory: " + JSON.stringify(memory || []),
       "When a request needs a capability that is not available, explain the limitation and help prepare the work instead."
@@ -214,10 +260,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
         catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
         const toolContent = JSON.stringify(result);
         messages.push({ role: "tool", tool_call_id: callId, content: toolContent });
-        await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", {
-          user_id: ownerId, conversation_id: conversationId, role: "assistant", content: `[Tool result: ${name}] ${toolContent}`,
-          metadata: { kind: "tool_result", tool_name: name, tool_call_id: callId }
-        });
+        // Tool results stay in the model's transient tool-call history; they are not chat messages.
       }
     }
     if (!finalAnswer) {
