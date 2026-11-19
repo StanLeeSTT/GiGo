@@ -3,7 +3,7 @@
 **Prepared:** 2026-11-19  
 **Policy:** zero-budget first; no provider may incur paid usage without explicit owner approval.
 
-This is the current provider plan for GiGo. Alibaba Cloud Qwen has been removed because account activation requires a payment card the owner cannot provide. The replacement provider set is Google Gemini, Groq, Zhipu AI GLM, OpenRouter, Cloudflare Workers AI, and NVIDIA NIM. This is a configuration plan only: **no provider API key has yet been added to the Cloudflare Worker or verified by GiGo**.
+This is the current provider plan for GiGo: Google Gemini, Groq, Zhipu AI GLM, OpenRouter, Cloudflare Workers AI, and NVIDIA NIM. This is a configuration plan only: **no provider API key has yet been added to the Cloudflare Worker or verified by GiGo**.
 
 ## Recommended provider/model choices
 
