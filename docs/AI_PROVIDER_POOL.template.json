@@ -1,0 +1,122 @@
+[
+  {
+    "provider": "gemini",
+    "keyId": "gemini-1",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "model": "gemini-2.5-flash",
+    "apiKey": "REPLACE_WITH_GEMINI_KEY_1",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 1
+  },
+  {
+    "provider": "gemini",
+    "keyId": "gemini-2",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "model": "gemini-2.5-flash",
+    "apiKey": "REPLACE_WITH_GEMINI_KEY_2",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 2
+  },
+  {
+    "provider": "gemini",
+    "keyId": "gemini-3",
+    "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "model": "gemini-2.5-flash",
+    "apiKey": "REPLACE_WITH_GEMINI_KEY_3",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 3
+  },
+  {
+    "provider": "groq",
+    "keyId": "groq-1",
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "model": "openai/gpt-oss-120b",
+    "apiKey": "REPLACE_WITH_GROQ_KEY_1",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 4
+  },
+  {
+    "provider": "groq",
+    "keyId": "groq-2",
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "model": "openai/gpt-oss-120b",
+    "apiKey": "REPLACE_WITH_GROQ_KEY_2",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 5
+  },
+  {
+    "provider": "groq",
+    "keyId": "groq-3",
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "model": "openai/gpt-oss-120b",
+    "apiKey": "REPLACE_WITH_GROQ_KEY_3",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 6
+  },
+  {
+    "provider": "openrouter",
+    "keyId": "openrouter-1",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "openrouter/free",
+    "apiKey": "REPLACE_WITH_OPENROUTER_KEY_1",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 7
+  },
+  {
+    "provider": "openrouter",
+    "keyId": "openrouter-2",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "openrouter/free",
+    "apiKey": "REPLACE_WITH_OPENROUTER_KEY_2",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 8
+  },
+  {
+    "provider": "openrouter",
+    "keyId": "openrouter-3",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "openrouter/free",
+    "apiKey": "REPLACE_WITH_OPENROUTER_KEY_3",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 9
+  },
+  {
+    "provider": "zhipu-glm",
+    "keyId": "glm-1",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-4.7-flash",
+    "apiKey": "REPLACE_WITH_GLM_KEY_1",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 10
+  },
+  {
+    "provider": "zhipu-glm",
+    "keyId": "glm-2",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-4.7-flash",
+    "apiKey": "REPLACE_WITH_GLM_KEY_2",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 11
+  },
+  {
+    "provider": "zhipu-glm",
+    "keyId": "glm-3",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "model": "glm-4.7-flash",
+    "apiKey": "REPLACE_WITH_GLM_KEY_3",
+    "freeOnly": true,
+    "enabled": true,
+    "priority": 12
+  }
+]
