@@ -11,6 +11,11 @@ export interface Env {
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_MODEL?: string;
+  NVIDIA_NIM_API_KEY?: string;
+  NVIDIA_NIM_MODEL?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_AI_TOKEN?: string;
+  CLOUDFLARE_AI_MODEL?: string;
   ASSETS?: Fetcher;
 }
 
