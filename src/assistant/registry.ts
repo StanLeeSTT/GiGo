@@ -14,13 +14,13 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   { id:"tasks.list", module:"Tasks", description:"List the owner's tasks.", state:"available", method:"GET", endpoint:"/api/v1/tasks", approval:"none" },
   { id:"tasks.create", module:"Tasks", description:"Create a task for the owner.", state:"available", method:"POST", endpoint:"/api/v1/tasks", approval:"none" },
   { id:"tasks.update_status", module:"Tasks", description:"Change the status of an existing task.", state:"available", method:"PATCH", endpoint:"/api/v1/tasks?id={id}", approval:"none" },
-  { id:"conversations.list", module:"Assistant Memory", description:"List saved assistant conversations.", state:"available", method:"GET", endpoint:"/api/v1/conversations", approval:"none" },
-  { id:"conversations.create", module:"Assistant Memory", description:"Create a saved assistant conversation.", state:"available", method:"POST", endpoint:"/api/v1/conversations", approval:"none" },
-  { id:"messages.list", module:"Assistant Memory", description:"Read messages in one owned conversation.", state:"available", method:"GET", endpoint:"/api/v1/messages?conversation_id={id}", approval:"none" },
-  { id:"messages.add", module:"Assistant Memory", description:"Save a user or assistant message in an owned conversation.", state:"available", method:"POST", endpoint:"/api/v1/messages?conversation_id={id}", approval:"none" },
-  { id:"memory.list", module:"Assistant Memory", description:"List saved memory items.", state:"available", method:"GET", endpoint:"/api/v1/memory", approval:"none" },
-  { id:"memory.create", module:"Assistant Memory", description:"Save a memory item.", state:"available", method:"POST", endpoint:"/api/v1/memory", approval:"none" },
-  { id:"memory.archive", module:"Assistant Memory", description:"Archive a memory item without permanently deleting it.", state:"available", method:"PATCH", endpoint:"/api/v1/memory?id={id}", approval:"none" },
+  { id:"conversations.list", module:"Assistant Memory", description:"List saved assistant conversations (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"GET", endpoint:"/api/v1/conversations", approval:"none" },
+  { id:"conversations.create", module:"Assistant Memory", description:"Create a saved assistant conversation (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"POST", endpoint:"/api/v1/conversations", approval:"none" },
+  { id:"messages.list", module:"Assistant Memory", description:"Read messages in one owned conversation (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"GET", endpoint:"/api/v1/messages?conversation_id={id}", approval:"none" },
+  { id:"messages.add", module:"Assistant Memory", description:"Save a message in a conversation (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"POST", endpoint:"/api/v1/messages?conversation_id={id}", approval:"none" },
+  { id:"memory.list", module:"Assistant Memory", description:"List saved memory items (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"GET", endpoint:"/api/v1/memory", approval:"none" },
+  { id:"memory.create", module:"Assistant Memory", description:"Save a memory item (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"POST", endpoint:"/api/v1/memory", approval:"none" },
+  { id:"memory.archive", module:"Assistant Memory", description:"Archive a memory item (API exists; not yet callable by the AI tool runtime).", state:"planned", method:"PATCH", endpoint:"/api/v1/memory?id={id}", approval:"none" },
   { id:"research.discover_opportunities", module:"Research & Opportunity Finder", description:"Find and assess evidence-backed business opportunities.", state:"planned", approval:"none" },
   { id:"products.design", module:"Product Studio", description:"Research demand and design a digital or service product.", state:"planned", approval:"none" },
   { id:"partners.find_and_score", module:"Partner Finder", description:"Discover and score potential creator partners using the documented due-diligence policy.", state:"planned", approval:"none" },
@@ -38,7 +38,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 ];
 export function getAssistantCapabilities() {
   return {
-    assistant: { name:"GiGo", architecture:"permissioned-tool-registry", ai_runtime:"not_connected" },
+    assistant: { name:"GiGo", architecture:"permissioned-tool-registry", ai_runtime:"connected" },
     summary: {
       total_tools: ASSISTANT_TOOLS.length,
       available_tools: ASSISTANT_TOOLS.filter(tool => tool.state === "available").length,
