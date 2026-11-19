@@ -253,9 +253,17 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 
 type AssistantResource = "assistant_conversations" | "assistant_messages" | "memory_items";
 async function verifiedUserId(token: string, env: Env): Promise<string | null> {
-  const response = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL!), {
-    headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}` },
-  });
+  let response: Response;
+  try {
+    response = await fetch(new URL("/auth/v1/user", env.SUPABASE_URL!), {
+      headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (error) {
+    // Keep credentials and upstream response bodies out of diagnostics.
+    const reason = error instanceof Error ? error.name : "UnknownError";
+    throw new Error(`SUPABASE_AUTH_NETWORK:${reason}`);
+  }
   if (!response.ok) return null;
   const user = await response.json() as JsonRecord;
   return typeof user.id === "string" ? user.id : null;
@@ -400,8 +408,11 @@ export default {
         const userId = await verifiedUserId(token, env);
         if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
         return json({ data: providerPoolStatus(env) }, 200, headers);
-      } catch {
-        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
+      } catch (error) {
+        const reason = error instanceof Error && error.message.startsWith("SUPABASE_AUTH_NETWORK:")
+          ? error.message.slice("SUPABASE_AUTH_NETWORK:".length)
+          : "UnknownError";
+        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: `GiGo could not reach Supabase Auth from the Worker (${reason}). Your API keys have not been tested by this check.` } }, 502, headers);
       }
     }
 
