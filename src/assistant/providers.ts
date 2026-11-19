@@ -93,7 +93,13 @@ export async function callAIModel(env: ProviderEnv, messages: Record<string, unk
       try {
         const body: Record<string, unknown> = {
           model: key.model,
-          messages,
+          messages: [
+            ...messages,
+            {
+              role: "system",
+              content: "Verified runtime identity for this response: provider=" + key.provider + "; model=" + key.model + "; key_id=" + (key.keyId ?? "default") + ". If asked which provider or model is serving this request, report these exact values. Never claim a different provider, model, or company. Do not describe this as OpenAI or GPT-4 unless those exact values are supplied here."
+            }
+          ],
           temperature: key.provider === "nvidia-nim" ? 1 : 0.3,
           stream: false,
           ...(key.provider === "nvidia-nim" ? { top_p: 0.95, max_tokens: 4096, chat_template_kwargs: { enable_thinking: true, force_nonempty_content: true } } : {}),
