@@ -3,29 +3,62 @@ export interface ProviderEnv {
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
   AI_MODEL?: string;
+  NVIDIA_NIM_API_KEY?: string;
+  NVIDIA_NIM_MODEL?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_AI_TOKEN?: string;
+  CLOUDFLARE_AI_MODEL?: string;
 }
 export interface ProviderResult { message: Record<string, unknown>; provider: string; model: string; keyId: string; usage?: unknown }
 type PoolEntry = { provider: string; keyId?: string; baseUrl: string; apiKey: string; model: string; enabled?: boolean; freeOnly?: boolean; priority?: number };
 function pool(env: ProviderEnv): PoolEntry[] {
+  let configured: unknown[] = [];
   if (env.AI_PROVIDER_POOL) {
     let parsed: unknown;
     try { parsed = JSON.parse(env.AI_PROVIDER_POOL); } catch { throw new Error("AI provider pool configuration is invalid JSON."); }
     if (!Array.isArray(parsed)) throw new Error("AI provider pool must be a JSON array.");
-    return parsed.filter((item): item is PoolEntry => Boolean(item) && typeof item === "object" &&
-      (item as PoolEntry).enabled !== false && (item as PoolEntry).freeOnly === true &&
-      typeof (item as PoolEntry).provider === "string" && typeof (item as PoolEntry).baseUrl === "string" &&
-      typeof (item as PoolEntry).apiKey === "string" && typeof (item as PoolEntry).model === "string" &&
-      (item as PoolEntry).apiKey.length > 10 && (item as PoolEntry).model.length > 0)
-      .sort((a,b)=>(a.priority ?? 100)-(b.priority ?? 100));
+    configured = parsed;
   }
-  if (env.AI_API_BASE_URL && env.AI_API_KEY && env.AI_MODEL) {
-    return [{ provider: "legacy", baseUrl: env.AI_API_BASE_URL, apiKey: env.AI_API_KEY, model: env.AI_MODEL, freeOnly: true }];
+  const entries = configured.filter((item): item is PoolEntry => Boolean(item) && typeof item === "object" &&
+    (item as PoolEntry).enabled !== false && (item as PoolEntry).freeOnly === true &&
+    typeof (item as PoolEntry).provider === "string" && typeof (item as PoolEntry).baseUrl === "string" &&
+    typeof (item as PoolEntry).apiKey === "string" && (item as PoolEntry).apiKey.length > 10 &&
+    typeof (item as PoolEntry).model === "string" && (item as PoolEntry).model.length > 0);
+
+  // Dedicated bindings let the owner add these two providers without editing or replacing
+  // the existing AI_PROVIDER_POOL JSON secret. Credentials remain server-side.
+  if (env.NVIDIA_NIM_API_KEY && env.NVIDIA_NIM_API_KEY.length > 10) {
+    entries.push({
+      provider: "nvidia-nim",
+      keyId: "nvidia-nemotron-ultra-main",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: env.NVIDIA_NIM_API_KEY,
+      model: env.NVIDIA_NIM_MODEL || "nvidia/nemotron-3-ultra-550b-a55b",
+      freeOnly: true,
+      enabled: true,
+      priority: 20
+    });
   }
-  return [];
+  if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN && env.CLOUDFLARE_AI_TOKEN.length > 10) {
+    entries.push({
+      provider: "cloudflare-workers-ai",
+      keyId: "cloudflare-workers-ai-main",
+      baseUrl: `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID)}/ai/v1`,
+      apiKey: env.CLOUDFLARE_AI_TOKEN,
+      model: env.CLOUDFLARE_AI_MODEL || "@cf/zai-org/glm-4.7-flash",
+      freeOnly: true,
+      enabled: true,
+      priority: 15
+    });
+  }
+  if (!env.AI_PROVIDER_POOL && !entries.length && env.AI_API_BASE_URL && env.AI_API_KEY && env.AI_MODEL) {
+    entries.push({ provider: "legacy", baseUrl: env.AI_API_BASE_URL, apiKey: env.AI_API_KEY, model: env.AI_MODEL, freeOnly: true });
+  }
+  return entries.sort((a,b)=>(a.priority ?? 100)-(b.priority ?? 100));
 }
 const providerCooldown = new Map<string, number>();
 function endpoint(base: string): string {
-  const clean = base.replace(/\/+$/, "");
+  const clean = base.replace(/\\/+$/, "");
   return clean.endsWith("/chat/completions") ? clean : clean + "/chat/completions";
 }
 export async function callAIModel(env: ProviderEnv, messages: Record<string, unknown>[], tools: unknown[], withTools: boolean): Promise<ProviderResult> {
@@ -41,10 +74,18 @@ export async function callAIModel(env: ProviderEnv, messages: Record<string, unk
     const sameProvider = eligible.filter(candidate => candidate.provider === entry.provider);
     for (const key of sameProvider) {
       try {
+        const body: Record<string, unknown> = {
+          model: key.model,
+          messages,
+          temperature: key.provider === "nvidia-nim" ? 1 : 0.3,
+          stream: false,
+          ...(key.provider === "nvidia-nim" ? { top_p: 0.95, max_tokens: 4096, chat_template_kwargs: { enable_thinking: true, force_nonempty_content: true } } : {}),
+          ...(withTools ? { tools, tool_choice: "auto" } : {})
+        };
         const result = await fetch(endpoint(key.baseUrl), {
           method: "POST",
-          headers: { authorization: `Bearer ${key.apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: key.model, messages, temperature: 0.3, ...(withTools ? { tools, tool_choice: "auto" } : {}) })
+          headers: { authorization: `Bearer ${key.apiKey}`, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify(body)
         });
         const payload = await result.json().catch(() => ({})) as Record<string, unknown>;
         if (result.status === 429) {
