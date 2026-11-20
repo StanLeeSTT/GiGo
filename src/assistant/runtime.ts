@@ -350,6 +350,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     let selectedProvider = "";
     let selectedModel = "";
     let selectedKeyId = "";
+    const toolActivity: Array<{ name: string; status: "completed" | "failed" }> = [];
     for (let round = 0; round < 4; round++) {
       const modelResult = await callAIModel(env, messages, TOOL_DEFINITIONS, true);
       const modelMessage = modelResult.message;
@@ -374,11 +375,13 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
         } catch {
           const invalid = { error: "Tool arguments were not valid JSON." };
           messages.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(invalid) });
+          toolActivity.push({ name: call.function?.name || "unknown_tool", status: "failed" });
           continue;
         }
         let result: Row;
         try { result = await executeTool(name, args, env, token, ownerId, currentMessageId); }
         catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
+        toolActivity.push({ name: name || "unknown_tool", status: result.error ? "failed" : "completed" });
         const toolContent = JSON.stringify(result);
         messages.push({ role: "tool", tool_call_id: callId, content: toolContent });
         // Tool results stay in the model's transient tool-call history; they are not chat messages.
@@ -394,7 +397,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     }
     if (!finalAnswer) return response({ error: { code: "EMPTY_AI_RESPONSE", message: "The AI provider returned an empty response." } }, 502);
     await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "assistant", content: finalAnswer, metadata: { provider: selectedProvider, model: selectedModel, key_id: selectedKeyId } });
-    return response({ data: { conversation_id: conversationId, message: finalAnswer, provider: selectedProvider, model: selectedModel, key_id: selectedKeyId } });
+    return response({ data: { conversation_id: conversationId, message: finalAnswer, provider: selectedProvider, model: selectedModel, key_id: selectedKeyId, tool_activity: toolActivity } });
   } catch {
     return response({ error: { code: "ASSISTANT_RUNTIME_ERROR", message: "GiGo could not complete this request. Your saved workspace data remains protected; please try again." } }, 502);
   }
