@@ -123,7 +123,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
   }
   if (name === "messages_list") {
     if (!validUuid(args.conversation_id)) return { error: "A valid conversation_id is required." };
-    const params = new URLSearchParams({ select: "id,conversation_id,role,content,metadata,created_at", conversation_id: `eq.${args.conversation_id}`, order: "created_at.asc", limit: "200" });
+    const params = new URLSearchParams({ select: "id,conversation_id,role,content,metadata,created_at", conversation_id: `eq.${args.conversation_id}`, order: "created_at.asc", limit: "1000" });
     return { messages: await db(env, token, `/rest/v1/assistant_messages?${params.toString()}`) as Row[] };
   }
   if (name === "messages_add") {
