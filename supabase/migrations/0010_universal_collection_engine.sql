@@ -224,14 +224,16 @@ begin
 
   -- Recheck run state after obtaining the job lock. A worker may have
   -- advanced the run while this request was waiting.
-  select r.status
-    into target_run_status
+  select r.status, r.job_id
+    into target_run_status, locked_run_job_id
     from public.collection_runs r
     where r.id = p_run_id
       and r.user_id = auth.uid()
     for update;
 
-  if not found or target_run_status not in ('queued','waiting_for_quota') then
+  if not found
+     or locked_run_job_id is distinct from target_job_id
+     or target_run_status not in ('queued','waiting_for_quota') then
     return false;
   end if;
 
