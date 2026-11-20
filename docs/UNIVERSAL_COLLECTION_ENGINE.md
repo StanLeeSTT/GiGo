@@ -202,3 +202,14 @@ Automated tests cover accepted/rejected public URL inputs, fail-closed provider 
 The bounded runner now persists a final counter/checkpoint snapshot through its injected progress hook after an adapter returns. Final page/request counters must not move backwards from previously persisted progress, and the final item count must exactly match successful item emissions. Item slots are reserved before awaiting persistence so concurrent adapter emissions cannot exceed the actor limit. Parent cancellation rejects the runner promptly while also propagating the abort signal to the adapter.
 
 These hooks are deliberately storage-agnostic. They are not yet wired to Supabase, and the scheduler does not accept a `collection_run` job type. Do not enqueue collection jobs or apply migration 0010 until the durable worker handler, transactional run/job creation, persistence adapters, recovery semantics and integration tests are complete. The existing scheduler claims supported durable jobs generically, so enabling a new job type prematurely could route it through the wrong handler.
+
+
+## Generic scheduler isolation guard (migration 0011)
+
+The existing generic job claimant previously considered every queued job type. That is unsafe while new worker categories are being developed: a future `collection_run` job could be claimed and passed to the generic AI operations handler.
+
+Migration `0011_scheduler_job_type_allowlist.sql` replaces the claim function with a fail-closed allowlist containing only the five job types currently handled by `executeDurableJob`: `research_scan`, `business_review`, `daily_briefing`, `lead_review` and `custom`. Unsupported categories remain queued and are not claimed. The allowlist must be expanded only in the same reviewed change that adds a dedicated handler and integration coverage.
+
+The runner test suite now also checks that adapter exceptions, item persistence failures and final checkpoint persistence failures propagate rather than being reported as successful runs.
+
+**Deployment boundary:** migration 0011 is committed but has not been applied to Supabase. Migration 0010 also remains unapplied. Collection execution remains disabled, and no collection job should be enqueued.
