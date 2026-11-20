@@ -3,6 +3,8 @@ import { getAssistantCapabilities } from "./assistant/registry";
 import { handleAssistantChat } from "./assistant/runtime";
 import { providerPoolStatus } from "./assistant/providers";
 import { handleMaxunRequest } from "./integrations/maxun";
+import { listCollectionProviders, getCollectionProviderVerificationSummary } from "./collection/registry";
+import { listCollectionActors } from "./collection/actors";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -994,6 +996,19 @@ export default {
       return new Response(null, { status: 204, headers });
     }
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
+
+    if (url.pathname === "/api/v1/collection/catalogue") {
+      if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } }, 405, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view collection capabilities." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        return json({ data: { providers: listCollectionProviders(), actors: listCollectionActors().map(({ validateInput, ...actor }) => actor), verification: getCollectionProviderVerificationSummary(), execution_enabled: false, note: "Catalogue only: no collection adapter is currently registered, so no collection job can execute yet." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
+      }
+    }
 
     if (request.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/api/v1/status")) {
       return json({ data: { service: "gigo-api", status: "ok", environment: env.APP_ENV ?? "unknown", version: "0.2.0", auth_configured: configured(env) } }, 200, headers);
