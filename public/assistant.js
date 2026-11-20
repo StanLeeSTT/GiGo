@@ -3,7 +3,7 @@ const api=window.GIGO_API,form=document.querySelector("#assistant-form"),input=d
 const historyFile=document.querySelector("#history-file"),historyButton=document.querySelector("#history-import-button"),historyStatus=document.querySelector("#history-import-status");
 function chatGPTText(content){
   if(!content||typeof content!=="object")return "";
-  if(Array.isArray(content.parts))return content.parts.map(part=>typeof part==="string"?part:(part&&typeof part.text==="string"?part.text:"")).filter(Boolean).join("\\n").trim();
+  if(Array.isArray(content.parts))return content.parts.map(part=>typeof part==="string"?part:(part&&typeof part.text==="string"?part.text:"")).filter(Boolean).join("\n").trim();
   if(typeof content.text==="string")return content.text.trim();
   return "";
 }
