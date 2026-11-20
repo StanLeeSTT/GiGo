@@ -71,12 +71,16 @@ function redirectTarget(response,currentUrl) {
   return new URL(location,currentUrl).toString();
 }
 async function getWithRedirects(rawUrl,options={}) {
-  let current=validateUrl(rawUrl).toString();
+  let current=validateUrl(rawUrl).toString(), requestCount=0;
   for(let hop=0;hop<=MAX_REDIRECTS;hop++) {
     const currentParsed=validateUrl(current);
+    const hadRobotsCache=robotsCache.has(currentParsed.origin);
     if(!(await checkRobots(currentParsed,options.signal))) throw new Error("Robots policy disallows this page or redirect destination.");
-    const response=await safeHttpsGet(current,options), next=redirectTarget(response,current);
-    if(!next) return {...response,finalUrl:current};
+    if(!hadRobotsCache) requestCount++;
+    const response=await safeHttpsGet(current,options);
+    requestCount++;
+    const next=redirectTarget(response,current);
+    if(!next) return {...response,finalUrl:current,requestCount};
     if(hop===MAX_REDIRECTS) throw new Error("Redirect limit exceeded.");
     current=validateUrl(next).toString();
   }
@@ -144,10 +148,19 @@ async function executePublicMetadata(_actor,input,context) {
     try {
       const start=validateUrl(suppliedUrl);
       const response=await getWithRedirects(start.toString(),{maxBytes:MAX_HTML_BYTES,signal:context.signal});
-      requests+=2;
-      if(response.status<200||response.status>=300) throw new Error("Page returned HTTP "+response.status+".");
+      requests+=response.requestCount;
+      if(response.status===429||response.status>=500) throw new Error("Temporary page response HTTP "+response.status+".");
+      if(response.status<200||response.status>=300) {
+        blocked++; completed.add(suppliedUrl);
+        await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+        continue;
+      }
       const contentType=String(response.headers["content-type"]??"").toLowerCase();
-      if(!contentType.includes("text/html")&&!contentType.includes("application/xhtml+xml")) throw new Error("Only HTML page responses are supported.");
+      if(!contentType.includes("text/html")&&!contentType.includes("application/xhtml+xml")) {
+        blocked++; completed.add(suppliedUrl);
+        await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+        continue;
+      }
       const metadata=extractPageMetadata(response.body,response.finalUrl);
       const itemKey=createHash("sha256").update(response.finalUrl).digest("hex");
       await context.emitItem({itemKey,sourceUrl:response.finalUrl,sourcePlatform:"web",sourceType:"web_page_metadata",observedAt:new Date().toISOString(),accessMethod:"pinned_public_https_get",permissionContext:{robots_checked:true,robots_allowed:true,authentication:false,redirects_revalidated:true},record:{url:response.finalUrl,...metadata,http_status:response.status,content_type:contentType}});
@@ -155,8 +168,15 @@ async function executePublicMetadata(_actor,input,context) {
       await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
     } catch(error) {
       if(context.signal.aborted) throw error;
-      completed.add(suppliedUrl);blocked++;
+      if(String(error?.message??"").startsWith("Robots policy disallows")) {
+        completed.add(suppliedUrl); blocked++;
+        await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+        continue;
+      }
+      // Network, DNS, timeout, redirect and 429/5xx failures are retryable.
+      // Leave the URL out of completed_urls so the durable retry resumes it.
       await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked,last_error:String(error?.message??"Collection error").slice(0,160)}});
+      throw error;
     }
   }
   return {status:blocked?"partial":"completed",counters:{pages,items,requests},checkpoint:{completed_urls:[...completed],blocked}};
