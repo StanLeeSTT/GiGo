@@ -6,6 +6,7 @@ export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
   OWNER_EMAIL?: string;
@@ -783,11 +784,21 @@ type DurableJob = {
 };
 
 async function serviceRest(env: Env, path: string, method = "GET", body?: unknown, prefer = "return=representation"): Promise<unknown> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Background execution is not configured: add the Supabase service_role key as a Cloudflare Worker secret.");
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!env.SUPABASE_URL || !key) throw new Error("Background execution is not configured: add the Supabase secret API key as the SUPABASE_SECRET_KEY Cloudflare Worker secret.");
+  const isNewSecretKey = key.startsWith("sb_secret_");
+  const headers: Record<string, string> = {
+    apikey: key,
+    accept: "application/json",
+    ...(body !== undefined ? { "content-type": "application/json", prefer } : {})
+  };
+  // New Supabase secret keys are opaque API keys, not JWTs. Never send them
+  // as Authorization: Bearer; PostgREST would reject them as an invalid JWT.
+  // Keep the legacy JWT header only for backwards compatibility.
+  if (!isNewSecretKey) headers.authorization = "Bearer " + key;
   const response = await fetch(new URL(path, env.SUPABASE_URL), {
     method,
-    headers: { apikey: key, authorization: "Bearer " + key, accept: "application/json", ...(body !== undefined ? { "content-type": "application/json", prefer } : {}) },
+    headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {})
   });
   const raw = await response.text();
