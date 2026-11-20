@@ -196,6 +196,7 @@ declare
   target_job_id uuid;
   target_job_status text;
   target_run_status text;
+  locked_run_job_id uuid;
 begin
   -- Read the association without locking the run. The job_id is immutable
   -- after a run is created; lock the job first if one is attached.
