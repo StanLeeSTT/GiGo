@@ -17,7 +17,7 @@ function isPermittedPublicUrl(value: unknown): value is string {
   if (typeof value !== "string" || value.length < 12 || value.length > 2048) return false;
   try {
     const url = new URL(value);
-    const host = url.hostname.toLowerCase().replace(/^\\[|\\]$/g, "");
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (url.protocol !== "https:" || url.username || url.password) return false;
     if (url.port && url.port !== "443") return false;
     if (!host.includes(".") || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return false;
