@@ -368,7 +368,7 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
     }
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
     body = { ...input };
-    if (resource === "partner_candidates") {
+    if (resource === "partner_candidates" && method === "POST") {
       const weights: Record<string, number> = { audience_fit: 20, authenticity_engagement: 20, credibility_reputation: 15, reach_consistency: 10, commercial_potential: 15, brand_values: 10, operational_readiness: 5, legal_rights_readiness: 5 };
       const components = body.score_components && typeof body.score_components === "object" && !Array.isArray(body.score_components) ? body.score_components as JsonRecord : {};
       const keys = Object.keys(weights);
