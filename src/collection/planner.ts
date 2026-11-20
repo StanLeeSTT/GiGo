@@ -45,8 +45,11 @@ export function planCollectionProviders(
     .filter((definition) => required.every((capability) => definition.capabilities.includes(capability)))
     .map((definition): CollectionProviderCandidate => {
       const configured = byKey.get(definition.key);
-      if (definition.verification === "candidate_unverified") {
-        return { providerKey: definition.key, name: definition.name, ready: false, reason: "Provider identity or permissions have not been verified.", verification: definition.verification };
+      if (definition.verification === "candidate_unverified" || definition.verification === "integration_scaffold") {
+        const reason = definition.verification === "candidate_unverified"
+          ? "Provider identity, permissions or service terms have not been verified."
+          : "GiGo integration exists only as scaffolding; the external service is not connected and tested.";
+        return { providerKey: definition.key, name: definition.name, ready: false, reason, verification: definition.verification };
       }
       if (!configured) {
         return { providerKey: definition.key, name: definition.name, ready: false, reason: "Provider has not been configured by the owner.", verification: definition.verification };
