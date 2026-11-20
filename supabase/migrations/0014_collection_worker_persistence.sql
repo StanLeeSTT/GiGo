@@ -121,6 +121,7 @@ begin
     update public.collection_datasets
       set item_count = item_count + 1
       where id = target_dataset_id and run_id = target_run_id and user_id = owner_id;
+    if not found then raise exception 'collection dataset not found for active run'; end if;
 
     update public.collection_runs
       set counters = jsonb_set(
@@ -130,6 +131,7 @@ begin
         true
       )
       where id = target_run_id and user_id = owner_id and job_id = p_job_id and status = 'running';
+    if not found then raise exception 'collection run is not active'; end if;
   end if;
 
   update public.jobs
