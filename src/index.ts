@@ -1084,18 +1084,30 @@ export default {
         const userId = await verifiedUserId(token, env);
         if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
         const body = await readJson(request);
-        if (!body || typeof body.actor_key !== "string" || body.actor_key.length > 96) {
-          return json({ error: { code: "INVALID_BODY", message: "actor_key and actor_input are required." } }, 400, headers);
+        if (!body || typeof body.actor_key !== "string" || body.actor_key.length > 96
+          || typeof body.provider_key !== "string" || body.provider_key.length > 64) {
+          return json({ error: { code: "INVALID_BODY", message: "actor_key, provider_key and actor_input are required." } }, 400, headers);
         }
         const actor = getCollectionActor(body.actor_key);
         if (!actor) return json({ error: { code: "UNKNOWN_ACTOR", message: "That collection actor is not in the catalogue." } }, 404, headers);
         if (!actor.validateInput(body.actor_input)) return json({ error: { code: "INVALID_ACTOR_INPUT", message: "The supplied actor input does not match the actor's schema or safety limits." } }, 400, headers);
+        const providerKey = body.provider_key.trim().toLowerCase();
+        if (!/^[a-z][a-z0-9_-]{1,63}$/.test(providerKey)) return json({ error: { code: "INVALID_PROVIDER", message: "provider_key is invalid." } }, 400, headers);
+        const providerResponse = await fetch(new URL("/rest/v1/collection_providers?select=id,provider_key,status,capabilities,quota_state&provider_key=eq." + encodeURIComponent(providerKey) + "&limit=1", env.SUPABASE_URL!), {
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!providerResponse.ok) return json({ error: { code: "PROVIDER_LOOKUP_FAILED", message: "Could not verify the selected provider." } }, 502, headers);
+        const connected = await providerResponse.json() as ConnectedCollectionProvider[];
+        const providerCandidate = planCollectionProviders(actor.requiredCapabilities, listCollectionProviders(), Array.isArray(connected) ? connected : [])
+          .find((candidate) => candidate.providerKey === providerKey);
+        if (!providerCandidate?.ready) return json({ error: { code: "PROVIDER_NOT_READY", message: "The selected provider is not verified, healthy or authorised for this actor." } }, 409, headers);
         const datasetName = typeof body.dataset_name === "string" ? body.dataset_name.trim() : "Collected data";
         if (!datasetName || datasetName.length > 180) return json({ error: { code: "INVALID_DATASET_NAME", message: "dataset_name must contain 1 to 180 characters." } }, 400, headers);
         const response = await fetch(new URL("/rest/v1/rpc/gigo_create_collection_run", env.SUPABASE_URL!), {
           method: "POST",
           headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
-          body: JSON.stringify({ p_actor_key: actor.key, p_actor_version: actor.version, p_input: body.actor_input, p_dataset_name: datasetName }),
+          body: JSON.stringify({ p_actor_key: actor.key, p_actor_version: actor.version, p_input: body.actor_input, p_provider_key: providerKey, p_dataset_name: datasetName }),
           signal: AbortSignal.timeout(10000)
         });
         if (!response.ok) return json({ error: { code: "COLLECTION_ENQUEUE_FAILED", message: "Could not create the collection run. Confirm migration 0012 is applied." } }, 502, headers);
