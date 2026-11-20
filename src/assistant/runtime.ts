@@ -50,6 +50,9 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "conversations_create", description: "Create a saved GiGo conversation.", parameters: { type: "object", properties: { title: { type: ["string", "null"], maxLength: 160 } }, additionalProperties: false } } },
   { type: "function", function: { name: "messages_list", description: "Read messages from one conversation owned by the user.", parameters: { type: "object", properties: { conversation_id: { type: "string" } }, required: ["conversation_id"], additionalProperties: false } } },
   { type: "function", function: { name: "messages_add", description: "Save a user or assistant message in an owned conversation.", parameters: { type: "object", properties: { conversation_id: { type: "string" }, role: { type: "string", enum: ["user", "assistant"] }, content: { type: "string", minLength: 1, maxLength: 20000 } }, required: ["conversation_id", "role", "content"], additionalProperties: false } } },
+  { type: "function", function: { name: "memory_search", description: "Search the owner's saved memories for information relevant to a natural-language query. Use this before answering questions about remembered preferences, decisions or project context.", parameters: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 500 } }, required: ["query"], additionalProperties: false } } },
+  { type: "function", function: { name: "memory_update", description: "Update an existing saved memory when the user explicitly asks to correct or change it. Do not use to silently overwrite facts.", parameters: { type: "object", properties: { id: { type: "string" }, content: { type: "string", minLength: 1, maxLength: 5000 }, category: { type: "string", maxLength: 80 } }, required: ["id", "content"], additionalProperties: false } } },
+  { type: "function", function: { name: "conversations_search", description: "Search the owner's saved conversation messages for prior decisions, project details or instructions. Use when the user asks what was discussed previously.", parameters: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 300 } }, required: ["query"], additionalProperties: false } } },
   { type: "function", function: { name: "memory_list", description: "List the owner's active saved memory items.", parameters: { type: "object", properties: { include_archived: { type: "boolean" } }, additionalProperties: false } } },
   { type: "function", function: { name: "memory_create", description: "Save a useful fact or preference to the owner's GiGo memory.", parameters: { type: "object", properties: { category: { type: "string", maxLength: 80 }, content: { type: "string", minLength: 1, maxLength: 5000 }, source: { type: "string", maxLength: 80 } }, required: ["content"], additionalProperties: false } } },
   { type: "function", function: { name: "memory_archive", description: "Archive one of the owner's saved memory items without deleting it.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } }
@@ -130,6 +133,38 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     const rows = await db(env, token, "/rest/v1/assistant_messages?select=id,conversation_id,role,content,created_at", "POST", { user_id: ownerId, conversation_id: args.conversation_id, role: args.role, content: args.content, metadata: {} }) as Row[];
     return { created: rows?.[0] ?? null };
   }
+  if (name === "memory_search") {
+    const query = typeof args.query === "string" ? args.query.trim() : "";
+    if (!query || query.length > 500) return { error: "A search query of 1–500 characters is required." };
+    const rows = await db(env, token, "/rest/v1/memory_items?select=id,category,content,source,confidence,is_active,created_at,updated_at&is_active=eq.true&order=updated_at.desc&limit=100") as Row[];
+    const terms = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2))];
+    const ranked = (Array.isArray(rows) ? rows : []).map(row => {
+      const haystack = (String(row.category ?? "") + " " + String(row.content ?? "")).toLowerCase();
+      const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? (String(row.content ?? "").toLowerCase().includes(term) ? 2 : 1) : 0), 0);
+      return { row, score };
+    }).filter(item => item.score > 0).sort((a,b) => b.score-a.score || String(b.row.updated_at ?? "").localeCompare(String(a.row.updated_at ?? ""))).slice(0,10);
+    return { query, matches: ranked.map(item => ({ ...item.row, relevance: item.score })), searched_count: rows.length };
+  }
+  if (name === "memory_update") {
+    if (!validUuid(args.id)) return { error: "A valid memory item id is required." };
+    if (typeof args.content !== "string" || !args.content.trim() || args.content.length > 5000) return { error: "Memory content must be 1–5,000 characters." };
+    const patch: Row = { content: args.content.trim() };
+    if (args.category !== undefined) {
+      if (typeof args.category !== "string" || args.category.length > 80) return { error: "Category must be text up to 80 characters." };
+      patch.category = args.category;
+    }
+    const rows = await db(env, token, `/rest/v1/memory_items?id=eq.${encodeURIComponent(args.id)}&is_active=eq.true&select=id,category,content,source,confidence,is_active,updated_at`, "PATCH", patch) as Row[];
+    return rows?.length ? { updated: rows[0] } : { error: "Active memory item not found in this workspace." };
+  }
+  if (name === "conversations_search") {
+    const query = typeof args.query === "string" ? args.query.trim() : "";
+    if (!query || query.length > 300) return { error: "A search query of 1–300 characters is required." };
+    const escaped = query.replace(/[%,()]/g, " ").trim();
+    if (!escaped) return { error: "Please provide searchable words." };
+    const pattern = `*.${escaped}.*`;
+    const rows = await db(env, token, `/rest/v1/assistant_messages?select=id,conversation_id,role,content,created_at&content=ilike.${encodeURIComponent(pattern)}&order=created_at.desc&limit=30`) as Row[];
+    return { query, matches: rows };
+  }
   if (name === "memory_list") {
     const params = new URLSearchParams({ select: "id,category,content,source,confidence,is_active,created_at,updated_at", order: "updated_at.desc", limit: "100" });
     if (args.include_archived !== true) params.set("is_active", "eq.true");
@@ -140,6 +175,10 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     const category = args.category ?? "general";
     const source = args.source ?? "assistant";
     if (typeof category !== "string" || category.length > 80 || typeof source !== "string" || source.length > 80) return { error: "Category and source must be text up to 80 characters." };
+    const normalized = args.content.trim().toLowerCase().replace(/\\s+/g, " ");
+    const existing = await db(env, token, `/rest/v1/memory_items?select=id,category,content,is_active&category=eq.${encodeURIComponent(category)}&is_active=eq.true&order=updated_at.desc&limit=100`) as Row[];
+    const duplicate = (Array.isArray(existing) ? existing : []).find(row => String(row.content ?? "").trim().toLowerCase().replace(/\\s+/g, " ") === normalized);
+    if (duplicate) return { already_exists: duplicate, note: "An identical active memory already exists; no duplicate was created." };
     const rows = await db(env, token, "/rest/v1/memory_items?select=id,category,content,source,confidence,is_active,created_at", "POST", { user_id: ownerId, category, content: args.content.trim(), source, confidence: 1, is_active: true }) as Row[];
     return { created: rows?.[0] ?? null };
   }
@@ -204,7 +243,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
     await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "user", content: userMessage, metadata: {} });
     const [history, memory] = await Promise.all([
       db(env, token, `/rest/v1/assistant_messages?select=role,content&conversation_id=eq.${encodeURIComponent(conversationId!)}&order=created_at.desc&limit=24`),
-      db(env, token, "/rest/v1/memory_items?select=category,content&is_active=eq.true&order=updated_at.desc&limit=30")
+      db(env, token, "/rest/v1/memory_items?select=id,category,content,source,confidence,updated_at&is_active=eq.true&order=updated_at.desc&limit=100")
     ]) as [Row[], Row[]];
 
     const capabilities = getAssistantCapabilities();
@@ -220,6 +259,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
       "Answer the actual question directly first. Be concise for simple questions and thorough for complex requests. Explain unfamiliar terms plainly and give useful examples when needed.",
       "For completed actions, state what happened naturally and accurately. Do not add boilerplate summaries or repetitive closing offers to every response.",
       "You may use the tools provided to read or change the user's own projects, tasks, saved conversations, messages and memory. Use them when the user asks you to inspect, create or update those records.",
+      "Memory categories should be specific and stable, such as project, preference, decision, workflow or instruction. Search before creating a memory; avoid duplicates. Update a memory only when the user explicitly asks for a correction or change.\n" +
       "Long-term memory is consent-based: create a memory only when the user explicitly asks you to remember, save, or store something. Do not infer permission from ordinary conversation or from a request to summarize.",
       "Never save passwords, API keys, access tokens, financial account credentials, or highly sensitive personal information to memory, even if asked; explain that such secrets should remain in a secure password manager or secret store.",
       "Do not create extra conversations or add duplicate messages unless the user explicitly requests that action. Normal chat turns are already saved automatically.",
@@ -227,7 +267,8 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
       "Never invent tool results. Ask a concise clarifying question when required arguments are missing. Never attempt external actions such as sending email, publishing, spending money or signing agreements; those capabilities are not executable.",
       "GiGo's research, product, creator partnership, lead, offer, marketing, outreach, launch, commerce, creative, customer support, analytics and learning modules are not yet executable.",
       "Currently executable capability registry: " + JSON.stringify(available),
-      "Relevant saved user memory: " + JSON.stringify(memory || []),
+      "Relevant saved user memory candidates (ranked against this message; use only directly relevant facts): " + JSON.stringify((Array.isArray(memory) ? memory : []).map((row: Row) => { const terms = [...new Set(userMessage.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2))]; const haystack = (String(row.category ?? "") + " " + String(row.content ?? "")).toLowerCase(); return { row, score: terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0) }; }).filter((item: { row: Row; score: number }) => item.score > 0).sort((a: { score: number }, b: { score: number }) => b.score-a.score).slice(0, 10).map((item: { row: Row; score: number }) => ({ ...item.row, relevance: item.score }))), 
+      "For memory questions, use memory_search with the user's actual query. For questions about prior discussions, use conversations_search; do not pretend saved memories contain the entire conversation history. Distinguish explicit saved memory from conversation evidence and inference.",
       "When a request needs a capability that is not available, explain the limitation and help prepare the work instead."
     ].join("\n\n");
     const messages: Row[] = [
