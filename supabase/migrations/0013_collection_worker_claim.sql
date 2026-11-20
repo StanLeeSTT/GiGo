@@ -15,6 +15,7 @@ returns table (
   dataset_id uuid,
   actor_key text,
   actor_version integer,
+  provider_key text,
   actor_input jsonb,
   checkpoint jsonb,
   attempts integer,
@@ -31,6 +32,7 @@ declare
   target_dataset_id uuid;
   target_actor_key text;
   target_actor_version integer;
+  target_provider_key text;
   target_input jsonb;
   target_checkpoint jsonb;
   new_lease_token uuid;
@@ -81,11 +83,12 @@ begin
     target_dataset_id := null;
     target_actor_key := null;
     target_actor_version := null;
+    target_provider_key := null;
     target_input := null;
     target_checkpoint := '{}'::jsonb;
 
-    select r.id, d.id, r.actor_key, r.actor_version, r.input, r.checkpoint
-      into target_run_id, target_dataset_id, target_actor_key, target_actor_version, target_input, target_checkpoint
+    select r.id, d.id, r.actor_key, r.actor_version, r.provider_key, r.input, r.checkpoint
+      into target_run_id, target_dataset_id, target_actor_key, target_actor_version, target_provider_key, target_input, target_checkpoint
       from public.collection_runs r
       join public.collection_datasets d
         on d.run_id = r.id and d.user_id = r.user_id
@@ -138,6 +141,7 @@ begin
     dataset_id := target_dataset_id;
     actor_key := target_actor_key;
     actor_version := target_actor_version;
+    provider_key := target_provider_key;
     actor_input := coalesce(target_input, '{}'::jsonb);
     checkpoint := coalesce(target_checkpoint, '{}'::jsonb);
     attempts := candidate.attempts + 1;
