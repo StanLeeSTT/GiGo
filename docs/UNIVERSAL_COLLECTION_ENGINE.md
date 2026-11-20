@@ -138,3 +138,28 @@ Every run has owner, actor/version, selected provider, input, job reference, tim
 ## Operational acceptance criteria
 
 A connector is not considered operational until a live test proves: valid configuration; explicit permission/access mode; quota estimate; bounded successful run; stable normalized output; provenance completeness; deduplication; checkpoint/resume; cancellation; quota/rate-limit handling; owner-only access; and no secret leakage. UI badges must reflect measured health, never catalogue presence.
+
+## Current implementation status
+
+The first implementation slice now includes:
+
+- Migration `0010_universal_collection_engine.sql` with owner-scoped provider, actor, run, dataset and item tables.
+- Composite dataset/run/owner integrity for collected items, plus owner checks for actor, provider and scheduler-job references.
+- Typed actor and adapter contracts in `src/collection/types.ts`.
+- A versioned `public_page_metadata` actor definition with bounded input validation.
+- An explicit adapter registry. It is intentionally empty until a provider has passed its security and policy review.
+- Authenticated read endpoints:
+  - `GET /api/v1/collection/providers`
+  - `GET /api/v1/collection/actors`
+  - `GET /api/v1/collection/runs`
+  - `GET /api/v1/collection/datasets`
+  - `GET /api/v1/collection/items`
+  - `GET /api/v1/collection/catalogue`
+
+The read endpoints require a valid Supabase access token and rely on Supabase row-level security. They will return a migration/storage error until migration 0010 is applied. The catalogue endpoint is static and can report capabilities without implying that a provider is connected.
+
+### Deliberately not enabled yet
+
+No actor can currently execute a network request, and no collection job type is accepted by the general job API. This is deliberate: arbitrary URL fetching needs a separately reviewed SSRF boundary, redirect handling, response limits, DNS/IP protections and site-policy checks. The adapter registry must remain empty until that boundary is implemented and tested. Do not enable cookie-based social automation or private-platform scraping.
+
+A GitHub Actions typecheck workflow has been added for this feature branch. A successful workflow run is still required before considering the TypeScript changes verified.
