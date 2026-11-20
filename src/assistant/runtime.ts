@@ -98,12 +98,12 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     openAlexUrl.searchParams.set("search", query);
     openAlexUrl.searchParams.set("per-page", String(limit));
     openAlexUrl.searchParams.set("select", "id,doi,title,publication_year,primary_location,authorships,abstract_inverted_index,type");
-    const results = await Promise.allSettled([
+    const [crossrefResult, openAlexResult] = await Promise.allSettled([
       fetch(crossrefUrl.toString(), { headers: { accept: "application/json", "user-agent": "GiGoResearch/1.0 (public metadata discovery)" } }),
       fetch(openAlexUrl.toString(), { headers: { accept: "application/json" } })
     ]);
     const candidates: Array<{ title: string; url: string; publisher: string | null; excerpt: string | null; source_type: "paper" | "report"; provider: string; published_year: number | null }> = [];
-    if (results[0].status === "fulfilled" && results[0].value.ok) {
+    if (crossrefResult.status === "fulfilled" && crossrefResult.value.ok) {
       const payload = await results[0].value.json() as { message?: { items?: Row[] } };
       for (const item of payload.message?.items ?? []) {
         const title = Array.isArray(item.title) ? String(item.title[0] ?? "") : "";
@@ -116,7 +116,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
         candidates.push({ title, url, publisher: typeof item.publisher === "string" ? item.publisher : null, excerpt: abstract || null, source_type: item.type === "journal-article" ? "paper" : "report", provider: "Crossref", published_year: dateParts?.[0]?.[0] ?? null });
       }
     }
-    if (results[1].status === "fulfilled" && results[1].value.ok) {
+    if (openAlexResult.status === "fulfilled" && openAlexResult.value.ok) {
       const payload = await results[1].value.json() as { results?: Row[] };
       for (const item of payload.results ?? []) {
         const title = typeof item.title === "string" ? item.title : "";
@@ -138,7 +138,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
         candidates.push({ title, url, publisher: authors.length ? authors.join(", ") : "OpenAlex indexed work", excerpt: abstract || null, source_type: "paper", provider: "OpenAlex", published_year: typeof item.publication_year === "number" ? item.publication_year : null });
       }
     }
-    const unique = [...new Map(candidates.map(item => [item.url.toLowerCase(), item])).values()].slice(0, limit * 2);
+    const unique = [...new Map(candidates.map(item => [item.url.toLowerCase(), item])).values()].slice(0, limit);
     if (!unique.length) return { discovered: 0, saved: 0, message: "No records were returned. Public metadata services may be unavailable or the query may be too narrow.", services: { crossref: results[0].status === "fulfilled" ? results[0].value.status : "unavailable", openalex: results[1].status === "fulfilled" ? results[1].value.status : "unavailable" } };
     const existing = await db(env, token, "/rest/v1/research_sources?select=url&research_run_id=eq." + encodeURIComponent(args.research_run_id) + "&limit=500") as Row[];
     const known = new Set((Array.isArray(existing) ? existing : []).map(row => String(row.url ?? "").toLowerCase()));
