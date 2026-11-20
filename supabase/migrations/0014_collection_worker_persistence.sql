@@ -202,7 +202,7 @@ create or replace function public.gigo_retry_collection_job(
   p_error jsonb,
   p_delay_seconds integer default 300
 )
-returns boolean
+returns text
 language plpgsql
 security definer
 set search_path = ''
@@ -227,7 +227,7 @@ begin
       and (j.progress->>'collection_lease_expires_at')::timestamptz > now()
     for update;
 
-  if not found then return false; end if;
+  if not found then return 'lease_lost'; end if;
   retry_allowed := current_attempts < 5;
 
   update public.collection_runs
@@ -246,9 +246,9 @@ begin
         progress = (coalesce(progress, '{}'::jsonb) - 'collection_lease_token' - 'collection_lease_expires_at') ||
           jsonb_build_object('stage',case when retry_allowed then 'retry_scheduled' else 'failed' end,'retry_scheduled_at',now())
     where id = p_job_id;
-  return true;
+  return case when retry_allowed then 'retry_scheduled' else 'failed' end;
 end;
-$$;
+$;
 
 revoke all on function public.gigo_collection_worker_progress(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.gigo_collection_worker_item(uuid, uuid, jsonb) from public, anon, authenticated;
