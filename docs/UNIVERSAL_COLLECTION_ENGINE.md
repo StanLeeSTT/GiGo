@@ -258,3 +258,9 @@ This is a database client, not a running worker. It is not called by the schedul
 Run creation now requires a provider key. The API checks the owner's provider record through RLS and the fail-closed provider planner before calling the database. The enqueue RPC independently rechecks that the provider belongs to the authenticated owner, is marked healthy, and explicitly grants the actor's `web_fetch` capability. It stores the provider ID/key on the run and job. The dedicated claim RPC returns that provider key so a future worker can resolve the correct adapter rather than guessing.
 
 A provider that is merely listed in the catalogue is not enough. Candidate-unverified providers and integration scaffolds remain blocked. The run endpoint returns a conflict when the selected provider is not verified, healthy or capability-compatible.
+
+### Bounded worker orchestrator
+
+`src/collection/worker.ts` now connects the bounded runner to the service-role store abstraction. It claims one bounded batch, resolves the exact actor version and provider-keyed adapter, persists progress/checkpoints and provenance-bearing items, and records completion or retry/failure outcomes. It refuses to claim any jobs when the adapter registry is empty. Missing provider adapters are retried with a delay; permanent actor/adapter output errors are marked failed. Retry RPC outcomes distinguish `retry_scheduled`, `failed` and `lease_lost`.
+
+**Still not scheduled or activated:** the orchestrator is not called from the Cloudflare cron handler. There is no live-verified adapter registered yet, and the worker's database migrations remain unapplied. This keeps queued collection jobs safely isolated until a real provider passes end-to-end tests.
