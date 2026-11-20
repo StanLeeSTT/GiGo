@@ -52,7 +52,7 @@ test("enqueue RPC permits only the reviewed public-page actor version", () => {
   assert.match(sql, /safe_actor_key <> 'public_page_metadata'/);
   assert.match(sql, /p_actor_version is distinct from 1/);
   assert.match(sql, /p_provider_key text/);
-  assert.match(sql, /safe_provider_key not in \('crawlee','playwright'\)/);
+  assert.match(sql, /safe_provider_key not in \('crawlee','playwright','gigo_safe_http_batch'\)/);
   assert.match(sql, /p\.status = 'healthy'/);
   assert.match(sql, /jsonb_build_array\('web_fetch'\)/);
   assert.match(sql, /provider_id, actor_key, actor_version, provider_key/);
