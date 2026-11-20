@@ -616,6 +616,117 @@ async function handleCapabilities(request: Request, env: Env, headers: Headers):
   }
 }
 
+type OperationsResource = "operation_schedules" | "approval_requests" | "notification_events" | "operation_events";
+const OPERATIONS_COLUMNS: Record<OperationsResource, string> = {
+  operation_schedules: "id,name,schedule_type,schedule_config,job_type,job_input,is_enabled,next_run_at,last_run_at,created_at,updated_at",
+  approval_requests: "id,job_id,action_type,title,summary,action_payload,risk_level,status,requested_channels,decision_note,decided_at,expires_at,created_at,updated_at",
+  notification_events: "id,approval_request_id,job_id,channel,event_type,title,body,status,provider,provider_reference,attempt_count,scheduled_for,sent_at,delivered_at,last_error,metadata,created_at,updated_at",
+  operation_events: "id,job_id,approval_request_id,event_type,severity,title,detail,data,created_at"
+};
+
+async function handleOperationsResource(request: Request, env: Env, headers: Headers, resource: OperationsResource): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access operations." } }, 401, headers);
+  const method = request.method;
+  const url = new URL(request.url);
+  const id = url.searchParams.get("id");
+  if (!["GET","POST","PATCH"].includes(method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } }, 405, headers);
+  if (method === "PATCH" && (!id || !/^[0-9a-f-]{36}$/i.test(id))) return json({ error: { code: "INVALID_ID", message: "A valid record ID is required." } }, 400, headers);
+  let ownerId: string | null = null;
+  if (method === "POST") {
+    try { ownerId = await verifiedUserId(token, env); }
+    catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+  }
+
+  const filters = new URLSearchParams({ select: OPERATIONS_COLUMNS[resource], order: "created_at.desc", limit: "100" });
+  if (method === "GET") {
+    if (resource === "approval_requests" || resource === "notification_events") {
+      const status = url.searchParams.get("status");
+      if (status && /^[a-z_]+$/.test(status)) filters.set("status", "eq." + status);
+    }
+    if (resource === "operation_events") {
+      const severity = url.searchParams.get("severity");
+      if (severity && ["info","success","warning","error","critical"].includes(severity)) filters.set("severity", "eq." + severity);
+    }
+  }
+  let endpoint = "/rest/v1/" + resource + "?" + filters.toString();
+  let body: JsonRecord | undefined;
+  if (method === "POST" || method === "PATCH") {
+    const input = await readJson(request);
+    if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+    const allowed: Record<OperationsResource, string[]> = {
+      operation_schedules: ["name","schedule_type","schedule_config","job_type","job_input","is_enabled","next_run_at"],
+      approval_requests: ["job_id","action_type","title","summary","action_payload","risk_level","requested_channels","expires_at"],
+      notification_events: ["approval_request_id","job_id","channel","event_type","title","body","scheduled_for","metadata"],
+      operation_events: ["job_id","approval_request_id","event_type","severity","title","detail","data"]
+    };
+    if (resource === "approval_requests" && method === "PATCH") {
+      if (Object.keys(input).some(k => !["status","decision_note"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Approval decisions can only change status and decision note." } }, 400, headers);
+      if (!["approved","rejected"].includes(String(input.status))) return json({ error: { code: "INVALID_DECISION", message: "A decision must be approved or rejected." } }, 400, headers);
+      body = { status: input.status, decision_note: typeof input.decision_note === "string" ? input.decision_note.slice(0,2000) : null, decided_at: new Date().toISOString() };
+    } else {
+      if (method === "PATCH" && resource !== "operation_schedules") return json({ error: { code: "READ_ONLY_RESOURCE", message: "This operations resource cannot be edited." } }, 405, headers);
+      if (Object.keys(input).some(k => !allowed[resource].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Unsupported operations field." } }, 400, headers);
+      if (resource === "operation_schedules") {
+        if (method === "POST" && (!validText(input.name,160) || !validText(input.job_type,100))) return json({ error: { code: "INVALID_BODY", message: "Schedule name and job_type are required." } }, 400, headers);
+        if (input.schedule_type !== undefined && !["interval","daily","weekly","event"].includes(String(input.schedule_type))) return json({ error: { code: "INVALID_SCHEDULE", message: "Invalid schedule type." } }, 400, headers);
+        if (input.schedule_config !== undefined && (!input.schedule_config || typeof input.schedule_config !== "object" || Array.isArray(input.schedule_config))) return json({ error: { code: "INVALID_BODY", message: "schedule_config must be an object." } }, 400, headers);
+        if (input.job_input !== undefined && (!input.job_input || typeof input.job_input !== "object" || Array.isArray(input.job_input))) return json({ error: { code: "INVALID_BODY", message: "job_input must be an object." } }, 400, headers);
+        if (input.is_enabled !== undefined && typeof input.is_enabled !== "boolean") return json({ error: { code: "INVALID_BODY", message: "is_enabled must be boolean." } }, 400, headers);
+        if (input.next_run_at !== undefined && input.next_run_at !== null && (typeof input.next_run_at !== "string" || !Number.isFinite(Date.parse(input.next_run_at)))) return json({ error: { code: "INVALID_DATE", message: "next_run_at must be a valid timestamp." } }, 400, headers);
+      } else if (resource === "approval_requests") {
+        if (method === "POST" && (!validText(input.action_type,100) || !validText(input.title,200) || !validText(input.summary,5000))) return json({ error: { code: "INVALID_BODY", message: "action_type, title and summary are required." } }, 400, headers);
+        if (input.risk_level !== undefined && !["low","medium","high","critical"].includes(String(input.risk_level))) return json({ error: { code: "INVALID_RISK", message: "Invalid risk level." } }, 400, headers);
+        if (input.action_payload !== undefined && (!input.action_payload || typeof input.action_payload !== "object" || Array.isArray(input.action_payload))) return json({ error: { code: "INVALID_BODY", message: "action_payload must be an object." } }, 400, headers);
+        if (input.job_id !== undefined && input.job_id !== null && !/^[0-9a-f-]{36}$/i.test(String(input.job_id))) return json({ error: { code: "INVALID_ID", message: "job_id must be a UUID or null." } }, 400, headers);
+      } else if (resource === "notification_events") {
+        if (method !== "POST") return json({ error: { code: "READ_ONLY_RESOURCE", message: "Notifications can only be queued, not directly edited." } }, 405, headers);
+        if (!["in_app","email","push","voice_call"].includes(String(input.channel)) || !validText(input.event_type,100) || !validText(input.title,200) || !validText(input.body,5000)) return json({ error: { code: "INVALID_BODY", message: "Valid channel, event_type, title and body are required." } }, 400, headers);
+        if (input.scheduled_for !== undefined && (typeof input.scheduled_for !== "string" || !Number.isFinite(Date.parse(input.scheduled_for)))) return json({ error: { code: "INVALID_DATE", message: "scheduled_for must be a valid timestamp." } }, 400, headers);
+      } else {
+        if (!validText(input.event_type,100) || !validText(input.title,200)) return json({ error: { code: "INVALID_BODY", message: "event_type and title are required." } }, 400, headers);
+        if (input.severity !== undefined && !["info","success","warning","error","critical"].includes(String(input.severity))) return json({ error: { code: "INVALID_SEVERITY", message: "Invalid event severity." } }, 400, headers);
+      }
+      body = { ...input };
+      if (method === "POST") body.user_id = ownerId;
+      if (resource === "operation_schedules" && method === "POST") {
+        body.schedule_type = body.schedule_type ?? "event";
+        body.schedule_config = body.schedule_config ?? {};
+        body.job_input = body.job_input ?? {};
+        body.is_enabled = body.is_enabled ?? true;
+      }
+      if (resource === "approval_requests" && method === "POST") {
+        body.action_payload = body.action_payload ?? {};
+        body.risk_level = body.risk_level ?? "medium";
+        body.requested_channels = body.requested_channels ?? ["in_app"];
+      }
+      if (resource === "notification_events" && method === "POST") {
+        body.status = "queued";
+        body.channel = body.channel;
+        body.metadata = body.metadata ?? {};
+      }
+      if (resource === "operation_events" && method === "POST") body.data = body.data ?? {};
+      if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
+    }
+  }
+  try {
+    const upstream = await fetch(new URL(endpoint, env.SUPABASE_URL!), {
+      method,
+      headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", ...(body ? { "content-type": "application/json", prefer: "return=representation" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    const raw = await upstream.text();
+    const payload = raw ? JSON.parse(raw) : null;
+    if (!upstream.ok) return json({ error: { code: "OPERATIONS_STORAGE_FAILED", message: upstream.status >= 500 ? "Operations storage failed. Confirm migration 0008 has been applied." : (payload?.message ?? "The operations request was rejected.") } }, upstream.status >= 500 ? 502 : upstream.status, headers);
+    if (method === "PATCH" && Array.isArray(payload) && payload.length === 0) return json({ error: { code: "NOT_FOUND", message: "Operations record not found." } }, 404, headers);
+    return json({ data: payload ?? [] }, method === "POST" ? 201 : 200, headers);
+  } catch {
+    return json({ error: { code: "DATABASE_UNAVAILABLE", message: "Operations storage is temporarily unavailable." } }, 502, headers);
+  }
+}
+
 async function handleMe(request: Request, env: Env, headers: Headers): Promise<Response> {
   const token = bearerToken(request);
   if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "A valid bearer token is required." } }, 401, headers);
@@ -675,6 +786,15 @@ export default {
     };
     const assistantResource = assistantRoutes[url.pathname];
     if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
+
+    const operationsRoutes: Record<string, OperationsResource> = {
+      "/api/v1/operations/schedules": "operation_schedules",
+      "/api/v1/operations/approvals": "approval_requests",
+      "/api/v1/operations/notifications": "notification_events",
+      "/api/v1/operations/events": "operation_events"
+    };
+    const operationsResource = operationsRoutes[url.pathname];
+    if (operationsResource) return handleOperationsResource(request, env, headers, operationsResource);
 
     if (url.pathname === "/api/v1/assistant/history/import") return handleChatGPTHistoryImport(request, env, headers);
 
