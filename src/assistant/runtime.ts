@@ -187,12 +187,15 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     const price = args.price_amount ?? null;
     if (price !== null && (typeof price !== "number" || !Number.isFinite(price) || price < 0)) return { error: "Price must be a non-negative number or null." };
     if (args.research_run_id !== undefined && args.research_run_id !== null && !validUuid(args.research_run_id)) return { error: "research_run_id must be a valid UUID or null." };
+    if (args.research_run_id) { const linked = await db(env, token, "/rest/v1/research_runs?select=id&id=eq." + encodeURIComponent(String(args.research_run_id)) + "&limit=1") as Row[]; if (!Array.isArray(linked) || !linked.length) return { error: "The linked research brief was not found in this workspace." }; }
+    const currency = typeof args.price_currency === "string" ? args.price_currency.toUpperCase() : "NGN";
+    if (!/^[A-Z]{3}$/.test(currency)) return { error: "price_currency must be a three-letter currency code." };
     const outline = Array.isArray(args.outline) && args.outline.every(item => typeof item === "string") ? args.outline.slice(0,50) : [];
     const rows = await db(env, token, "/rest/v1/products?select=id,name,product_type,status,price_amount,price_currency,created_at", "POST", {
       user_id: ownerId, research_run_id: args.research_run_id ?? null, name: nameValue, summary: args.summary ?? null,
       target_customer: args.target_customer ?? null, customer_problem: args.customer_problem ?? null,
       proposed_solution: args.proposed_solution ?? null, product_type: productType, outline,
-      price_amount: price, price_currency: typeof args.price_currency === "string" ? args.price_currency.toUpperCase() : "NGN",
+      price_amount: price, price_currency: currency,
       status: "draft", validation_notes: []
     }) as Row[];
     return { created: rows?.[0] ?? null };
