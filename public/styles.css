@@ -382,3 +382,10 @@ input,textarea,select{accent-color:#70d8d0}
 .product-card h3,.partner-card h3{margin:12px 0 6px;color:#e0f7f8}
 .product-card>a,.partner-card>a{color:#78d8df;font-size:11px}
 @media(max-width:640px){.form-row,.score-grid{grid-template-columns:1fr}}
+
+/* CRM and offer pipeline polish */
+.checkbox-line{display:flex!important;grid-template-columns:auto 1fr;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(100,186,205,.17);border-radius:11px;background:rgba(6,23,36,.45)}
+.checkbox-line input{width:18px!important;height:18px;accent-color:#5fd6d5}
+.risk-label{display:inline-flex;padding:6px 9px;margin:6px 0;border-radius:7px;background:rgba(255,116,116,.12);border:1px solid rgba(255,116,116,.3);color:#ffaaaa;font-size:9px;letter-spacing:1px;font-weight:800}
+.lead-card,.offer-card{animation:trace-in .3s ease both}
+.offer-card h3,.lead-card h3{color:#e2f7f8}
