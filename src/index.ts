@@ -877,7 +877,7 @@ async function runDueOperations(env: Env): Promise<void> {
   }
   try {
     await serviceRest(env,"/rest/v1/rpc/gigo_dispatch_due_schedules","POST",{p_limit:10});
-    const claimed = await serviceRest(env,"/rest/v1/rpc/gigo_claim_due_jobs","POST",{p_limit:3}) as DurableJob[];
+    const claimed = await serviceRest(env,"/rest/v1/rpc/gigo_claim_due_jobs","POST",{p_limit:1}) as DurableJob[];
     for (const job of Array.isArray(claimed) ? claimed : []) {
       try {
         await executeDurableJob(env,job);
