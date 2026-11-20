@@ -152,3 +152,24 @@ test("bounded runner enforces item limit under concurrent emissions", async () =
   );
   assert.equal(writes, 1);
 });
+
+
+test("bounded runner persists final counters and checkpoint", async () => {
+  const progress = [];
+  const result = await runCollectionActor(actor, { urls: ["https://example.com"] }, adapterFor(async (_a, _i, ctx) => {
+    await ctx.emitItem(outputItem());
+    return { status: "completed", counters: { pages: 2, items: 1, requests: 3 }, checkpoint: { cursor: "done" } };
+  }), baseContext, { persistProgress: async (value) => progress.push(value), persistItem: async () => {} });
+  assert.deepEqual(result.counters, { pages: 2, items: 1, requests: 3 });
+  assert.deepEqual(progress.at(-1), { pages: 2, items: 1, requests: 3, checkpoint: { cursor: "done" } });
+});
+
+test("bounded runner rejects final counters lower than persisted progress", async () => {
+  await assert.rejects(
+    runCollectionActor(actor, { urls: ["https://example.com"] }, adapterFor(async (_a, _i, ctx) => {
+      await ctx.reportProgress({ pages: 5, requests: 7 });
+      return { status: "completed", counters: { pages: 4, items: 0, requests: 6 } };
+    }), baseContext, { persistProgress: async () => {}, persistItem: async () => {} }),
+    (error) => error instanceof CollectionExecutionError && error.code === "INVALID_ADAPTER_RESULT"
+  );
+});
