@@ -181,3 +181,65 @@ comment on table public.collection_actors is 'Versioned reusable collection task
 comment on table public.collection_runs is 'Durable execution records; job scheduler remains the execution authority.';
 comment on table public.collection_datasets is 'Named output datasets produced by collection runs.';
 comment on table public.collection_items is 'Normalized collected records with source provenance and permission context.';
+
+
+-- Owner-authorized cancellation for runs that have not started executing.
+-- Lock the run and job rows in one transaction to avoid cancelling a job
+-- after the scheduler has already claimed it.
+create or replace function public.gigo_cancel_collection_run(p_run_id uuid)
+returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  target_job_id uuid;
+  target_job_status text;
+begin
+  select r.job_id
+    into target_job_id
+    from public.collection_runs r
+    where r.id = p_run_id
+      and r.user_id = auth.uid()
+      and r.status in ('queued','waiting_for_quota')
+    for update;
+
+  if not found then
+    return false;
+  end if;
+
+  if target_job_id is not null then
+    select j.status
+      into target_job_status
+      from public.jobs j
+      where j.id = target_job_id
+        and j.user_id = auth.uid()
+      for update;
+
+    if not found or target_job_status not in ('pending','waiting_for_worker','waiting_for_quota') then
+      return false;
+    end if;
+
+    update public.jobs
+      set status = 'cancelled',
+          finished_at = now(),
+          last_error = null,
+          progress = coalesce(progress, '{}'::jsonb) ||
+            jsonb_build_object('stage','cancelled','cancelled_at',now())
+      where id = target_job_id and user_id = auth.uid();
+  end if;
+
+  update public.collection_runs
+    set status = 'cancelled',
+        finished_at = now(),
+        error = null,
+        counters = coalesce(counters, '{}'::jsonb) ||
+          jsonb_build_object('cancelled_at',now())
+    where id = p_run_id and user_id = auth.uid();
+
+  return found;
+end;
+$$;
+
+revoke all on function public.gigo_cancel_collection_run(uuid) from public, anon;
+grant execute on function public.gigo_cancel_collection_run(uuid) to authenticated;
