@@ -103,7 +103,7 @@ export function robotsAllows(robotsText,targetUrl) {
   // Wildcard/end-anchor syntax is not interpreted by this minimal parser.
   // Fail closed rather than accidentally treating a restrictive rule as a literal prefix.
   if(applicable.some(rule=>/[*$]/.test(rule.value))) return false;
-  const matched=applicable.filter(rule=>path.startsWith(rule.value)).sort((a,b)=>b.value.length-a.value.length);
+  const matched=applicable.filter(rule=>path.startsWith(rule.value)).sort((a,b)=>b.value.length-a.value.length||Number(b.allow)-Number(a.allow));
   return !matched.length || matched[0].allow;
 }
 const robotsCache=new Map();
