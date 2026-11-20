@@ -918,8 +918,8 @@ async function executeDurableJob(env: Env, job: DurableJob): Promise<void> {
 }
 
 async function runDueOperations(env: Env): Promise<void> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn("GiGo scheduler is dormant: SUPABASE_SERVICE_ROLE_KEY is not configured.");
+  if (!env.SUPABASE_URL || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)) {
+    console.warn("GiGo scheduler is dormant: SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY) is not configured.");
     return;
   }
   try {
