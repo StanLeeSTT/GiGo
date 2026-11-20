@@ -31,7 +31,7 @@ begin
   -- cannot enqueue arbitrary actor names or unreviewed versions.
   if safe_actor_key <> 'public_page_metadata'
      or p_actor_version <> 1
-     or safe_actor_key !~ '^[a-z][a-z0-9_-]{1,95}
+     or p_actor_version is distinct from 1
      or jsonb_typeof(coalesce(p_input, '{}'::jsonb)) <> 'object'
      or octet_length(coalesce(p_input, '{}'::jsonb)::text) > 32768
      or char_length(safe_dataset_name) not between 1 and 180 then
