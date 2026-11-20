@@ -33,7 +33,7 @@ test("worker store uses Supabase secret key as apikey without a Bearer header", 
 
 test("worker store calls persistence lifecycle RPCs with the lease token", async () => {
   const calls = [];
-  const responses = [true, "inserted", true, true];
+  const responses = [true, "inserted", true, "retry_scheduled"];
   const store = createCollectionWorkerStore({
     supabaseUrl: "https://project.supabase.co",
     serviceKey: "sb_secret_example",
@@ -46,7 +46,7 @@ test("worker store calls persistence lifecycle RPCs with the lease token", async
   assert.equal(await store.progress("job-1", "lease-1", { pages: 1, items: 1, requests: 2 }, { cursor: "next" }), true);
   assert.equal(await store.persistItem("job-1", "lease-1", item), "inserted");
   assert.equal(await store.finish("job-1", "lease-1", "completed"), true);
-  assert.equal(await store.retry("job-1", "lease-1", { message: "temporary" }, 60), true);
+  assert.equal(await store.retry("job-1", "lease-1", { message: "temporary" }, 60), "retry_scheduled");
   assert.equal(calls.length, 4);
   assert.ok(calls.every((call) => call.init.headers.apikey === "sb_secret_example"));
   assert.ok(calls.every((call) => !("authorization" in call.init.headers)));
