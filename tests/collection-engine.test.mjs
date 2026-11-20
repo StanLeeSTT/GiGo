@@ -126,3 +126,29 @@ test("bounded runner stops an adapter at its actor deadline", async () => {
     (error) => error instanceof CollectionExecutionError && error.code === "TIMEOUT"
   );
 });
+
+
+test("bounded runner promptly rejects parent cancellation", async () => {
+  const controller = new AbortController();
+  const pending = runCollectionActor(actor, { urls: ["https://example.com"] }, adapterFor(async (_a, _i, ctx) => {
+    await new Promise((resolve) => ctx.signal.addEventListener("abort", resolve, { once: true }));
+    throw new Error("adapter observed cancellation");
+  }), { ...baseContext, signal: controller.signal }, { persistProgress: async () => {}, persistItem: async () => {} });
+  controller.abort();
+  await assert.rejects(pending, (error) => error instanceof CollectionExecutionError && error.code === "ABORTED");
+});
+
+test("bounded runner enforces item limit under concurrent emissions", async () => {
+  const limitedActor = { ...actor, maxItems: 1 };
+  let writes = 0;
+  await assert.rejects(
+    runCollectionActor(limitedActor, { urls: ["https://example.com"] }, adapterFor(async (_a, _i, ctx) => {
+      const results = await Promise.allSettled([ctx.emitItem(outputItem("one")), ctx.emitItem(outputItem("two"))]);
+      const rejected = results.find((result) => result.status === "rejected");
+      if (rejected) throw rejected.reason;
+      return { status: "completed", counters: { pages: 1, items: 2, requests: 1 } };
+    }), baseContext, { persistProgress: async () => {}, persistItem: async () => { writes += 1; } }),
+    (error) => error instanceof CollectionExecutionError && error.code === "ITEM_LIMIT"
+  );
+  assert.equal(writes, 1);
+});
