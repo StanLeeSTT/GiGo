@@ -690,7 +690,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
       if (method === "PATCH" && resource !== "operation_schedules") return json({ error: { code: "READ_ONLY_RESOURCE", message: "This operations resource cannot be edited." } }, 405, headers);
       if (Object.keys(input).some(k => !allowed[resource].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Unsupported operations field." } }, 400, headers);
       if (resource === "operation_schedules") {
-        if (method === "POST" && (!validText(input.name,160) || !validText(input.job_type,100))) return json({ error: { code: "INVALID_BODY", message: "Schedule name and job_type are required." } }, 400, headers);
+        if (method === "POST" && (!validText(input.name,160) || !["research_scan","business_review","daily_briefing","lead_review","custom"].includes(String(input.job_type)))) return json({ error: { code: "INVALID_BODY", message: "Schedule name and a supported internal job category are required." } }, 400, headers);
         if (input.schedule_type !== undefined && !["interval","daily","weekly","event"].includes(String(input.schedule_type))) return json({ error: { code: "INVALID_SCHEDULE", message: "Invalid schedule type." } }, 400, headers);
         if (input.schedule_config !== undefined && (!input.schedule_config || typeof input.schedule_config !== "object" || Array.isArray(input.schedule_config))) return json({ error: { code: "INVALID_BODY", message: "schedule_config must be an object." } }, 400, headers);
         if (method === "POST") {
