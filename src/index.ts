@@ -1073,6 +1073,37 @@ export default {
     const collectionResource = collectionReadRoutes[url.pathname];
     if (collectionResource) return handleCollectionRead(request, env, headers, collectionResource);
 
+    if (url.pathname === "/api/v1/collection/runs") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to create a collection run." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const body = await readJson(request);
+        if (!body || typeof body.actor_key !== "string" || body.actor_key.length > 96) {
+          return json({ error: { code: "INVALID_BODY", message: "actor_key and actor_input are required." } }, 400, headers);
+        }
+        const actor = getCollectionActor(body.actor_key);
+        if (!actor) return json({ error: { code: "UNKNOWN_ACTOR", message: "That collection actor is not in the catalogue." } }, 404, headers);
+        if (!actor.validateInput(body.actor_input)) return json({ error: { code: "INVALID_ACTOR_INPUT", message: "The supplied actor input does not match the actor's schema or safety limits." } }, 400, headers);
+        const datasetName = typeof body.dataset_name === "string" ? body.dataset_name.trim() : "Collected data";
+        if (!datasetName || datasetName.length > 180) return json({ error: { code: "INVALID_DATASET_NAME", message: "dataset_name must contain 1 to 180 characters." } }, 400, headers);
+        const response = await fetch(new URL("/rest/v1/rpc/gigo_create_collection_run", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_actor_key: actor.key, p_actor_version: actor.version, p_input: body.actor_input, p_dataset_name: datasetName }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "COLLECTION_ENQUEUE_FAILED", message: "Could not create the collection run. Confirm migration 0012 is applied." } }, 502, headers);
+        const created = await response.json() as Record<string, unknown>;
+        return json({ data: { ...created, execution_enabled: false, note: "The run, dataset and durable job are queued atomically. Collection execution remains disabled until the dedicated worker is deployed." } }, 202, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_ENQUEUE_FAILED", message: "Could not create the collection run." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/collection/plan") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
