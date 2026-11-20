@@ -264,3 +264,21 @@ A provider that is merely listed in the catalogue is not enough. Candidate-unver
 `src/collection/worker.ts` now connects the bounded runner to the service-role store abstraction. It claims one bounded batch, resolves the exact actor version and provider-keyed adapter, persists progress/checkpoints and provenance-bearing items, and records completion or retry/failure outcomes. It refuses to claim any jobs when the adapter registry is empty. Missing provider adapters are retried with a delay; permanent actor/adapter output errors are marked failed. Retry RPC outcomes distinguish `retry_scheduled`, `failed` and `lease_lost`.
 
 **Still not scheduled or activated:** the orchestrator is not called from the Cloudflare cron handler. There is no live-verified adapter registered yet, and the worker's database migrations remain unapplied. This keeps queued collection jobs safely isolated until a real provider passes end-to-end tests.
+
+
+## First manually dispatched safe HTTP batch adapter
+
+The feature branch now contains a GiGo-owned `gigo_safe_http_batch` provider and a manual GitHub Actions runner. It is intentionally separate from Crawlee and Playwright; it is a small native Node HTTPS collector, not a claim that either external framework has been installed.
+
+The runner:
+- resolves each hostname to IPv4 and rejects private, loopback, link-local, shared, documentation, benchmark, multicast and reserved ranges;
+- pins the checked IPv4 address into the HTTPS request while preserving hostname-based TLS verification;
+- accepts HTTPS only on port 443, uses GET only, sends no cookies or credentials, caps response bytes and request time, and manually revalidates every redirect;
+- checks `robots.txt` for each origin and evaluates path rules; unsupported wildcard/end-anchor rules fail closed, and robots errors other than 404/410 block collection;
+- extracts only page title, description and canonical URL, with source provenance;
+- preserves successful URL checkpoints across retryable network/DNS/timeout/429/5xx errors; permanent HTTP/policy blocks are recorded as skipped items;
+- processes at most one durable job per manual workflow invocation.
+
+The workflow is `workflow_dispatch` only and is restricted to the trusted feature branch. It requires GitHub repository secrets named `SUPABASE_URL` and `SUPABASE_SECRET_KEY`; do not place these values in source files or chat. The provider remains disabled until the SQL migrations are applied and an owner-scoped provider row is configured as healthy with `web_fetch`.
+
+**Security review still required before live use:** the implementation is a conservative first boundary, not a guarantee against every network or content-parser attack. The tests and CI must pass; SQL migrations need a real PostgreSQL/Supabase integration test; the workflow must be reviewed; and a low-risk owner-controlled test URL should be used first. No public arbitrary-URL collection should be activated before those gates.
