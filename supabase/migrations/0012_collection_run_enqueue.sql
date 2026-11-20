@@ -34,7 +34,7 @@ begin
   -- Only the reviewed actor version can be enqueued through this RPC.
   if safe_actor_key <> 'public_page_metadata'
      or p_actor_version is distinct from 1
-     or safe_provider_key !~ '^[a-z][a-z0-9_-]{1,63}$'
+     or safe_provider_key not in ('crawlee','playwright')
      or jsonb_typeof(coalesce(p_input, '{}'::jsonb)) <> 'object'
      or octet_length(coalesce(p_input, '{}'::jsonb)::text) > 32768
      or char_length(safe_dataset_name) not between 1 and 180 then
