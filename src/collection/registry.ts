@@ -211,30 +211,7 @@ const providers: readonly CollectionProviderDefinition[] = [
     defaultEnabled: false,
     notes: "User-requested candidate. Exact project/repository identity and maintenance status still need verification."
   },
-  {
-    key: "insight_social_candidate",
-    name: "InsightSocial (extended connector candidate)",
-    category: "social_api",
-    verification: "candidate_unverified",
-    executionModes: ["external_api"],
-    capabilities: ["social_discovery", "social_metrics"],
-    platforms: ["instagram", "tiktok", "youtube", "facebook", "x", "linkedin"],
-    freeTier: "unknown",
-    defaultEnabled: false,
-    notes: "Alias retained for future provider-specific adapters; consolidate with insight_social after API validation."
-  },
-  {
-    key: "socq_candidate",
-    name: "SocQ (extended connector candidate)",
-    category: "social_collection",
-    verification: "candidate_unverified",
-    executionModes: ["external_api"],
-    capabilities: ["social_discovery", "structured_extraction"],
-    platforms: ["social_platforms"],
-    freeTier: "unknown",
-    defaultEnabled: false,
-    notes: "Alias retained for future provider-specific adapters; consolidate with socq after API validation."
-  }
+
 ];
 
 export function listCollectionProviders(): CollectionProviderDefinition[] {
