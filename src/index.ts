@@ -368,6 +368,16 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
     }
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
     body = { ...input };
+    if (resource === "partner_candidates") {
+      const weights: Record<string, number> = { audience_fit: 20, authenticity_engagement: 20, credibility_reputation: 15, reach_consistency: 10, commercial_potential: 15, brand_values: 10, operational_readiness: 5, legal_rights_readiness: 5 };
+      const components = body.score_components && typeof body.score_components === "object" && !Array.isArray(body.score_components) ? body.score_components as JsonRecord : {};
+      const keys = Object.keys(weights);
+      const complete = keys.every(key => typeof components[key] === "number" && Number.isFinite(components[key]) && Number(components[key]) >= 0 && Number(components[key]) <= weights[key]);
+      const diligence = body.due_diligence && typeof body.due_diligence === "object" && !Array.isArray(body.due_diligence) ? body.due_diligence as JsonRecord : {};
+      const hardStop = diligence.hard_stop === true;
+      body.total_score = complete ? keys.reduce((sum, key) => sum + Number(components[key]), 0) : null;
+      body.recommendation = hardStop ? "hard_stop" : !complete ? "investigate" : Number(body.total_score) >= 80 ? "shortlist" : Number(body.total_score) >= 65 ? "investigate" : "not_recommend";
+    }
     if (method === "POST") {
       body.user_id = ownerId;
       if (resource === "products" && body.status === undefined) body.status = "draft";
