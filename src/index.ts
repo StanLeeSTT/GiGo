@@ -2,6 +2,7 @@ import { callAIModel } from "./assistant/providers";
 import { getAssistantCapabilities } from "./assistant/registry";
 import { handleAssistantChat } from "./assistant/runtime";
 import { providerPoolStatus } from "./assistant/providers";
+import { handleMaxunRequest } from "./integrations/maxun";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -19,6 +20,8 @@ export interface Env {
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_AI_TOKEN?: string;
   CLOUDFLARE_AI_MODEL?: string;
+  MAXUN_BASE_URL?: string;
+  MAXUN_API_KEY?: string;
   ASSETS?: Fetcher;
 }
 
@@ -1031,6 +1034,13 @@ export default {
     };
     const operationsResource = operationsRoutes[url.pathname];
     if (operationsResource) return handleOperationsResource(request, env, headers, operationsResource);
+
+    if (url.pathname.startsWith("/api/v1/integrations/maxun/")) {
+      return handleMaxunRequest(request, env, url.pathname, async () => {
+        const token = bearerToken(request);
+        return token ? verifiedUserId(token, env) : null;
+      });
+    }
 
     if (url.pathname === "/api/v1/assistant/history/import") return handleChatGPTHistoryImport(request, env, headers);
 
