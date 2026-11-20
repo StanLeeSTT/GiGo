@@ -46,6 +46,10 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "research_discover_sources", description: "Search Crossref and OpenAlex public scholarly metadata indexes for records relevant to a saved research brief, then store matching records and abstracts as unreviewed evidence. Metadata discovery is not full-text verification.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, query: { type: "string", minLength: 2, maxLength: 500 }, limit: { type: "integer", minimum: 1, maximum: 10 } }, required: ["research_run_id","query"], additionalProperties: false } } },
   { type: "function", function: { name: "research_save_source", description: "Save an already verified or user-provided source and excerpt. Never invent a source.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 500 }, url: { type: "string", minLength: 1, maxLength: 2048 }, publisher: { type: ["string","null"], maxLength: 300 }, excerpt: { type: ["string","null"], maxLength: 10000 }, source_type: { type: "string", enum: ["web","paper","dataset","report","social","other"] } }, required: ["research_run_id","title","url"], additionalProperties: false } } },
   { type: "function", function: { name: "research_save_opportunity", description: "Save a business opportunity with customer problem and validation plan.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 200 }, customer_problem: { type: "string", minLength: 1, maxLength: 5000 }, target_customer: { type: ["string","null"], maxLength: 1000 }, proposed_solution: { type: ["string","null"], maxLength: 5000 }, revenue_model: { type: ["string","null"], maxLength: 1000 }, validation_steps: { type: "array", items: { type: "string" } } }, required: ["research_run_id","title","customer_problem"], additionalProperties: false } } },
+  { type: "function", function: { name: "products_list", description: "List the owner's saved Product Studio records.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "products_create", description: "Save a product brief in Product Studio. This creates a draft record; it does not manufacture or publish the product.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, summary: { type: ["string","null"], maxLength: 5000 }, target_customer: { type: ["string","null"], maxLength: 2000 }, customer_problem: { type: ["string","null"], maxLength: 5000 }, proposed_solution: { type: ["string","null"], maxLength: 5000 }, product_type: { type: "string", enum: ["ebook","course","workbook","template","membership","software","service","other"] }, outline: { type: "array", items: { type: "string" } }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, research_run_id: { type: ["string","null"] } }, required: ["name"], additionalProperties: false } } },
+  { type: "function", function: { name: "partners_list", description: "List the owner's saved partner candidates and their evidence-based scorecards.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "partners_save_candidate", description: "Save a creator or distribution partner candidate. Score only evidence supplied or actually inspected. The score components use the documented 100-point policy: audience fit 20, authenticity and engagement 20, credibility and reputation 15, reach and consistency 10, commercial potential 15, brand and values 10, operational readiness 5, legal and rights readiness 5. Set hard_stop for a disqualifying issue. Missing evidence must remain unscored.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, platform: { type: "string", minLength: 1, maxLength: 80 }, profile_url: { type: "string", minLength: 1, maxLength: 2048 }, niche: { type: ["string","null"], maxLength: 500 }, follower_count: { type: ["integer","null"], minimum: 0 }, average_views: { type: ["integer","null"], minimum: 0 }, business_email: { type: ["string","null"], maxLength: 320 }, has_competing_offer: { type: ["boolean","null"] }, score_components: { type: ["object","null"], properties: { audience_fit: { type: "number", minimum: 0, maximum: 20 }, authenticity_engagement: { type: "number", minimum: 0, maximum: 20 }, credibility_reputation: { type: "number", minimum: 0, maximum: 15 }, reach_consistency: { type: "number", minimum: 0, maximum: 10 }, commercial_potential: { type: "number", minimum: 0, maximum: 15 }, brand_values: { type: "number", minimum: 0, maximum: 10 }, operational_readiness: { type: "number", minimum: 0, maximum: 5 }, legal_rights_readiness: { type: "number", minimum: 0, maximum: 5 } }, additionalProperties: false }, evidence: { type: "array", items: { type: "string", maxLength: 2048 } }, due_diligence: { type: ["object","null"] }, hard_stop: { type: "boolean" } }, required: ["name","platform","profile_url"], additionalProperties: false } } },
   { type: "function", function: { name: "projects_list", description: "List the owner's projects.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "projects_create", description: "Create a project in the owner's GiGo workspace.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 160 }, description: { type: ["string", "null"], maxLength: 5000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "tasks_list", description: "List the owner's tasks. Optionally filter by project_id or status.", parameters: { type: "object", properties: { project_id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, additionalProperties: false } } },
@@ -171,6 +175,56 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     const steps = Array.isArray(args.validation_steps) && args.validation_steps.every(step => typeof step === "string") ? args.validation_steps.slice(0,20) : [];
     const rows = await db(env, token, "/rest/v1/research_opportunities?select=id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_steps,status,created_at", "POST", { user_id: ownerId, research_run_id: args.research_run_id, title, customer_problem: problem, target_customer: args.target_customer ?? null, proposed_solution: args.proposed_solution ?? null, revenue_model: args.revenue_model ?? null, validation_steps: steps, status: "discovered" }) as Row[];
     return { saved: rows?.[0] ?? null };
+  }
+  if (name === "products_list") {
+    return { products: await db(env, token, "/rest/v1/products?select=id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "products_create") {
+    const nameValue = typeof args.name === "string" ? args.name.trim() : "";
+    if (!nameValue || nameValue.length > 200) return { error: "Product name must be 1–200 characters." };
+    const productType = args.product_type ?? "other";
+    if (!["ebook","course","workbook","template","membership","software","service","other"].includes(String(productType))) return { error: "Invalid product type." };
+    const price = args.price_amount ?? null;
+    if (price !== null && (typeof price !== "number" || !Number.isFinite(price) || price < 0)) return { error: "Price must be a non-negative number or null." };
+    if (args.research_run_id !== undefined && args.research_run_id !== null && !validUuid(args.research_run_id)) return { error: "research_run_id must be a valid UUID or null." };
+    const outline = Array.isArray(args.outline) && args.outline.every(item => typeof item === "string") ? args.outline.slice(0,50) : [];
+    const rows = await db(env, token, "/rest/v1/products?select=id,name,product_type,status,price_amount,price_currency,created_at", "POST", {
+      user_id: ownerId, research_run_id: args.research_run_id ?? null, name: nameValue, summary: args.summary ?? null,
+      target_customer: args.target_customer ?? null, customer_problem: args.customer_problem ?? null,
+      proposed_solution: args.proposed_solution ?? null, product_type: productType, outline,
+      price_amount: price, price_currency: typeof args.price_currency === "string" ? args.price_currency.toUpperCase() : "NGN",
+      status: "draft", validation_notes: []
+    }) as Row[];
+    return { created: rows?.[0] ?? null };
+  }
+  if (name === "partners_list") {
+    return { partners: await db(env, token, "/rest/v1/partner_candidates?select=id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "partners_save_candidate") {
+    const candidateName = typeof args.name === "string" ? args.name.trim() : "";
+    const platform = typeof args.platform === "string" ? args.platform.trim() : "";
+    const profileUrl = typeof args.profile_url === "string" ? args.profile_url.trim() : "";
+    if (!candidateName || candidateName.length > 200 || !platform || platform.length > 80) return { error: "Candidate name and platform are required." };
+    try { const parsed = new URL(profileUrl); if (!["http:","https:"].includes(parsed.protocol)) throw new Error(); } catch { return { error: "Profile URL must be a valid HTTP or HTTPS URL." }; }
+    const weights: Record<string, number> = { audience_fit: 20, authenticity_engagement: 20, credibility_reputation: 15, reach_consistency: 10, commercial_potential: 15, brand_values: 10, operational_readiness: 5, legal_rights_readiness: 5 };
+    const supplied = isObject(args.score_components) ? args.score_components : {};
+    let score: number | null = null;
+    const keys = Object.keys(weights);
+    if (keys.every(key => typeof supplied[key] === "number" && Number.isFinite(supplied[key]) && Number(supplied[key]) >= 0 && Number(supplied[key]) <= weights[key])) {
+      score = keys.reduce((sum, key) => sum + Number(supplied[key]), 0);
+    }
+    const hardStop = args.hard_stop === true;
+    const recommendation = hardStop ? "hard_stop" : score === null ? "investigate" : score >= 80 ? "shortlist" : score >= 65 ? "investigate" : "not_recommend";
+    const evidence = Array.isArray(args.evidence) ? args.evidence.filter(item => typeof item === "string").slice(0,30) : [];
+    const rows = await db(env, token, "/rest/v1/partner_candidates?select=id,name,platform,profile_url,total_score,recommendation,status,created_at", "POST", {
+      user_id: ownerId, name: candidateName, platform, profile_url: profileUrl, niche: args.niche ?? null,
+      follower_count: args.follower_count ?? null, average_views: args.average_views ?? null,
+      business_email: args.business_email ?? null, has_competing_offer: args.has_competing_offer ?? null,
+      score_components: score === null ? {} : supplied, total_score: score, recommendation,
+      evidence, due_diligence: { ...(isObject(args.due_diligence) ? args.due_diligence : {}), hard_stop: hardStop, score_complete: score !== null },
+      status: "new"
+    }) as Row[];
+    return { saved: rows?.[0] ?? null, scoring: { total_score: score, recommendation, complete: score !== null, hard_stop: hardStop, maximum: 100 }, note: score === null ? "Candidate saved without a score because all eight evidence-backed score components were not supplied." : "Score is based only on the supplied evidence and should be reviewed before acting." };
   }
   if (name === "projects_list") {
     const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
@@ -408,7 +462,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
       "Do not create extra conversations or add duplicate messages unless the user explicitly requests that action. Normal chat turns are already saved automatically.",
       "Only confirm a memory, conversation, or message was saved after the matching tool returns a successful created/archived result. If the tool returns an error, report the failure plainly.",
       "Never invent tool results. Ask a concise clarifying question when required arguments are missing. Never attempt external actions such as sending email, publishing, spending money or signing agreements; those capabilities are not executable.",
-      "GiGo can create research briefs, discover scholarly metadata through Crossref and OpenAlex, and save source records as unreviewed evidence. Metadata discovery is not full-text verification or claim-level fact checking. Market analysis and evidence synthesis remain in development. Product, creator partnership, lead, offer, marketing, outreach, launch, commerce, creative, customer support, analytics and learning modules remain planned.",
+      "GiGo can create research briefs, discover scholarly metadata through Crossref and OpenAlex, and save source records as unreviewed evidence. Product Studio can save product briefs. Partner Finder can save candidates and calculate the documented 100-point score only when all eight score components are supplied; incomplete evidence stays unscored. Metadata discovery is not full-text verification or claim-level fact checking. Automated lead discovery, offer, marketing, outreach, launch, commerce, creative, customer support, analytics and learning workflows remain in development.",
       "Currently executable capability registry: " + JSON.stringify(available),
       "Relevant saved user memory candidates (ranked against this message; use only directly relevant facts): " + JSON.stringify((Array.isArray(memory) ? memory : []).map((row: Row) => { const terms = [...new Set(userMessage.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 2))]; const haystack = (String(row.category ?? "") + " " + String(row.content ?? "")).toLowerCase(); return { row, score: terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0) }; }).filter((item: { row: Row; score: number }) => item.score > 0).sort((a: { score: number }, b: { score: number }) => b.score-a.score).slice(0, 10).map((item: { row: Row; score: number }) => ({ ...item.row, relevance: item.score }))), 
       "For memory questions, use memory_search with the user's actual query. For questions about prior discussions, use conversations_search; do not pretend saved memories contain the entire conversation history. Distinguish explicit saved memory from conversation evidence and inference.",
