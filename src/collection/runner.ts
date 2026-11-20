@@ -74,11 +74,19 @@ export async function runCollectionActor(
   let persistedRequests = 0;
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   let timeoutReject: ((reason: Error) => void) | undefined;
+  let abortReject: ((reason: Error) => void) | undefined;
+  let timedOut = false;
 
   const timeout = new Promise<never>((_, reject) => { timeoutReject = reject; });
+  const aborted = new Promise<never>((_, reject) => { abortReject = reject; });
+  const onAbort = () => {
+    if (!timedOut) abortReject?.(new CollectionExecutionError("ABORTED", "Collection run was cancelled."));
+  };
+  controller.signal.addEventListener("abort", onAbort, { once: true });
   timeoutHandle = setTimeout(() => {
-    controller.abort(new Error("Collection actor exceeded its execution deadline."));
+    timedOut = true;
     timeoutReject?.(new CollectionExecutionError("TIMEOUT", "Collection actor exceeded its execution deadline."));
+    controller.abort(new Error("Collection actor exceeded its execution deadline."));
   }, actor.maxDurationMs);
 
   const executionContext: CollectionExecutionContext = {
@@ -101,15 +109,17 @@ export async function runCollectionActor(
         controller.abort(new Error("Actor output limit reached."));
         throw new CollectionExecutionError("ITEM_LIMIT", "Actor exceeded its maximum item count.");
       }
-      await hooks.persistItem(item);
+      // Reserve synchronously before awaiting persistence so concurrent adapter
+      // emissions cannot race past the actor's maximum item count.
       emittedItems += 1;
+      await hooks.persistItem(item);
     }
   };
 
   try {
     if (controller.signal.aborted) throw new CollectionExecutionError("ABORTED", "Collection run was cancelled.");
     const execution = adapter.execute(actor, input, executionContext);
-    const result = await Promise.race([execution, timeout]);
+    const result = await Promise.race([execution, timeout, aborted]);
     if (!result || !["completed", "partial"].includes(result.status)
       || !result.counters
       || safeCounter(result.counters.pages) === undefined
@@ -131,6 +141,7 @@ export async function runCollectionActor(
     throw error;
   } finally {
     if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    controller.signal.removeEventListener("abort", onAbort);
     parentSignal?.removeEventListener("abort", abortFromParent);
   }
 }
