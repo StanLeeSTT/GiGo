@@ -421,7 +421,6 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
   }
-  endpoint = "/rest/v1/" + resource + "?" + filters.toString();
   try {
     const upstream = await fetch(new URL(endpoint, env.SUPABASE_URL!), {
       method,
@@ -730,6 +729,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
 
     }
   }
+  endpoint = "/rest/v1/" + resource + "?" + filters.toString();
   try {
     const upstream = await fetch(new URL(endpoint, env.SUPABASE_URL!), {
       method,
