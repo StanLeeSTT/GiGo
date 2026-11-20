@@ -139,6 +139,9 @@ create policy collection_runs_owner_all on public.collection_runs
     and (provider_id is null or exists (
       select 1 from public.collection_providers p where p.id = provider_id and p.user_id = auth.uid()
     ))
+    and (job_id is null or exists (
+      select 1 from public.jobs j where j.id = job_id and j.user_id = auth.uid()
+    ))
   );
 
 drop policy if exists collection_datasets_owner_all on public.collection_datasets;
