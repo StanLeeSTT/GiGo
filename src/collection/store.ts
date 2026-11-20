@@ -7,6 +7,7 @@ export interface CollectionWorkerClaim {
   dataset_id: string;
   actor_key: string;
   actor_version: number;
+  provider_key: string;
   actor_input: Record<string, unknown>;
   checkpoint: Record<string, unknown>;
   attempts: number;
