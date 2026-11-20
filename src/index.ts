@@ -616,8 +616,9 @@ async function handleCapabilities(request: Request, env: Env, headers: Headers):
   }
 }
 
-type OperationsResource = "operation_schedules" | "approval_requests" | "notification_events" | "operation_events";
+type OperationsResource = "jobs" | "operation_schedules" | "approval_requests" | "notification_events" | "operation_events";
 const OPERATIONS_COLUMNS: Record<OperationsResource, string> = {
+  jobs: "id,job_type,status,input,progress,checkpoint,idempotency_key,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at",
   operation_schedules: "id,name,schedule_type,schedule_config,job_type,job_input,is_enabled,next_run_at,last_run_at,created_at,updated_at",
   approval_requests: "id,job_id,action_type,title,summary,action_payload,risk_level,status,requested_channels,decision_note,decided_at,expires_at,created_at,updated_at",
   notification_events: "id,approval_request_id,job_id,channel,event_type,title,body,status,provider,provider_reference,attempt_count,scheduled_for,sent_at,delivered_at,last_error,metadata,created_at,updated_at",
@@ -642,7 +643,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
 
   const filters = new URLSearchParams({ select: OPERATIONS_COLUMNS[resource], order: "created_at.desc", limit: "100" });
   if (method === "GET") {
-    if (resource === "approval_requests" || resource === "notification_events") {
+    if (resource === "approval_requests" || resource === "notification_events" || resource === "jobs") {
       const status = url.searchParams.get("status");
       if (status && /^[a-z_]+$/.test(status)) filters.set("status", "eq." + status);
     }
@@ -657,12 +658,25 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
     const input = await readJson(request);
     if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
     const allowed: Record<OperationsResource, string[]> = {
+      jobs: ["job_type","input","run_after","idempotency_key"],
       operation_schedules: ["name","schedule_type","schedule_config","job_type","job_input","is_enabled","next_run_at"],
       approval_requests: ["job_id","action_type","title","summary","action_payload","risk_level","requested_channels","expires_at"],
       notification_events: ["approval_request_id","job_id","channel","event_type","title","body","scheduled_for","metadata"],
       operation_events: ["job_id","approval_request_id","event_type","severity","title","detail","data"]
     };
-    if (resource === "approval_requests" && method === "PATCH") {
+    if (resource === "jobs" && method === "PATCH") {
+      if (Object.keys(input).some(k => k !== "status") || input.status !== "cancelled") return json({ error: { code: "INVALID_JOB_ACTION", message: "Only cancellation is available until the job runner is implemented." } }, 400, headers);
+      body = { status: "cancelled", finished_at: new Date().toISOString() };
+      filters.set("id", "eq." + id);
+      filters.set("status", "in.(pending,paused,waiting_for_worker,waiting_for_quota,awaiting_approval)");
+    } else if (resource === "jobs" && method === "POST") {
+      const allowedJobTypes = ["research_scan","business_review","daily_briefing","lead_review","custom"];
+      if (!validText(input.job_type,100) || !allowedJobTypes.includes(String(input.job_type))) return json({ error: { code: "INVALID_JOB_TYPE", message: "Choose a supported GiGo job category." } }, 400, headers);
+      if (input.input !== undefined && (!input.input || typeof input.input !== "object" || Array.isArray(input.input))) return json({ error: { code: "INVALID_BODY", message: "Job input must be an object." } }, 400, headers);
+      if (input.run_after !== undefined && (typeof input.run_after !== "string" || !Number.isFinite(Date.parse(input.run_after)))) return json({ error: { code: "INVALID_DATE", message: "run_after must be a valid timestamp." } }, 400, headers);
+      if (input.idempotency_key !== undefined && (typeof input.idempotency_key !== "string" || input.idempotency_key.length < 8 || input.idempotency_key.length > 160)) return json({ error: { code: "INVALID_IDEMPOTENCY_KEY", message: "idempotency_key must contain 8 to 160 characters." } }, 400, headers);
+      body = { user_id: ownerId, job_type: input.job_type, input: input.input ?? {}, run_after: input.run_after ?? new Date().toISOString(), idempotency_key: input.idempotency_key ?? crypto.randomUUID(), status: "pending", progress: {}, checkpoint: {}, attempts: 0 };
+    } else if (resource === "approval_requests" && method === "PATCH") {
       if (Object.keys(input).some(k => !["status","decision_note"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Approval decisions can only change status and decision note." } }, 400, headers);
       if (!["approved","rejected"].includes(String(input.status))) return json({ error: { code: "INVALID_DECISION", message: "A decision must be approved or rejected." } }, 400, headers);
       body = { status: input.status, decision_note: typeof input.decision_note === "string" ? input.decision_note.slice(0,2000) : null, decided_at: new Date().toISOString() };
@@ -791,6 +805,7 @@ export default {
     if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
 
     const operationsRoutes: Record<string, OperationsResource> = {
+      "/api/v1/operations/jobs": "jobs",
       "/api/v1/operations/schedules": "operation_schedules",
       "/api/v1/operations/approvals": "approval_requests",
       "/api/v1/operations/notifications": "notification_events",
