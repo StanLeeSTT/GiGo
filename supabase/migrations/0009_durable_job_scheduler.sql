@@ -27,8 +27,8 @@ begin
       and schedule_type in ('interval','daily','weekly')
       and coalesce(next_run_at, now()) <= now()
     order by coalesce(next_run_at, created_at), created_at
-    for update skip locked
     limit greatest(1, least(coalesce(p_limit, 10), 20))
+    for update skip locked
   loop
     -- The first scheduler pass calculates the first future run; it does not fire immediately.
     if schedule_row.next_run_at is null then
@@ -124,8 +124,8 @@ begin
         and run_after <= now()
         and attempts < 5
       order by run_after asc, created_at asc
-      for update skip locked
       limit greatest(1, least(coalesce(p_limit, 5), 10))
+      for update skip locked
     )
     update public.jobs as j
       set status = 'processing',
