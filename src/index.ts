@@ -372,10 +372,10 @@ async function handleChatGPTHistoryImport(request: Request, env: Env, headers: H
   try { ownerId = await verifiedUserId(token, env); }
   catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
   if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
-  const normalized: Row[] = [];
+  const normalized: JsonRecord[] = [];
   for (const item of batch) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return json({ error: { code: "INVALID_IMPORT_MESSAGE", message: "An imported message has an invalid format." } }, 400, headers);
-    const message = item as Row;
+    const message = item as JsonRecord;
     const id = typeof message.id === "string" ? message.id.slice(0, 200) : "";
     const role = message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : "";
     const content = typeof message.content === "string" ? message.content.trim() : "";
@@ -387,7 +387,7 @@ async function handleChatGPTHistoryImport(request: Request, env: Env, headers: H
     const lookup = new URLSearchParams({ select: "id,context", "context->>chatgpt_conversation_id": "eq." + externalId, limit: "1" });
     const conversations = await fetch(new URL("/rest/v1/assistant_conversations?" + lookup.toString(), env.SUPABASE_URL!), { headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" } });
     if (!conversations.ok) throw new Error("Conversation lookup failed.");
-    const found = await conversations.json() as Row[];
+    const found = await conversations.json() as JsonRecord[];
     let conversationId = typeof found?.[0]?.id === "string" ? found[0].id : "";
     if (!conversationId) {
       const createdAt = typeof input.created_at === "string" && Number.isFinite(Date.parse(input.created_at)) ? new Date(input.created_at).toISOString() : undefined;
@@ -397,17 +397,17 @@ async function handleChatGPTHistoryImport(request: Request, env: Env, headers: H
         body: JSON.stringify({ user_id: ownerId, title, context: { source: "chatgpt_import", chatgpt_conversation_id: externalId, original_created_at: createdAt ?? null }, ...(createdAt ? { created_at: createdAt } : {}) })
       });
       if (!createResponse.ok) throw new Error("Conversation creation failed.");
-      const created = await createResponse.json() as Row[];
+      const created = await createResponse.json() as JsonRecord[];
       conversationId = typeof created?.[0]?.id === "string" ? created[0].id : "";
       if (!conversationId) throw new Error("Conversation ID was not returned.");
     }
-    const ids = normalized.map(row => String((row.metadata as Row).chatgpt_message_id));
+    const ids = normalized.map(row => String((row.metadata as JsonRecord).chatgpt_message_id));
     const existingParams = new URLSearchParams({ select: "id,metadata", conversation_id: "eq." + conversationId, "metadata->>source": "eq.chatgpt_import", "metadata->>chatgpt_message_id": "in.(" + ids.map(id => id.replace(/[(),]/g, "")).join(",") + ")", limit: "100" });
     const existingResponse = await fetch(new URL("/rest/v1/assistant_messages?" + existingParams.toString(), env.SUPABASE_URL!), { headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" } });
     if (!existingResponse.ok) throw new Error("Duplicate check failed.");
-    const existing = await existingResponse.json() as Row[];
-    const existingIds = new Set((Array.isArray(existing) ? existing : []).map(row => String((row.metadata as Row | undefined)?.chatgpt_message_id ?? "")));
-    const pending = normalized.filter(row => !existingIds.has(String((row.metadata as Row).chatgpt_message_id))).map(row => ({ ...row, conversation_id: conversationId }));
+    const existing = await existingResponse.json() as JsonRecord[];
+    const existingIds = new Set((Array.isArray(existing) ? existing : []).map(row => String((row.metadata as JsonRecord | undefined)?.chatgpt_message_id ?? "")));
+    const pending = normalized.filter(row => !existingIds.has(String((row.metadata as JsonRecord).chatgpt_message_id))).map(row => ({ ...row, conversation_id: conversationId }));
     if (pending.length) {
       const insertResponse = await fetch(new URL("/rest/v1/assistant_messages?select=id", env.SUPABASE_URL!), { method: "POST", headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(pending) });
       if (!insertResponse.ok) throw new Error("Message batch could not be saved.");
