@@ -216,7 +216,7 @@ export async function runHealthCheck() {
   if (await store.healthCheck() !== "gigo-collection-worker-v1") throw new Error("Collection worker health RPC returned an unexpected version.");
   const provider = await findSingleSafeHttpProvider(supabaseUrl, serviceKey);
   if (!await store.promoteSafeHttpProvider(provider.id)) throw new Error("Provider health promotion was rejected by database policy.");
-  process.stdout.write(JSON.stringify({ health_check: "passed", provider_key: "gigo_safe_http_batch", provider_status: "healthy", jobs_claimed: 0 }) + "\\n");
+  process.stdout.write(JSON.stringify({ health_check: "passed", provider_key: "gigo_safe_http_batch", provider_status: "healthy", jobs_claimed: 0 }) + "\n");
   return { health_check: "passed", provider_status: "healthy", jobs_claimed: 0 };
 }
 export async function runBatchFromEnvironment() {
@@ -228,5 +228,6 @@ export async function runBatchFromEnvironment() {
   process.stdout.write(JSON.stringify(result)+"\n"); return result;
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href) {
-  runBatchFromEnvironment().catch(error=>{process.stderr.write("Collection batch failed: "+String(error?.message??"Unknown error").slice(0,300)+"\n");process.exitCode=1;});
+  const task = process.argv.includes("--health-check") ? runHealthCheck : runBatchFromEnvironment;
+  task().catch(error=>{process.stderr.write("Collection batch failed: "+String(error?.message??"Unknown error").slice(0,300)+"\n");process.exitCode=1;});
 }
