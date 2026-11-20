@@ -171,7 +171,7 @@ A GitHub Actions typecheck workflow has been added for this feature branch. A su
 
 Planning rules are fail-closed:
 
-- Candidate-unverified providers are never marked ready.
+- Candidate-unverified providers and integration scaffolds are never marked ready.
 - Providers must have an owner-scoped configuration record.
 - Provider status must be `healthy`; configured/degraded status is not enough.
 - The connected provider record must explicitly include every required capability.
