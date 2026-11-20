@@ -213,3 +213,16 @@ Migration `0011_scheduler_job_type_allowlist.sql` replaces the claim function wi
 The runner test suite now also checks that adapter exceptions, item persistence failures and final checkpoint persistence failures propagate rather than being reported as successful runs.
 
 **Deployment boundary:** migration 0011 is committed but has not been applied to Supabase. Migration 0010 also remains unapplied. Collection execution remains disabled, and no collection job should be enqueued.
+
+
+## Atomic run creation (migration 0012)
+
+Migration `0012_collection_run_enqueue.sql` adds the authenticated RPC `gigo_create_collection_run`. In one database transaction it creates:
+- a `collection_run` job with a unique idempotency key;
+- the owner-scoped `collection_runs` row linked to that job;
+- an owner-scoped output dataset linked to the run;
+- job input references to the run and dataset.
+
+The Worker exposes authenticated `POST /api/v1/collection/runs`. It validates the actor key and actor input against the in-code actor definition before calling the RPC with the user's bearer token. It returns HTTP 202 with the run, job and dataset identifiers.
+
+**Safety boundary:** this only creates durable queued records. Migration 0011's generic scheduler allowlist excludes `collection_run`, so the generic AI worker cannot claim it. The endpoint explicitly returns `execution_enabled: false`. No provider is called and no external network request is made. The RPC and endpoint are not live until migrations 0010, 0011 and 0012 are applied and the Worker is deployed.
