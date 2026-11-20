@@ -353,6 +353,72 @@ async function handleAssistantResource(request: Request, env: Env, headers: Head
 }
 
 
+async function handleChatGPTHistoryImport(request: Request, env: Env, headers: Headers): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo storage is not configured." } }, 503, headers);
+  if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST to import conversation history." } }, 405, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to import your history." } }, 401, headers);
+  let input: JsonRecord;
+  try {
+    const value: unknown = await request.json();
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
+    input = value as JsonRecord;
+  } catch { return json({ error: { code: "INVALID_BODY", message: "A valid JSON import batch is required." } }, 400, headers); }
+  const externalId = typeof input.chatgpt_conversation_id === "string" ? input.chatgpt_conversation_id.trim() : "";
+  const title = typeof input.title === "string" ? input.title.trim().slice(0, 160) : "Imported ChatGPT conversation";
+  const batch = Array.isArray(input.messages) ? input.messages : [];
+  if (!externalId || externalId.length > 200 || !batch.length || batch.length > 60) return json({ error: { code: "INVALID_IMPORT_BATCH", message: "Each import batch needs a conversation ID and between 1 and 60 messages." } }, 400, headers);
+  let ownerId: string | null;
+  try { ownerId = await verifiedUserId(token, env); }
+  catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
+  if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+  const normalized: Row[] = [];
+  for (const item of batch) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return json({ error: { code: "INVALID_IMPORT_MESSAGE", message: "An imported message has an invalid format." } }, 400, headers);
+    const message = item as Row;
+    const id = typeof message.id === "string" ? message.id.slice(0, 200) : "";
+    const role = message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : "";
+    const content = typeof message.content === "string" ? message.content.trim() : "";
+    if (!id || !role || !content || content.length > 20000) return json({ error: { code: "INVALID_IMPORT_MESSAGE", message: "Imported messages must have an ID, user/assistant role and text up to 20,000 characters." } }, 400, headers);
+    const createdAt = typeof message.created_at === "string" && Number.isFinite(Date.parse(message.created_at)) ? new Date(message.created_at).toISOString() : undefined;
+    normalized.push({ user_id: ownerId, role, content, ...(createdAt ? { created_at: createdAt } : {}), metadata: { source: "chatgpt_import", chatgpt_message_id: id, imported_at: new Date().toISOString() } });
+  }
+  try {
+    const lookup = new URLSearchParams({ select: "id,context", "context->>chatgpt_conversation_id": "eq." + externalId, limit: "1" });
+    const conversations = await fetch(new URL("/rest/v1/assistant_conversations?" + lookup.toString(), env.SUPABASE_URL!), { headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" } });
+    if (!conversations.ok) throw new Error("Conversation lookup failed.");
+    const found = await conversations.json() as Row[];
+    let conversationId = typeof found?.[0]?.id === "string" ? found[0].id : "";
+    if (!conversationId) {
+      const createdAt = typeof input.created_at === "string" && Number.isFinite(Date.parse(input.created_at)) ? new Date(input.created_at).toISOString() : undefined;
+      const createResponse = await fetch(new URL("/rest/v1/assistant_conversations?select=id", env.SUPABASE_URL!), {
+        method: "POST",
+        headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", prefer: "return=representation" },
+        body: JSON.stringify({ user_id: ownerId, title, context: { source: "chatgpt_import", chatgpt_conversation_id: externalId, original_created_at: createdAt ?? null }, ...(createdAt ? { created_at: createdAt } : {}) })
+      });
+      if (!createResponse.ok) throw new Error("Conversation creation failed.");
+      const created = await createResponse.json() as Row[];
+      conversationId = typeof created?.[0]?.id === "string" ? created[0].id : "";
+      if (!conversationId) throw new Error("Conversation ID was not returned.");
+    }
+    const ids = normalized.map(row => String((row.metadata as Row).chatgpt_message_id));
+    const existingParams = new URLSearchParams({ select: "id,metadata", conversation_id: "eq." + conversationId, "metadata->>source": "eq.chatgpt_import", "metadata->>chatgpt_message_id": "in.(" + ids.map(id => id.replace(/[(),]/g, "")).join(",") + ")", limit: "100" });
+    const existingResponse = await fetch(new URL("/rest/v1/assistant_messages?" + existingParams.toString(), env.SUPABASE_URL!), { headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" } });
+    if (!existingResponse.ok) throw new Error("Duplicate check failed.");
+    const existing = await existingResponse.json() as Row[];
+    const existingIds = new Set((Array.isArray(existing) ? existing : []).map(row => String((row.metadata as Row | undefined)?.chatgpt_message_id ?? "")));
+    const pending = normalized.filter(row => !existingIds.has(String((row.metadata as Row).chatgpt_message_id))).map(row => ({ ...row, conversation_id: conversationId }));
+    if (pending.length) {
+      const insertResponse = await fetch(new URL("/rest/v1/assistant_messages?select=id", env.SUPABASE_URL!), { method: "POST", headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(pending) });
+      if (!insertResponse.ok) throw new Error("Message batch could not be saved.");
+    }
+    return json({ data: { conversation_id: conversationId, received: normalized.length, imported: pending.length, skipped_duplicates: normalized.length - pending.length } }, 200, headers);
+  } catch {
+    return json({ error: { code: "HISTORY_IMPORT_FAILED", message: "This history batch could not be saved. You can safely retry it; duplicate messages are checked before insertion." } }, 502, headers);
+  }
+}
+
+
 async function handleCapabilities(request: Request, env: Env, headers: Headers): Promise<Response> {
   const token = bearerToken(request);
   if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view GiGo assistant capabilities." } }, 401, headers);
@@ -413,6 +479,8 @@ export default {
     };
     const assistantResource = assistantRoutes[url.pathname];
     if (assistantResource) return handleAssistantResource(request, env, headers, assistantResource);
+
+    if (url.pathname === "/api/v1/assistant/history/import") return handleChatGPTHistoryImport(request, env, headers);
 
     if (request.method === "GET" && url.pathname === "/api/v1/assistant/capabilities") return handleCapabilities(request, env, headers);
 
