@@ -1,6 +1,6 @@
-import { getCollectionActor } from "./actors";
-import { getCollectionAdapter, listRegisteredCollectionAdapters } from "./adapters";
-import { CollectionExecutionError, runCollectionActor } from "./runner";
+import { getCollectionActor } from "./actors.ts";
+import { getCollectionAdapter, listRegisteredCollectionAdapters } from "./adapters.ts";
+import { CollectionExecutionError, runCollectionActor } from "./runner.ts";
 import type { CollectionWorkerStore } from "./store";
 
 export interface CollectionWorkerBatchResult {
