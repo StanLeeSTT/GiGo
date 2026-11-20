@@ -1,4 +1,7 @@
 -- Dedicated collection worker claim boundary.
+create unique index if not exists collection_runs_job_id_unique
+  on public.collection_runs(job_id) where job_id is not null;
+
 -- This function is service-role only. It never makes collection jobs visible to
 -- the generic operations worker and claims at most ten jobs per call.
 create or replace function public.gigo_claim_collection_jobs(
@@ -86,7 +89,9 @@ begin
       from public.collection_runs r
       join public.collection_datasets d
         on d.run_id = r.id and d.user_id = r.user_id
-      where r.job_id = candidate.id
+      where r.id = (candidate.input->>'collection_run_id')::uuid
+        and d.id = (candidate.input->>'dataset_id')::uuid
+        and r.job_id = candidate.id
         and r.user_id = candidate.user_id
         and r.status = 'queued'
       order by d.created_at asc
