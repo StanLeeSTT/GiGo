@@ -5,7 +5,7 @@ import { providerPoolStatus } from "./assistant/providers";
 import { handleMaxunRequest } from "./integrations/maxun";
 import { listCollectionProviders, getCollectionProviderVerificationSummary } from "./collection/registry";
 import { listCollectionActors, getCollectionActor } from "./collection/actors";
-import { planCollectionProviders } from "./collection/planner";
+import { planCollectionProviders, type ConnectedCollectionProvider } from "./collection/planner";
 import { listRegisteredCollectionAdapters } from "./collection/adapters";
 export interface Env {
   SUPABASE_URL?: string;
@@ -1067,8 +1067,8 @@ export default {
           signal: AbortSignal.timeout(10000)
         });
         if (!providerResponse.ok) return json({ error: { code: "PROVIDER_LOOKUP_FAILED", message: "Could not inspect your configured collection providers. Confirm migration 0010 has been applied." } }, 502, headers);
-        const connected = await providerResponse.json() as Array<{id:string;provider_key:string;status:string;capabilities:unknown;quota_state?:Record<string,unknown>}>;
-        const candidates = planCollectionProviders(actor.requiredCapabilities, listCollectionProviders(), Array.isArray(connected) ? connected as never : []);
+        const connected = await providerResponse.json() as ConnectedCollectionProvider[];
+        const candidates = planCollectionProviders(actor.requiredCapabilities, listCollectionProviders(), Array.isArray(connected) ? connected : []);
         const selected = candidates.find((candidate) => candidate.ready);
         return json({ data: { actor: { key: actor.key, version: actor.version }, valid: true, required_capabilities: actor.requiredCapabilities, candidates, selected_provider: selected ?? null, can_execute: false, reason: selected ? "A healthy provider is available, but execution remains disabled until the durable collection worker is implemented." : "No connected healthy provider currently satisfies this actor's requirements." } }, 200, headers);
       } catch {
