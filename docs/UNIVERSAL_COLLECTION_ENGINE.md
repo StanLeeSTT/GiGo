@@ -179,3 +179,10 @@ Planning rules are fail-closed:
 - The endpoint does not enqueue jobs, make external requests or claim execution readiness.
 
 The endpoint currently returns `can_execute: false` even when a provider candidate is healthy. This is intentional until a reviewed adapter and durable collection worker are connected.
+
+
+## Safe cancellation
+
+`POST /api/v1/collection/runs/{run_id}/cancel` requests cancellation for an owner-scoped run only while it is still queued or waiting for quota. The database function locks the run and its linked job, checks ownership through the caller's RLS context, and cancels both in one transaction. If the scheduler has already claimed the job, cancellation is rejected with a conflict rather than falsely reporting success.
+
+This is queued-work cancellation, not interruption of an active network request. Active execution cancellation will require an adapter worker that propagates an abort signal and persists a terminal state safely.
