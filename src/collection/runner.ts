@@ -130,9 +130,19 @@ export async function runCollectionActor(
     if (result.counters.items !== emittedItems) {
       throw new CollectionExecutionError("INVALID_ADAPTER_RESULT", "Adapter item count does not match the number of persisted items.");
     }
+    if (result.counters.pages < persistedPages || result.counters.requests < persistedRequests) {
+      throw new CollectionExecutionError("INVALID_ADAPTER_RESULT", "Final adapter counters cannot be lower than previously persisted progress.");
+    }
+    const finalCounters = { pages: result.counters.pages, items: emittedItems, requests: result.counters.requests };
+    // Persist a final checkpoint/counter snapshot even when the adapter did
+    // not emit an intermediate progress event.
+    await hooks.persistProgress({
+      ...finalCounters,
+      ...(result.checkpoint ? { checkpoint: result.checkpoint } : {})
+    });
     return {
       status: result.status,
-      counters: { pages: result.counters.pages, items: emittedItems, requests: result.counters.requests },
+      counters: finalCounters,
       ...(result.checkpoint ? { checkpoint: result.checkpoint } : {})
     };
   } catch (error) {
