@@ -779,15 +779,15 @@ async function handleMe(request: Request, env: Env, headers: Headers): Promise<R
 
 type DurableJob = {
   id: string; user_id: string; job_type: string; input?: JsonRecord;
-  attempts?: number; run_after?: string; created_at?: string;
+  attempts?: number; run_after?: string; created_at?: string; checkpoint?: JsonRecord;
 };
 
-async function serviceRest(env: Env, path: string, method = "GET", body?: unknown): Promise<unknown> {
+async function serviceRest(env: Env, path: string, method = "GET", body?: unknown, prefer = "return=representation"): Promise<unknown> {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Background execution is not configured: add the Supabase service_role key as a Cloudflare Worker secret.");
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   const response = await fetch(new URL(path, env.SUPABASE_URL), {
     method,
-    headers: { apikey: key, authorization: "Bearer " + key, accept: "application/json", ...(body !== undefined ? { "content-type": "application/json", prefer: "return=representation" } : {}) },
+    headers: { apikey: key, authorization: "Bearer " + key, accept: "application/json", ...(body !== undefined ? { "content-type": "application/json", prefer } : {}) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {})
   });
   const raw = await response.text();
@@ -874,9 +874,17 @@ async function executeDurableJob(env: Env, job: DurableJob): Promise<void> {
   let researchRunId: string | null = null;
   if (job.job_type === "research_scan") {
     const runTitle = ("GiGo Research: " + (taskPrompt || "Scheduled research scan")).slice(0,200);
-    const createdRuns = await serviceRest(env,"/rest/v1/research_runs?select=id","POST",{user_id:job.user_id,title:runTitle,research_question:taskPrompt || "Prepare a scheduled research scan.",market_scope:typeof input.market_scope === "string" ? input.market_scope.slice(0,1000) : null,status:"running"}) as JsonRecord[];
-    researchRunId = Array.isArray(createdRuns) && typeof createdRuns[0]?.id === "string" ? String(createdRuns[0].id) : null;
+    const previousRunId = typeof job.checkpoint?.research_run_id === "string" ? String(job.checkpoint.research_run_id) : null;
+    if (previousRunId) {
+      const existingRuns = await serviceRest(env,"/rest/v1/research_runs?select=id&id=eq."+encodeURIComponent(previousRunId)+"&user_id=eq."+encodeURIComponent(job.user_id)) as JsonRecord[];
+      if (Array.isArray(existingRuns) && existingRuns.length) researchRunId = previousRunId;
+    }
+    if (!researchRunId) {
+      const createdRuns = await serviceRest(env,"/rest/v1/research_runs?select=id","POST",{user_id:job.user_id,title:runTitle,research_question:taskPrompt || "Prepare a scheduled research scan.",market_scope:typeof input.market_scope === "string" ? input.market_scope.slice(0,1000) : null,status:"running"}) as JsonRecord[];
+      researchRunId = Array.isArray(createdRuns) && typeof createdRuns[0]?.id === "string" ? String(createdRuns[0].id) : null;
+    }
     if (!researchRunId) throw new Error("The research scan could not create its research record.");
+    await serviceRest(env,"/rest/v1/jobs?id=eq."+encodeURIComponent(job.id)+"&status=eq.processing","PATCH",{checkpoint:{stage:"research_persisting",research_run_id:researchRunId}});
     const seenUrls = new Set<string>();
     for (const source of evidence) {
       const sourceUrl = typeof source.url === "string" ? source.url : "";
@@ -884,12 +892,12 @@ async function executeDurableJob(env: Env, job: DurableJob): Promise<void> {
       if (!sourceUrl || !sourceTitle || seenUrls.has(sourceUrl)) continue;
       try { const parsed = new URL(sourceUrl); if (!["http:","https:"].includes(parsed.protocol)) continue; } catch { continue; }
       seenUrls.add(sourceUrl);
-      await serviceRest(env,"/rest/v1/research_sources?select=id","POST",{user_id:job.user_id,research_run_id:researchRunId,source_type:"paper",title:sourceTitle.slice(0,500),url:sourceUrl.slice(0,2048),publisher:typeof source.publisher === "string" ? source.publisher.slice(0,300) : null,excerpt:typeof source.abstract === "string" ? source.abstract.slice(0,10000) : null,evidence_status:"unreviewed",metadata:{discovery_source:source.source ?? "public_index",publication_year:source.publication_year ?? null}});
+      await serviceRest(env,"/rest/v1/research_sources?on_conflict=research_run_id,url&select=id","POST",{user_id:job.user_id,research_run_id:researchRunId,source_type:"paper",title:sourceTitle.slice(0,500),url:sourceUrl.slice(0,2048),publisher:typeof source.publisher === "string" ? source.publisher.slice(0,300) : null,excerpt:typeof source.abstract === "string" ? source.abstract.slice(0,10000) : null,evidence_status:"unreviewed",metadata:{discovery_source:source.source ?? "public_index",publication_year:source.publication_year ?? null}},"resolution=ignore-duplicates,return=representation");
     }
     await serviceRest(env,"/rest/v1/research_runs?id=eq."+encodeURIComponent(researchRunId),"PATCH",{status:"completed",summary:report,findings:[{summary:report,source_count:seenUrls.size}],methodology:{discovery_sources:["Crossref","OpenAlex"],full_text_verified:false,claim_level_verification:false},completed_at:now});
   }
   const progress = { stage:"completed", result:report, provider:result.provider, model:result.model, key_id:result.keyId, completed_at:now, evidence_count:evidence.length, research_run_id:researchRunId };
-  const update = await serviceRest(env, "/rest/v1/jobs?id=eq." + encodeURIComponent(job.id) + "&status=eq.processing", "PATCH", { status:"completed", progress, checkpoint:{ stage:"completed", completed_at:now }, finished_at:now, last_error:null }) as JsonRecord[];
+  const update = await serviceRest(env, "/rest/v1/jobs?id=eq." + encodeURIComponent(job.id) + "&status=eq.processing", "PATCH", { status:"completed", progress, checkpoint:{ stage:"completed", completed_at:now, research_run_id:researchRunId }, finished_at:now, last_error:null }) as JsonRecord[];
   if (!Array.isArray(update) || !update.length) return;
   const usage = result.usage && typeof result.usage === "object" ? result.usage as JsonRecord : {};
   await serviceRest(env,"/rest/v1/ai_usage_events","POST",{user_id:job.user_id,provider:result.provider,model:result.model,key_id:result.keyId,prompt_tokens:Number(usage.prompt_tokens??0),completion_tokens:Number(usage.completion_tokens??0),total_tokens:Number(usage.total_tokens??0)});
@@ -916,6 +924,9 @@ async function runDueOperations(env: Env): Promise<void> {
         const quota = /rate.?limit|quota|429/i.test(message);
         const retryAt = new Date(Date.now() + (quota ? 60*60*1000 : 5*60*1000)).toISOString();
         const status = exhausted ? "failed" : quota ? "waiting_for_quota" : "waiting_for_worker";
+        if (exhausted && job.job_type === "research_scan" && typeof job.checkpoint?.research_run_id === "string") {
+          await serviceRest(env,"/rest/v1/research_runs?id=eq."+encodeURIComponent(String(job.checkpoint.research_run_id))+"&user_id=eq."+encodeURIComponent(job.user_id),"PATCH",{status:"failed",summary:message,completed_at:new Date().toISOString()});
+        }
         await serviceRest(env,"/rest/v1/jobs?id=eq."+encodeURIComponent(job.id)+"&status=eq.processing","PATCH",{status,run_after:retryAt,last_error:message,progress:{stage:status,error:message,updated_at:new Date().toISOString()},...(exhausted?{finished_at:new Date().toISOString()}:{})});
         await serviceRest(env,"/rest/v1/operation_events","POST",{user_id:job.user_id,event_type:exhausted?"job.failed":"job.retry_scheduled",severity:exhausted?"error":"warning",title:exhausted?"GiGo job failed":"GiGo job will retry",detail:message,data:{job_id:job.id,attempts}});
         if(exhausted) await serviceRest(env,"/rest/v1/notification_events","POST",{user_id:job.user_id,job_id:job.id,channel:"in_app",event_type:"job.failed",title:"GiGo could not complete a task",body:message,status:"queued",metadata:{job_id:job.id}});
