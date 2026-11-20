@@ -839,7 +839,36 @@ async function researchMetadata(query: string): Promise<JsonRecord[]> {
       }
     }
   }
-  return out.slice(0,10);
+  // GDELT adds current news coverage to scholarly discovery. It requires no API key;
+  // keep the request small and tolerate rate limits or non-JSON error responses.
+  try {
+    const newsUrl = "https://api.gdeltproject.org/api/v2/doc/doc?query=" + encodeURIComponent(q) + "&mode=ArtList&format=json&maxrecords=5&timespan=3m&sort=DateDesc";
+    const newsResponse = await fetch(newsUrl, { headers: { accept: "application/json" } });
+    const contentType = newsResponse.headers.get("content-type") ?? "";
+    if (newsResponse.ok && contentType.includes("json")) {
+      const news = await newsResponse.json() as JsonRecord;
+      const articles = Array.isArray(news.articles) ? news.articles as JsonRecord[] : [];
+      for (const article of articles) {
+        if (typeof article.title !== "string" || typeof article.url !== "string") continue;
+        out.push({
+          source: "GDELT",
+          title: article.title,
+          url: article.url,
+          publisher: typeof article.domain === "string" ? article.domain : null,
+          published: typeof article.seendate === "string" ? article.seendate : null,
+          language: article.language ?? null,
+          source_country: article.sourcecountry ?? null
+        });
+      }
+    }
+  } catch {
+    // A news API failure must not discard successfully discovered scholarly records.
+  }
+  const unique = new Map<string, JsonRecord>();
+  for (const item of out) {
+    if (typeof item.url === "string" && !unique.has(item.url)) unique.set(item.url, item);
+  }
+  return Array.from(unique.values()).slice(0,15);
 }
 
 async function executeDurableJob(env: Env, job: DurableJob): Promise<void> {
@@ -903,9 +932,9 @@ async function executeDurableJob(env: Env, job: DurableJob): Promise<void> {
       if (!sourceUrl || !sourceTitle || seenUrls.has(sourceUrl)) continue;
       try { const parsed = new URL(sourceUrl); if (!["http:","https:"].includes(parsed.protocol)) continue; } catch { continue; }
       seenUrls.add(sourceUrl);
-      await serviceRest(env,"/rest/v1/research_sources?on_conflict=research_run_id,url&select=id","POST",{user_id:job.user_id,research_run_id:researchRunId,source_type:"paper",title:sourceTitle.slice(0,500),url:sourceUrl.slice(0,2048),publisher:typeof source.publisher === "string" ? source.publisher.slice(0,300) : null,excerpt:typeof source.abstract === "string" ? source.abstract.slice(0,10000) : null,evidence_status:"unreviewed",metadata:{discovery_source:source.source ?? "public_index",publication_year:source.publication_year ?? null}},"resolution=ignore-duplicates,return=representation");
+      await serviceRest(env,"/rest/v1/research_sources?on_conflict=research_run_id,url&select=id","POST",{user_id:job.user_id,research_run_id:researchRunId,source_type:source.source === "GDELT" ? "web" : "paper",title:sourceTitle.slice(0,500),url:sourceUrl.slice(0,2048),publisher:typeof source.publisher === "string" ? source.publisher.slice(0,300) : null,excerpt:typeof source.abstract === "string" ? source.abstract.slice(0,10000) : null,evidence_status:"unreviewed",metadata:{discovery_source:source.source ?? "public_index",publication_year:source.publication_year ?? null,language:source.language ?? null,source_country:source.source_country ?? null,published:source.published ?? null}},"resolution=ignore-duplicates,return=representation");
     }
-    await serviceRest(env,"/rest/v1/research_runs?id=eq."+encodeURIComponent(researchRunId),"PATCH",{status:"completed",summary:report,findings:[{summary:report,source_count:seenUrls.size}],methodology:{discovery_sources:["Crossref","OpenAlex"],full_text_verified:false,claim_level_verification:false},completed_at:now});
+    await serviceRest(env,"/rest/v1/research_runs?id=eq."+encodeURIComponent(researchRunId),"PATCH",{status:"completed",summary:report,findings:[{summary:report,source_count:seenUrls.size}],methodology:{discovery_sources:["Crossref","OpenAlex","GDELT DOC 2.0"],full_text_verified:false,claim_level_verification:false,news_results_may_be_rate_limited:true},completed_at:now});
   }
   const progress = { stage:"completed", result:report, provider:result.provider, model:result.model, key_id:result.keyId, completed_at:now, evidence_count:evidence.length, research_run_id:researchRunId };
   const update = await serviceRest(env, "/rest/v1/jobs?id=eq." + encodeURIComponent(job.id) + "&status=eq.processing", "PATCH", { status:"completed", progress, checkpoint:{ stage:"completed", completed_at:now, research_run_id:researchRunId }, finished_at:now, last_error:null }) as JsonRecord[];
