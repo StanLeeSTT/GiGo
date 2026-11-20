@@ -252,3 +252,9 @@ The SQL contract tests check the scheduler allowlist, worker-only grants, lease 
 `src/collection/store.ts` now provides a typed client for the dedicated worker RPCs: claim, progress/checkpoint, item persistence, finish and retry. It supports the current Supabase `sb_secret_*` API key format (sent as `apikey` only) and legacy service-role JWTs (also sent as Bearer), keeps database response bodies out of errors, and uses bounded request timeouts. Mocked-fetch tests cover the request payloads, lease-token forwarding, duplicate-versus-lost-lease outcomes and both key formats.
 
 This is a database client, not a running worker. It is not called by the scheduled handler. No provider has yet passed end-to-end execution verification, so collection jobs remain excluded from automatic claiming.
+
+### Provider-bound run enqueue
+
+Run creation now requires a provider key. The API checks the owner's provider record through RLS and the fail-closed provider planner before calling the database. The enqueue RPC independently rechecks that the provider belongs to the authenticated owner, is marked healthy, and explicitly grants the actor's `web_fetch` capability. It stores the provider ID/key on the run and job. The dedicated claim RPC returns that provider key so a future worker can resolve the correct adapter rather than guessing.
+
+A provider that is merely listed in the catalogue is not enough. Candidate-unverified providers and integration scaffolds remain blocked. The run endpoint returns a conflict when the selected provider is not verified, healthy or capability-compatible.
