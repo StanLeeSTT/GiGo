@@ -316,7 +316,7 @@ async function handleAssistantResource(request: Request, env: Env, headers: Head
       body = { title: input.title ?? null, context: input.context ?? {} };
     } else if (resource === "assistant_messages") {
       if (method !== "POST" || Object.keys(input).some(k => !["role","content","metadata"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Only role, content and metadata can be supplied for a message." } }, 400, headers);
-      if (!["user","assistant"].includes(String(input.role)) || typeof input.content !== "string" || !input.content.trim() || input.content.length > 20000) return json({ error: { code: "INVALID_BODY", message: "Message role or content is invalid." } }, 400, headers);
+      if (!["user","assistant"].includes(String(input.role)) || typeof input.content !== "string" || !input.content.trim() || input.content.length > 100000) return json({ error: { code: "INVALID_BODY", message: "Message role or content is invalid." } }, 400, headers);
       if (input.metadata !== undefined && (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata))) return json({ error: { code: "INVALID_BODY", message: "Message metadata must be an object." } }, 400, headers);
       body = { conversation_id: url.searchParams.get("conversation_id"), role: input.role, content: input.content, metadata: input.metadata ?? {} };
     } else {
@@ -379,7 +379,7 @@ async function handleChatGPTHistoryImport(request: Request, env: Env, headers: H
     const id = typeof message.id === "string" ? message.id.slice(0, 200) : "";
     const role = message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : "";
     const content = typeof message.content === "string" ? message.content.trim() : "";
-    if (!id || !role || !content || content.length > 20000) return json({ error: { code: "INVALID_IMPORT_MESSAGE", message: "Imported messages must have an ID, user/assistant role and text up to 20,000 characters." } }, 400, headers);
+    if (!id || !role || !content || content.length > 20000) return json({ error: { code: "INVALID_IMPORT_MESSAGE", message: "Imported messages must have an ID, user/assistant role and text up to 100,000 characters." } }, 400, headers);
     const createdAt = typeof message.created_at === "string" && Number.isFinite(Date.parse(message.created_at)) ? new Date(message.created_at).toISOString() : undefined;
     normalized.push({ user_id: ownerId, role, content, ...(createdAt ? { created_at: createdAt } : {}), metadata: { source: "chatgpt_import", chatgpt_message_id: id, imported_at: new Date().toISOString() } });
   }
