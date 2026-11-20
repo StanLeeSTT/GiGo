@@ -1039,7 +1039,7 @@ export default {
     }
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
 
-    const cancelCollectionRunMatch = url.pathname.match(/^\\/api\\/v1\\/collection\\/runs\\/([0-9a-f-]{36})\\/cancel$/i);
+    const cancelCollectionRunMatch = url.pathname.match(/^\/api\/v1\/collection\/runs\/([0-9a-f-]{36})\/cancel$/i);
     if (cancelCollectionRunMatch) {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
