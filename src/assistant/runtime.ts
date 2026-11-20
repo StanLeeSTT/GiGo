@@ -65,7 +65,7 @@ function validUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, token: string, ownerId: string): Promise<Row> {
+async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, token: string, ownerId: string, excludedMessageId?: string): Promise<Row> {
   if (name === "projects_list") {
     const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
     return { projects: rows };
@@ -159,11 +159,47 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
   if (name === "conversations_search") {
     const query = typeof args.query === "string" ? args.query.trim() : "";
     if (!query || query.length > 300) return { error: "A search query of 1–300 characters is required." };
-    const escaped = query.replace(/[%,()]/g, " ").trim();
-    if (!escaped) return { error: "Please provide searchable words." };
-    const pattern = `%${escaped}%`;
-    const rows = await db(env, token, `/rest/v1/assistant_messages?select=id,conversation_id,role,content,created_at&content=ilike.${encodeURIComponent(pattern)}&order=created_at.desc&limit=30`) as Row[];
-    return { query, matches: rows };
+    const stopWords = new Set(["the","and","for","with","from","that","this","about","what","when","where","were","have","has","had","our","your","their","into","onto","then","than","them","they","you","are","was","how","why","who","which","previous","conversation","conversations","discussion","discussions","please","tell","show","find","search"]);
+    const terms = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length >= 3 && !stopWords.has(term)))].slice(0, 10);
+    if (!terms.length) return { error: "Please provide at least one specific search term." };
+    const params = new URLSearchParams({
+      select: "id,conversation_id,role,content,created_at",
+      or: `(${terms.map(term => `content.ilike.*${term}*`).join(",")})`,
+      order: "created_at.desc",
+      limit: "200"
+    });
+    if (excludedMessageId && validUuid(excludedMessageId)) params.set("id", `neq.${excludedMessageId}`);
+    const rows = await db(env, token, `/rest/v1/assistant_messages?${params.toString()}`) as Row[];
+    const ranked = (Array.isArray(rows) ? rows : []).map(row => {
+      const content = String(row.content ?? "").toLowerCase();
+      const matchedTerms = terms.filter(term => content.includes(term));
+      const coverage = matchedTerms.length / terms.length;
+      const phrase = query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const normalized = content.replace(/[^a-z0-9]+/g, " ");
+      const phraseMatch = phrase.length >= 8 && normalized.includes(phrase);
+      const score = matchedTerms.length * 3 + coverage * 4 + (phraseMatch ? 8 : 0) + (row.role === "user" ? 1 : 0);
+      return { row, score, matched_terms: matchedTerms };
+    }).filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score || String(b.row.created_at ?? "").localeCompare(String(a.row.created_at ?? "")))
+      .slice(0, 25);
+    const conversationIds = [...new Set(ranked.map(item => String(item.row.conversation_id ?? "")).filter(validUuid))];
+    let titles: Row[] = [];
+    if (conversationIds.length) {
+      const titleParams = new URLSearchParams({ select: "id,title,created_at", id: `in.(${conversationIds.join(",")})` });
+      titles = await db(env, token, `/rest/v1/assistant_conversations?${titleParams.toString()}`) as Row[];
+    }
+    const titleMap = new Map((Array.isArray(titles) ? titles : []).map(row => [String(row.id), row.title ?? null]));
+    return {
+      query,
+      searched_terms: terms,
+      searched_messages: Array.isArray(rows) ? rows.length : 0,
+      matches: ranked.map(item => ({
+        ...item.row,
+        conversation_title: titleMap.get(String(item.row.conversation_id)) ?? null,
+        matched_terms: item.matched_terms,
+        relevance: Math.round(item.score * 10) / 10
+      }))
+    };
   }
   if (name === "memory_list") {
     const params = new URLSearchParams({ select: "id,category,content,source,confidence,is_active,created_at,updated_at", order: "updated_at.desc", limit: "100" });
@@ -240,7 +276,8 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
       conversationId = created[0].id as string;
     }
 
-    await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "user", content: userMessage, metadata: {} });
+    const insertedUserRows = await db(env, token, "/rest/v1/assistant_messages?select=id", "POST", { user_id: ownerId, conversation_id: conversationId, role: "user", content: userMessage, metadata: {} }) as Row[];
+    const currentMessageId = typeof insertedUserRows?.[0]?.id === "string" ? insertedUserRows[0].id : undefined;
     const [history, memory] = await Promise.all([
       db(env, token, `/rest/v1/assistant_messages?select=role,content&conversation_id=eq.${encodeURIComponent(conversationId!)}&order=created_at.desc&limit=24`),
       db(env, token, "/rest/v1/memory_items?select=id,category,content,source,confidence,updated_at&is_active=eq.true&order=updated_at.desc&limit=100")
@@ -307,7 +344,7 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
           continue;
         }
         let result: Row;
-        try { result = await executeTool(name, args, env, token, ownerId); }
+        try { result = await executeTool(name, args, env, token, ownerId, currentMessageId); }
         catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
         const toolContent = JSON.stringify(result);
         messages.push({ role: "tool", tool_call_id: callId, content: toolContent });
