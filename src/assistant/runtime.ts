@@ -41,6 +41,10 @@ async function db(env: AssistantRuntimeEnv, token: string, path: string, method 
 }
 
 const TOOL_DEFINITIONS = [
+  { type: "function", function: { name: "research_list", description: "List saved research briefs.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "research_create", description: "Create a research brief. This only saves the brief; it does not perform web research.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, research_question: { type: "string", minLength: 1, maxLength: 5000 }, market_scope: { type: ["string","null"], maxLength: 1000 } }, required: ["title","research_question"], additionalProperties: false } } },
+  { type: "function", function: { name: "research_save_source", description: "Save an already verified or user-provided source and excerpt. Never invent a source.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 500 }, url: { type: "string", minLength: 1, maxLength: 2048 }, publisher: { type: ["string","null"], maxLength: 300 }, excerpt: { type: ["string","null"], maxLength: 10000 }, source_type: { type: "string", enum: ["web","paper","dataset","report","social","other"] } }, required: ["research_run_id","title","url"], additionalProperties: false } } },
+  { type: "function", function: { name: "research_save_opportunity", description: "Save a business opportunity with customer problem and validation plan.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 200 }, customer_problem: { type: "string", minLength: 1, maxLength: 5000 }, target_customer: { type: ["string","null"], maxLength: 1000 }, proposed_solution: { type: ["string","null"], maxLength: 5000 }, revenue_model: { type: ["string","null"], maxLength: 1000 }, validation_steps: { type: "array", items: { type: "string" } } }, required: ["research_run_id","title","customer_problem"], additionalProperties: false } } },
   { type: "function", function: { name: "projects_list", description: "List the owner's projects.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "projects_create", description: "Create a project in the owner's GiGo workspace.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 160 }, description: { type: ["string", "null"], maxLength: 5000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "tasks_list", description: "List the owner's tasks. Optionally filter by project_id or status.", parameters: { type: "object", properties: { project_id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, additionalProperties: false } } },
@@ -66,6 +70,34 @@ function validUuid(value: unknown): value is string {
 }
 
 async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, token: string, ownerId: string, excludedMessageId?: string): Promise<Row> {
+  if (name === "research_list") {
+    return { research: await db(env, token, "/rest/v1/research_runs?select=id,title,research_question,market_scope,status,summary,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "research_create") {
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const question = typeof args.research_question === "string" ? args.research_question.trim() : "";
+    if (!title || title.length > 200 || !question || question.length > 5000) return { error: "A title and research question are required." };
+    const market = args.market_scope ?? null;
+    if (market !== null && (typeof market !== "string" || market.length > 1000)) return { error: "Market scope must be text up to 1,000 characters." };
+    const rows = await db(env, token, "/rest/v1/research_runs?select=id,title,research_question,market_scope,status,created_at", "POST", { user_id: ownerId, title, research_question: question, market_scope: market, status: "draft" }) as Row[];
+    return { created: rows?.[0] ?? null };
+  }
+  if (name === "research_save_source") {
+    if (!validUuid(args.research_run_id)) return { error: "A valid research_run_id is required." };
+    if (typeof args.title !== "string" || !args.title.trim() || typeof args.url !== "string") return { error: "Source title and URL are required." };
+    try { const parsed = new URL(args.url); if (!["http:","https:"].includes(parsed.protocol)) throw new Error(); } catch { return { error: "Source URL must be a valid HTTP or HTTPS URL." }; }
+    const rows = await db(env, token, "/rest/v1/research_sources?select=id,research_run_id,title,url,excerpt,evidence_status,created_at", "POST", { user_id: ownerId, research_run_id: args.research_run_id, title: args.title.slice(0,500), url: args.url, publisher: args.publisher ?? null, excerpt: args.excerpt ?? null, source_type: args.source_type ?? "web", evidence_status: "unreviewed" }) as Row[];
+    return { saved: rows?.[0] ?? null };
+  }
+  if (name === "research_save_opportunity") {
+    if (!validUuid(args.research_run_id)) return { error: "A valid research_run_id is required." };
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const problem = typeof args.customer_problem === "string" ? args.customer_problem.trim() : "";
+    if (!title || title.length > 200 || !problem || problem.length > 5000) return { error: "Opportunity title and customer problem are required." };
+    const steps = Array.isArray(args.validation_steps) && args.validation_steps.every(step => typeof step === "string") ? args.validation_steps.slice(0,20) : [];
+    const rows = await db(env, token, "/rest/v1/research_opportunities?select=id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_steps,status,created_at", "POST", { user_id: ownerId, research_run_id: args.research_run_id, title, customer_problem: problem, target_customer: args.target_customer ?? null, proposed_solution: args.proposed_solution ?? null, revenue_model: args.revenue_model ?? null, validation_steps: steps, status: "discovered" }) as Row[];
+    return { saved: rows?.[0] ?? null };
+  }
   if (name === "projects_list") {
     const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
     return { projects: rows };
