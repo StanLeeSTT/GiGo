@@ -104,7 +104,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     ]);
     const candidates: Array<{ title: string; url: string; publisher: string | null; excerpt: string | null; source_type: "paper" | "report"; provider: string; published_year: number | null }> = [];
     if (crossrefResult.status === "fulfilled" && crossrefResult.value.ok) {
-      const payload = await results[0].value.json() as { message?: { items?: Row[] } };
+      const payload = await crossrefResult.value.json() as { message?: { items?: Row[] } };
       for (const item of payload.message?.items ?? []) {
         const title = Array.isArray(item.title) ? String(item.title[0] ?? "") : "";
         const doi = typeof item.DOI === "string" ? item.DOI : "";
@@ -117,7 +117,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       }
     }
     if (openAlexResult.status === "fulfilled" && openAlexResult.value.ok) {
-      const payload = await results[1].value.json() as { results?: Row[] };
+      const payload = await openAlexResult.value.json() as { results?: Row[] };
       for (const item of payload.results ?? []) {
         const title = typeof item.title === "string" ? item.title : "";
         const location = item.primary_location as Row | null;
@@ -139,7 +139,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       }
     }
     const unique = [...new Map(candidates.map(item => [item.url.toLowerCase(), item])).values()].slice(0, limit);
-    if (!unique.length) return { discovered: 0, saved: 0, message: "No records were returned. Public metadata services may be unavailable or the query may be too narrow.", services: { crossref: results[0].status === "fulfilled" ? results[0].value.status : "unavailable", openalex: results[1].status === "fulfilled" ? results[1].value.status : "unavailable" } };
+    if (!unique.length) return { discovered: 0, saved: 0, message: "No records were returned. Public metadata services may be unavailable or the query may be too narrow.", services: { crossref: crossrefResult.status === "fulfilled" ? crossrefResult.value.status : "unavailable", openalex: openAlexResult.status === "fulfilled" ? openAlexResult.value.status : "unavailable" } };
     const existing = await db(env, token, "/rest/v1/research_sources?select=url&research_run_id=eq." + encodeURIComponent(args.research_run_id) + "&limit=500") as Row[];
     const known = new Set((Array.isArray(existing) ? existing : []).map(row => String(row.url ?? "").toLowerCase()));
     let saved = 0;
