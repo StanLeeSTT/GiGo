@@ -18,6 +18,8 @@ test("collection claim RPC is a service-role-only SKIP LOCKED path", () => {
   assert.match(sql, /for update skip locked/i);
   assert.match(sql, /collection_runs_job_id_unique/);
   assert.match(sql, /candidate\.input->>'dataset_id'/);
+  assert.match(sql, /provider_key text/);
+  assert.match(sql, /target_provider_key/);
   assert.match(sql, /collection_lease_token/);
   assert.match(sql, /collection_lease_expires_at/);
   assert.match(sql, /grant execute on function public\.gigo_claim_collection_jobs\(integer, integer\) to service_role/);
@@ -49,6 +51,10 @@ test("enqueue RPC permits only the reviewed public-page actor version", () => {
   const sql = migration("0012_collection_run_enqueue.sql");
   assert.match(sql, /safe_actor_key <> 'public_page_metadata'/);
   assert.match(sql, /p_actor_version is distinct from 1/);
+  assert.match(sql, /p_provider_key text/);
+  assert.match(sql, /p\.status = 'healthy'/);
+  assert.match(sql, /jsonb_build_array\('web_fetch'\)/);
+  assert.match(sql, /provider_id, actor_key, actor_version, provider_key/);
   assert.match(sql, /insert into public\.jobs/);
   assert.match(sql, /insert into public\.collection_runs/);
   assert.match(sql, /insert into public\.collection_datasets/);
