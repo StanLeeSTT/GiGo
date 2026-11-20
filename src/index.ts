@@ -871,13 +871,30 @@ async function executeDurableJob(env: Env, job: DurableJob): Promise<void> {
   const report = typeof result.message.content === "string" ? result.message.content.trim().slice(0,18000) : "";
   if (!report) throw new Error("The selected AI provider returned an empty job report.");
   const now = new Date().toISOString();
-  const progress = { stage:"completed", result:report, provider:result.provider, model:result.model, key_id:result.keyId, completed_at:now, evidence_count:evidence.length };
+  let researchRunId: string | null = null;
+  if (job.job_type === "research_scan") {
+    const runTitle = ("GiGo Research: " + (taskPrompt || "Scheduled research scan")).slice(0,200);
+    const createdRuns = await serviceRest(env,"/rest/v1/research_runs?select=id","POST",{user_id:job.user_id,title:runTitle,research_question:taskPrompt || "Prepare a scheduled research scan.",market_scope:typeof input.market_scope === "string" ? input.market_scope.slice(0,1000) : null,status:"running"}) as JsonRecord[];
+    researchRunId = Array.isArray(createdRuns) && typeof createdRuns[0]?.id === "string" ? String(createdRuns[0].id) : null;
+    if (!researchRunId) throw new Error("The research scan could not create its research record.");
+    const seenUrls = new Set<string>();
+    for (const source of evidence) {
+      const sourceUrl = typeof source.url === "string" ? source.url : "";
+      const sourceTitle = typeof source.title === "string" ? source.title : "";
+      if (!sourceUrl || !sourceTitle || seenUrls.has(sourceUrl)) continue;
+      try { const parsed = new URL(sourceUrl); if (!["http:","https:"].includes(parsed.protocol)) continue; } catch { continue; }
+      seenUrls.add(sourceUrl);
+      await serviceRest(env,"/rest/v1/research_sources?select=id","POST",{user_id:job.user_id,research_run_id:researchRunId,source_type:"paper",title:sourceTitle.slice(0,500),url:sourceUrl.slice(0,2048),publisher:typeof source.publisher === "string" ? source.publisher.slice(0,300) : null,excerpt:typeof source.abstract === "string" ? source.abstract.slice(0,10000) : null,evidence_status:"unreviewed",metadata:{discovery_source:source.source ?? "public_index",publication_year:source.publication_year ?? null}});
+    }
+    await serviceRest(env,"/rest/v1/research_runs?id=eq."+encodeURIComponent(researchRunId),"PATCH",{status:"completed",summary:report,findings:[{summary:report,source_count:seenUrls.size}],methodology:{discovery_sources:["Crossref","OpenAlex"],full_text_verified:false,claim_level_verification:false},completed_at:now});
+  }
+  const progress = { stage:"completed", result:report, provider:result.provider, model:result.model, key_id:result.keyId, completed_at:now, evidence_count:evidence.length, research_run_id:researchRunId };
   const update = await serviceRest(env, "/rest/v1/jobs?id=eq." + encodeURIComponent(job.id) + "&status=eq.processing", "PATCH", { status:"completed", progress, checkpoint:{ stage:"completed", completed_at:now }, finished_at:now, last_error:null }) as JsonRecord[];
   if (!Array.isArray(update) || !update.length) return;
   const usage = result.usage && typeof result.usage === "object" ? result.usage as JsonRecord : {};
   await serviceRest(env,"/rest/v1/ai_usage_events","POST",{user_id:job.user_id,provider:result.provider,model:result.model,key_id:result.keyId,prompt_tokens:Number(usage.prompt_tokens??0),completion_tokens:Number(usage.completion_tokens??0),total_tokens:Number(usage.total_tokens??0)});
   const title = "GiGo finished: " + job.job_type.replace(/_/g," ");
-  await serviceRest(env,"/rest/v1/operation_events","POST",{user_id:job.user_id,event_type:"job.completed",severity:"success",title,detail:"An internal job completed. Open the Operations Centre to review its report.",data:{job_id:job.id,provider:result.provider,model:result.model,evidence_count:evidence.length}});
+  await serviceRest(env,"/rest/v1/operation_events","POST",{user_id:job.user_id,event_type:"job.completed",severity:"success",title,detail:"An internal job completed. Open the Operations Centre to review its report.",data:{job_id:job.id,provider:result.provider,model:result.model,evidence_count:evidence.length,research_run_id:researchRunId}});
   await serviceRest(env,"/rest/v1/notification_events","POST",{user_id:job.user_id,job_id:job.id,channel:"in_app",event_type:"job.completed",title,body:report.slice(0,4900),status:"queued",metadata:{job_id:job.id}});
 }
 
