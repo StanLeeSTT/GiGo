@@ -16,6 +16,8 @@ export interface CollectionWorkerClaim {
 }
 
 export interface CollectionWorkerStore {
+  healthCheck(): Promise<string>;
+  promoteSafeHttpProvider(providerId: string): Promise<boolean>;
   claim(limit?: number, leaseSeconds?: number): Promise<CollectionWorkerClaim[]>;
   progress(jobId: string, leaseToken: string, counters: { pages: number; items: number; requests: number }, checkpoint: Record<string, unknown>): Promise<boolean>;
   persistItem(jobId: string, leaseToken: string, item: CollectionOutputItem): Promise<"inserted" | "duplicate" | "lease_lost">;
@@ -72,6 +74,10 @@ export function createCollectionWorkerStore(config: CollectionWorkerStoreConfig)
   }
 
   return {
+    healthCheck() { return rpc<string>("gigo_collection_worker_health", {}); },
+    promoteSafeHttpProvider(providerId) {
+      return rpc<boolean>("gigo_set_collection_provider_health", { p_provider_id: providerId, p_check_version: "safe-http-batch-v1" });
+    },
     async claim(limit = 1, leaseSeconds = 120) {
       const result = await rpc<CollectionWorkerClaim[]>("gigo_claim_collection_jobs", {
         p_limit: limit,
