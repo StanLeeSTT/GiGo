@@ -9,6 +9,9 @@ export interface AssistantTool {
   approval: "none" | "required";
 }
 export const ASSISTANT_TOOLS: AssistantTool[] = [
+  { id:"jobs.list", module:"Autonomous Operations", description:"List the owner's durable jobs and current queue status; queued does not mean executing.", state:"available", method:"GET", endpoint:"/api/v1/operations/jobs", approval:"none" },
+  { id:"jobs.create", module:"Autonomous Operations", description:"Queue an internal task for future execution; does not start work or permit external actions.", state:"available", method:"POST", endpoint:"/api/v1/operations/jobs", approval:"none" },
+  { id:"jobs.cancel", module:"Autonomous Operations", description:"Cancel a pending job before execution.", state:"available", method:"PATCH", endpoint:"/api/v1/operations/jobs?id={id}", approval:"none" },
   { id:"projects.list", module:"Projects", description:"List the owner's projects.", state:"available", method:"GET", endpoint:"/api/v1/projects", approval:"none" },
   { id:"projects.create", module:"Projects", description:"Create a project for the owner.", state:"available", method:"POST", endpoint:"/api/v1/projects", approval:"none" },
   { id:"tasks.list", module:"Tasks", description:"List the owner's tasks.", state:"available", method:"GET", endpoint:"/api/v1/tasks", approval:"none" },
