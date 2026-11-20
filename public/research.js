@@ -40,3 +40,31 @@ document.querySelector("#opportunity-form").addEventListener("submit",async even
  catch(error){showError(error);}
 });
 loadRuns();
+
+async function loadMaxun(){
+ const state=document.querySelector("#maxun-state"),message=document.querySelector("#maxun-message"),container=document.querySelector("#maxun-robots");
+ if(!state||!message||!container)return;
+ try{
+  const status=await api.request("/api/v1/integrations/maxun/status");
+  const info=status?.data||{};
+  state.textContent=info.connected?"Maxun connected":"Maxun not connected";
+  message.textContent=info.message||"Maxun connection status unavailable.";
+  if(!info.connected){container.innerHTML='<p class="welcome-copy">After Maxun is deployed, connect its HTTPS backend URL and API key to the GiGo Cloudflare Worker. No collection runs can start before that connection is verified.</p>';return;}
+  const response=await api.request("/api/v1/integrations/maxun/robots");
+  let robots=response?.data;
+  if(robots&&typeof robots==="object"&&!Array.isArray(robots))robots=robots.data||robots.robots||[];
+  if(!Array.isArray(robots))robots=[];
+  container.innerHTML=robots.length?robots.map(robot=>{
+   const id=String(robot.id||"");const name=String(robot.name||robot.title||"Unnamed robot");
+   return '<div class="module-workbench"><strong>'+esc(name)+'</strong><p>'+esc(robot.type||"collection robot")+' · '+esc(robot.status||"unknown")+'</p><button class="secondary-button" data-maxun-run="'+esc(id)+'" '+(!id?'disabled':'')+'>Run robot</button><small class="maxun-run-status" data-maxun-result="'+esc(id)+'"></small></div>';
+  }).join(""):'<p class="welcome-copy">Maxun is connected, but no collection robots exist yet. Create a robot in the Maxun dashboard first.</p>';
+  container.querySelectorAll("[data-maxun-run]").forEach(button=>button.addEventListener("click",async()=>{
+   const id=button.dataset.maxunRun;const result=container.querySelector('[data-maxun-result="'+CSS.escape(id)+'"]');
+   button.disabled=true;if(result)result.textContent="Starting collection…";
+   try{await api.request("/api/v1/integrations/maxun/robots/"+encodeURIComponent(id)+"/runs",{method:"POST"});if(result)result.textContent="Run accepted by Maxun. Refresh this panel later to inspect its status."; }
+   catch(error){if(result)result.textContent=error?.message||"Could not start the run.";}
+   finally{button.disabled=false;}
+  }));
+ }catch(error){state.textContent="Maxun status unavailable";message.textContent=error?.message||"Could not check the collection service.";}
+}
+loadMaxun();
