@@ -39,7 +39,7 @@ After both steps, deploy the Worker so Wrangler applies the Cron Trigger in `wra
 
 ## Supported job categories
 
-- `research_scan`: fetches public Crossref and OpenAlex metadata for the task prompt and asks the configured model to assess it.
+- `research_scan`: fetches public Crossref and OpenAlex metadata, saves discovered records to a new Research Engine brief as unreviewed evidence, and asks the configured model to assess the metadata. It does not verify full text or automatically validate claims.
 - `business_review`: reads the owner's saved research, products, offers and CRM leads.
 - `daily_briefing`: reads the owner's tasks, pending approvals, recent jobs and operation events.
 - `lead_review`: reviews the owner's CRM leads and must respect every do-not-contact flag.
