@@ -163,3 +163,19 @@ The read endpoints require a valid Supabase access token and rely on Supabase ro
 No actor can currently execute a network request, and no collection job type is accepted by the general job API. This is deliberate: arbitrary URL fetching needs a separately reviewed SSRF boundary, redirect handling, response limits, DNS/IP protections and site-policy checks. The adapter registry must remain empty until that boundary is implemented and tested. Do not enable cookie-based social automation or private-platform scraping.
 
 A GitHub Actions typecheck workflow has been added for this feature branch. A successful workflow run is still required before considering the TypeScript changes verified.
+
+
+## Provider planning endpoint
+
+`POST /api/v1/collection/plan` accepts an actor key and actor input, validates the actor's bounded schema, reads only the signed-in owner's configured provider records through Supabase RLS, and returns capability-matched provider candidates.
+
+Planning rules are fail-closed:
+
+- Candidate-unverified providers are never marked ready.
+- Providers must have an owner-scoped configuration record.
+- Provider status must be `healthy`; configured/degraded status is not enough.
+- The connected provider record must explicitly include every required capability.
+- Quota-exhausted, disabled, permission-required and error states are blocked.
+- The endpoint does not enqueue jobs, make external requests or claim execution readiness.
+
+The endpoint currently returns `can_execute: false` even when a provider candidate is healthy. This is intentional until a reviewed adapter and durable collection worker are connected.
