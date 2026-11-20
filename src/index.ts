@@ -314,6 +314,81 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
   } catch { return json({ error: { code: "DATABASE_UNAVAILABLE", message: "Research storage is temporarily unavailable." } }, 502, headers); }
 }
 
+
+type BusinessResource = "products" | "partner_candidates";
+const BUSINESS_FIELDS: Record<BusinessResource, string[]> = {
+  products: ["research_run_id","name","summary","target_customer","customer_problem","proposed_solution","product_type","outline","price_amount","price_currency","status","validation_notes"],
+  partner_candidates: ["name","platform","profile_url","niche","follower_count","average_views","business_email","has_competing_offer","score_components","total_score","recommendation","evidence","due_diligence","status"]
+};
+const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
+  products: "id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at",
+  partner_candidates: "id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at"
+};
+async function handleBusinessResource(request: Request, env: Env, headers: Headers, resource: BusinessResource): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access this workspace." } }, 401, headers);
+  const method = request.method;
+  if (!["GET","POST","PATCH"].includes(method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } }, 405, headers);
+  const url = new URL(request.url);
+  const id = url.searchParams.get("id");
+  if (method === "PATCH" && (!id || !/^[0-9a-f-]{36}$/i.test(id))) return json({ error: { code: "INVALID_ID", message: "A valid record ID is required." } }, 400, headers);
+  let ownerId: string | null = null;
+  if (method === "POST") {
+    try { ownerId = await verifiedUserId(token, env); }
+    catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+  }
+  let endpoint = "/rest/v1/" + resource + "?select=" + BUSINESS_COLUMNS[resource];
+  let body: JsonRecord | undefined;
+  if (method === "GET") {
+    endpoint += "&order=updated_at.desc&limit=100";
+    const status = url.searchParams.get("status");
+    if (status) endpoint += "&status=eq." + encodeURIComponent(status);
+  }
+  if (method === "POST" || method === "PATCH") {
+    const input = await readJson(request);
+    if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+    for (const key of Object.keys(input)) if (!BUSINESS_FIELDS[resource].includes(key)) return json({ error: { code: "INVALID_BODY", message: "Unsupported field: " + key } }, 400, headers);
+    if (resource === "products") {
+      if (method === "POST" && !validText(input.name, 200)) return json({ error: { code: "INVALID_BODY", message: "A product name of 1–200 characters is required." } }, 400, headers);
+      if (input.product_type !== undefined && !["ebook","course","workbook","template","membership","software","service","other"].includes(String(input.product_type))) return json({ error: { code: "INVALID_PRODUCT_TYPE", message: "Invalid product type." } }, 400, headers);
+      if (input.status !== undefined && !["draft","validating","building","ready","launched","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid product status." } }, 400, headers);
+      if (input.price_amount !== undefined && input.price_amount !== null && (typeof input.price_amount !== "number" || !Number.isFinite(input.price_amount) || input.price_amount < 0)) return json({ error: { code: "INVALID_PRICE", message: "Price must be a non-negative number." } }, 400, headers);
+      if (input.research_run_id !== undefined && input.research_run_id !== null && !/^[0-9a-f-]{36}$/i.test(String(input.research_run_id))) return json({ error: { code: "INVALID_ID", message: "A valid research brief ID is required." } }, 400, headers);
+    } else {
+      if (method === "POST" && (!validText(input.name, 200) || !validText(input.platform, 80) || !validText(input.profile_url, 2048))) return json({ error: { code: "INVALID_BODY", message: "Candidate name, platform and profile URL are required." } }, 400, headers);
+      if (input.profile_url !== undefined) {
+        try { const parsed = new URL(String(input.profile_url)); if (!["http:","https:"].includes(parsed.protocol)) throw new Error(); }
+        catch { return json({ error: { code: "INVALID_URL", message: "Profile URL must be a valid HTTP or HTTPS URL." } }, 400, headers); }
+      }
+      if (input.recommendation !== undefined && !["shortlist","investigate","not_recommend","hard_stop"].includes(String(input.recommendation))) return json({ error: { code: "INVALID_RECOMMENDATION", message: "Invalid partner recommendation." } }, 400, headers);
+      if (input.status !== undefined && !["new","reviewing","shortlisted","contacted","negotiating","partnered","rejected"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid partner status." } }, 400, headers);
+      if (input.total_score !== undefined && input.total_score !== null && (typeof input.total_score !== "number" || input.total_score < 0 || input.total_score > 100)) return json({ error: { code: "INVALID_SCORE", message: "Partner score must be between 0 and 100." } }, 400, headers);
+    }
+    if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
+    body = { ...input };
+    if (method === "POST") {
+      body.user_id = ownerId;
+      if (resource === "products" && body.status === undefined) body.status = "draft";
+      if (resource === "partner_candidates" && body.status === undefined) body.status = "new";
+    }
+    if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
+  }
+  try {
+    const upstream = await fetch(new URL(endpoint, env.SUPABASE_URL!), {
+      method,
+      headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", ...(body ? { "content-type": "application/json", prefer: "return=representation" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    const raw = await upstream.text();
+    const payload = raw ? JSON.parse(raw) : null;
+    if (!upstream.ok) return json({ error: { code: "BUSINESS_STORAGE_FAILED", message: upstream.status >= 500 ? "Business workspace storage failed. Confirm migration 0006 has been applied." : (payload?.message ?? "The request was rejected.") } }, upstream.status >= 500 ? 502 : upstream.status, headers);
+    if (method === "PATCH" && Array.isArray(payload) && payload.length === 0) return json({ error: { code: "NOT_FOUND", message: "Record not found in this workspace." } }, 404, headers);
+    return json({ data: payload ?? [] }, method === "POST" ? 201 : 200, headers);
+  } catch { return json({ error: { code: "DATABASE_UNAVAILABLE", message: "Business workspace storage is temporarily unavailable." } }, 502, headers); }
+}
+
 type AssistantResource = "assistant_conversations" | "assistant_messages" | "memory_items";
 async function verifiedUserId(token: string, env: Env): Promise<string | null> {
   let response: Response;
@@ -540,7 +615,7 @@ export default {
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
     };
-    const researchResource = researchRoutes[url.pathname];
+    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates" };\n    const businessResource = businessRoutes[url.pathname];\n    if (businessResource) return handleBusinessResource(request, env, headers, businessResource);\n\n    const researchResource = researchRoutes[url.pathname];
     if (researchResource) return handleResearchResource(request, env, headers, researchResource);
 
     const assistantRoutes: Record<string, AssistantResource> = {
