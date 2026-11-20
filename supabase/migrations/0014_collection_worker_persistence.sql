@@ -156,7 +156,7 @@ declare
   target_run_id uuid;
   final_job_status text;
 begin
-  if p_status not in ('completed','partial','failed','cancelled')
+  if p_status is null or p_status not in ('completed','partial','failed','cancelled')
      or (p_error is not null and (jsonb_typeof(p_error) <> 'object' or octet_length(p_error::text) > 8192)) then
     raise exception 'invalid collection completion state' using errcode = '22023';
   end if;
