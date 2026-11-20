@@ -1071,7 +1071,9 @@ export default {
       "/api/v1/collection/items": "collection_items"
     };
     const collectionResource = collectionReadRoutes[url.pathname];
-    if (collectionResource) return handleCollectionRead(request, env, headers, collectionResource);
+    // The runs path supports both GET (list) and POST (atomic enqueue).
+    // Only dispatch the read handler for GET so POST reaches the enqueue route below.
+    if (collectionResource && request.method === "GET") return handleCollectionRead(request, env, headers, collectionResource);
 
     if (url.pathname === "/api/v1/collection/runs") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
