@@ -161,7 +161,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     if (!query || query.length > 300) return { error: "A search query of 1–300 characters is required." };
     const escaped = query.replace(/[%,()]/g, " ").trim();
     if (!escaped) return { error: "Please provide searchable words." };
-    const pattern = `*.${escaped}.*`;
+    const pattern = `%${escaped}%`;
     const rows = await db(env, token, `/rest/v1/assistant_messages?select=id,conversation_id,role,content,created_at&content=ilike.${encodeURIComponent(pattern)}&order=created_at.desc&limit=30`) as Row[];
     return { query, matches: rows };
   }
