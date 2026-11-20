@@ -315,14 +315,18 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
 }
 
 
-type BusinessResource = "products" | "partner_candidates";
+type BusinessResource = "products" | "partner_candidates" | "leads" | "offers";
 const BUSINESS_FIELDS: Record<BusinessResource, string[]> = {
   products: ["research_run_id","name","summary","target_customer","customer_problem","proposed_solution","product_type","outline","price_amount","price_currency","status","validation_notes"],
-  partner_candidates: ["name","platform","profile_url","niche","follower_count","average_views","business_email","has_competing_offer","score_components","total_score","recommendation","evidence","due_diligence","status"]
+  partner_candidates: ["name","platform","profile_url","niche","follower_count","average_views","business_email","has_competing_offer","score_components","total_score","recommendation","evidence","due_diligence","status"],
+  leads: ["name","organisation","email","website","source","source_url","customer_problem","fit_score","stage","do_not_contact","notes","last_contacted_at"],
+  offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"]
 };
 const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
   products: "id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at",
-  partner_candidates: "id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at"
+  partner_candidates: "id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at",
+  leads: "id,name,organisation,email,website,source,source_url,customer_problem,fit_score,stage,do_not_contact,notes,last_contacted_at,created_at,updated_at",
+  offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at"
 };
 async function handleBusinessResource(request: Request, env: Env, headers: Headers, resource: BusinessResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -356,7 +360,7 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (input.status !== undefined && !["draft","validating","building","ready","launched","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid product status." } }, 400, headers);
       if (input.price_amount !== undefined && input.price_amount !== null && (typeof input.price_amount !== "number" || !Number.isFinite(input.price_amount) || input.price_amount < 0)) return json({ error: { code: "INVALID_PRICE", message: "Price must be a non-negative number." } }, 400, headers);
       if (input.research_run_id !== undefined && input.research_run_id !== null && !/^[0-9a-f-]{36}$/i.test(String(input.research_run_id))) return json({ error: { code: "INVALID_ID", message: "A valid research brief ID is required." } }, 400, headers);
-    } else {
+    } else if (resource === "partner_candidates") {
       if (method === "POST" && (!validText(input.name, 200) || !validText(input.platform, 80) || !validText(input.profile_url, 2048))) return json({ error: { code: "INVALID_BODY", message: "Candidate name, platform and profile URL are required." } }, 400, headers);
       if (input.profile_url !== undefined) {
         try { const parsed = new URL(String(input.profile_url)); if (!["http:","https:"].includes(parsed.protocol)) throw new Error(); }
@@ -365,6 +369,18 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (input.recommendation !== undefined && !["shortlist","investigate","not_recommend","hard_stop"].includes(String(input.recommendation))) return json({ error: { code: "INVALID_RECOMMENDATION", message: "Invalid partner recommendation." } }, 400, headers);
       if (input.status !== undefined && !["new","reviewing","shortlisted","contacted","negotiating","partnered","rejected"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid partner status." } }, 400, headers);
       if (input.total_score !== undefined && input.total_score !== null && (typeof input.total_score !== "number" || input.total_score < 0 || input.total_score > 100)) return json({ error: { code: "INVALID_SCORE", message: "Partner score must be between 0 and 100." } }, 400, headers);
+    } else if (resource === "leads") {
+      if (method === "POST" && !validText(input.name, 200)) return json({ error: { code: "INVALID_BODY", message: "Lead name is required." } }, 400, headers);
+      if (input.stage !== undefined && !["new","qualified","contacted","proposal","won","lost","do_not_contact"].includes(String(input.stage))) return json({ error: { code: "INVALID_STAGE", message: "Invalid lead stage." } }, 400, headers);
+      if (input.fit_score !== undefined && input.fit_score !== null && (typeof input.fit_score !== "number" || input.fit_score < 0 || input.fit_score > 100)) return json({ error: { code: "INVALID_SCORE", message: "Lead fit score must be between 0 and 100." } }, 400, headers);
+      if (input.do_not_contact !== undefined && typeof input.do_not_contact !== "boolean") return json({ error: { code: "INVALID_CONSENT", message: "do_not_contact must be true or false." } }, 400, headers);
+    } else if (resource === "offers") {
+      if (method === "POST" && !validText(input.name, 200)) return json({ error: { code: "INVALID_BODY", message: "Offer name is required." } }, 400, headers);
+      if (input.status !== undefined && !["draft","validating","ready","active","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid offer status." } }, 400, headers);
+      for (const key of ["price_amount","delivery_cost"] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "number" || !Number.isFinite(input[key]) || input[key] < 0)) return json({ error: { code: "INVALID_PRICE", message: key + " must be a non-negative number." } }, 400, headers);
+      for (const key of ["payment_fee_percent","partner_share_percent"] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "number" || input[key] < 0 || input[key] > 100)) return json({ error: { code: "INVALID_PERCENT", message: key + " must be between 0 and 100." } }, 400, headers);
+      if (input.product_id !== undefined && input.product_id !== null && !/^[0-9a-f-]{36}$/i.test(String(input.product_id))) return json({ error: { code: "INVALID_ID", message: "A valid product ID is required." } }, 400, headers);
+      if (input.price_currency !== undefined && !/^[A-Za-z]{3}$/.test(String(input.price_currency))) return json({ error: { code: "INVALID_CURRENCY", message: "Currency must be a three-letter code." } }, 400, headers);
     }
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
     body = { ...input };
@@ -382,6 +398,8 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       body.user_id = ownerId;
       if (resource === "products" && body.status === undefined) body.status = "draft";
       if (resource === "partner_candidates" && body.status === undefined) body.status = "new";
+      if (resource === "leads" && body.stage === undefined) body.stage = "new";
+      if (resource === "offers" && body.status === undefined) body.status = "draft";
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
   }
@@ -393,7 +411,7 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
     });
     const raw = await upstream.text();
     const payload = raw ? JSON.parse(raw) : null;
-    if (!upstream.ok) return json({ error: { code: "BUSINESS_STORAGE_FAILED", message: upstream.status >= 500 ? "Business workspace storage failed. Confirm migration 0006 has been applied." : (payload?.message ?? "The request was rejected.") } }, upstream.status >= 500 ? 502 : upstream.status, headers);
+    if (!upstream.ok) return json({ error: { code: "BUSINESS_STORAGE_FAILED", message: upstream.status >= 500 ? "Business workspace storage failed. Confirm the required GiGo business migrations have been applied." : (payload?.message ?? "The request was rejected.") } }, upstream.status >= 500 ? 502 : upstream.status, headers);
     if (method === "PATCH" && Array.isArray(payload) && payload.length === 0) return json({ error: { code: "NOT_FOUND", message: "Record not found in this workspace." } }, 404, headers);
     return json({ data: payload ?? [] }, method === "POST" ? 201 : 200, headers);
   } catch { return json({ error: { code: "DATABASE_UNAVAILABLE", message: "Business workspace storage is temporarily unavailable." } }, 502, headers); }
@@ -625,7 +643,7 @@ export default {
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
     };
-    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates" };
+    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers" };
     const businessResource = businessRoutes[url.pathname];
     if (businessResource) return handleBusinessResource(request, env, headers, businessResource);
 
