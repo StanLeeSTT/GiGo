@@ -34,7 +34,7 @@ test("collection persistence RPCs require a live matching lease", () => {
     assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\(`));
   }
   assert.equal((sql.match(/collection_lease_token' = p_lease_token::text/g) ?? []).length, 4);
-  assert.equal((sql.match(/collection_lease_expires_at'\)\)::timestamptz > now\(\)/g) ?? []).length, 4);
+  assert.equal((sql.match(/collection_lease_expires_at'\)::timestamptz > now\(\)/g) ?? []).length, 4);
   assert.match(sql, /on conflict \(dataset_id, item_key\) do nothing/);
   assert.match(sql, /item_count = item_count \+ 1/);
 });
