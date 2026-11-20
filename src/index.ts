@@ -611,6 +611,46 @@ async function handleChatGPTHistoryImport(request: Request, env: Env, headers: H
 }
 
 
+type CollectionReadResource = "collection_providers" | "collection_actors" | "collection_runs" | "collection_datasets" | "collection_items";
+const COLLECTION_READ_COLUMNS: Record<CollectionReadResource, string> = {
+  collection_providers: "id,provider_key,display_name,provider_type,status,access_mode,capabilities,quota_state,last_health_check_at,last_error_code,created_at,updated_at",
+  collection_actors: "id,actor_key,version,name,description,category,input_schema,output_schema,required_capabilities,policy_tags,is_enabled,is_system,created_at,updated_at",
+  collection_runs: "id,actor_id,provider_id,job_id,actor_key,actor_version,provider_key,status,input,checkpoint,counters,quota_estimate,quota_actual,error,started_at,finished_at,created_at,updated_at",
+  collection_datasets: "id,run_id,name,item_count,schema_version,metadata,created_at",
+  collection_items: "id,dataset_id,run_id,item_key,source_url,source_platform,source_type,observed_at,collected_at,access_method,permission_context,record,content_hash,created_at"
+};
+
+async function handleCollectionRead(request: Request, env: Env, headers: Headers, resource: CollectionReadResource): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  if (request.method !== "GET") return json({ error: { code: "READ_ONLY", message: "Collection records are read-only until the execution adapters and write validation are complete." } }, 405, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access collection data." } }, 401, headers);
+  try {
+    const userId = await verifiedUserId(token, env);
+    if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const url = new URL(request.url);
+    const params = new URLSearchParams({
+      select: COLLECTION_READ_COLUMNS[resource],
+      order: resource === "collection_items" ? "collected_at.desc" : "created_at.desc",
+      limit: resource === "collection_items" ? "200" : "100"
+    });
+    for (const key of ["status","provider_key","actor_key","run_id","dataset_id"] as const) {
+      const value = url.searchParams.get(key);
+      if (value && value.length <= 160 && /^[a-zA-Z0-9_-]+$/.test(value)) params.set(key, "eq." + value);
+    }
+    const response = await fetch(new URL("/rest/v1/" + resource + "?" + params.toString(), env.SUPABASE_URL!), {
+      headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+      signal: AbortSignal.timeout(12000)
+    });
+    const raw = await response.text();
+    const payload = raw ? JSON.parse(raw) : [];
+    if (!response.ok) return json({ error: { code: "COLLECTION_STORAGE_FAILED", message: response.status >= 500 ? "Collection storage failed. The collection migration may not have been applied yet." : (payload?.message ?? "The collection request was rejected.") } }, response.status >= 500 ? 502 : response.status, headers);
+    return json({ data: payload }, 200, headers);
+  } catch {
+    return json({ error: { code: "COLLECTION_STORAGE_UNAVAILABLE", message: "Could not read collection data. Confirm the database migration and authentication configuration." } }, 502, headers);
+  }
+}
+
 async function handleCapabilities(request: Request, env: Env, headers: Headers): Promise<Response> {
   const token = bearerToken(request);
   if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view GiGo assistant capabilities." } }, 401, headers);
@@ -996,6 +1036,16 @@ export default {
       return new Response(null, { status: 204, headers });
     }
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
+
+    const collectionReadRoutes: Record<string, CollectionReadResource> = {
+      "/api/v1/collection/providers": "collection_providers",
+      "/api/v1/collection/actors": "collection_actors",
+      "/api/v1/collection/runs": "collection_runs",
+      "/api/v1/collection/datasets": "collection_datasets",
+      "/api/v1/collection/items": "collection_items"
+    };
+    const collectionResource = collectionReadRoutes[url.pathname];
+    if (collectionResource) return handleCollectionRead(request, env, headers, collectionResource);
 
     if (url.pathname === "/api/v1/collection/catalogue") {
       if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } }, 405, headers);
