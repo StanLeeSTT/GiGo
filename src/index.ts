@@ -615,7 +615,10 @@ export default {
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
     };
-    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates" };\n    const businessResource = businessRoutes[url.pathname];\n    if (businessResource) return handleBusinessResource(request, env, headers, businessResource);\n\n    const researchResource = researchRoutes[url.pathname];
+    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates" };
+    const businessResource = businessRoutes[url.pathname];\n    if (businessResource) return handleBusinessResource(request, env, headers, businessResource);
+
+    const researchResource = researchRoutes[url.pathname];
     if (researchResource) return handleResearchResource(request, env, headers, researchResource);
 
     const assistantRoutes: Record<string, AssistantResource> = {
