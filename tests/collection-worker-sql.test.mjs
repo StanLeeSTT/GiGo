@@ -16,6 +16,8 @@ test("collection claim RPC is a service-role-only SKIP LOCKED path", () => {
   assert.match(sql, /create or replace function public\.gigo_claim_collection_jobs/);
   assert.match(sql, /security definer[\s\S]*set search_path = ''/);
   assert.match(sql, /for update skip locked/i);
+  assert.match(sql, /collection_runs_job_id_unique/);
+  assert.match(sql, /candidate\.input->>'dataset_id'/);
   assert.match(sql, /collection_lease_token/);
   assert.equal((sql.match(/and \(j\.progress->>'collection_lease_expires_at'\)::timestamptz > now\(\)/g) ?? []).length, 4);
   assert.match(sql, /grant execute on function public\.gigo_claim_collection_jobs\(integer, integer\) to service_role/);
