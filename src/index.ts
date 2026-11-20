@@ -384,6 +384,24 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
     }
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
     body = { ...input };
+    if (resource === "leads" && method === "POST") {
+      if (body.do_not_contact === true || body.stage === "do_not_contact") { body.do_not_contact = true; body.stage = "do_not_contact"; }
+      else if (body.do_not_contact === undefined) body.do_not_contact = false;
+    }
+    if (resource === "offers" && method === "POST") {
+      const price = typeof body.price_amount === "number" ? body.price_amount : null;
+      const deliveryCost = typeof body.delivery_cost === "number" ? body.delivery_cost : 0;
+      const paymentFeePercent = typeof body.payment_fee_percent === "number" ? body.payment_fee_percent : 0;
+      const partnerSharePercent = typeof body.partner_share_percent === "number" ? body.partner_share_percent : 0;
+      if (price === null) body.assumptions = { estimate_available: false, note: "Add a price to calculate indicative economics." };
+      else {
+        const paymentFee = price * paymentFeePercent / 100;
+        const contribution = price - paymentFee - deliveryCost;
+        const partnerShare = Math.max(0, contribution) * partnerSharePercent / 100;
+        const netBeforeTax = contribution - partnerShare;
+        body.assumptions = { estimate_available: true, gross_price: price, payment_fee_estimate: paymentFee, delivery_cost: deliveryCost, partner_share_estimate: partnerShare, net_before_tax_estimate: netBeforeTax, margin_percent_before_tax: price > 0 ? netBeforeTax / price * 100 : null, assumptions: "Indicative only; excludes taxes, refunds, chargebacks, support overhead and other unlisted costs." };
+      }
+    }
     if (resource === "partner_candidates" && method === "POST") {
       const weights: Record<string, number> = { audience_fit: 20, authenticity_engagement: 20, credibility_reputation: 15, reach_consistency: 10, commercial_potential: 15, brand_values: 10, operational_readiness: 5, legal_rights_readiness: 5 };
       const components = body.score_components && typeof body.score_components === "object" && !Array.isArray(body.score_components) ? body.score_components as JsonRecord : {};
