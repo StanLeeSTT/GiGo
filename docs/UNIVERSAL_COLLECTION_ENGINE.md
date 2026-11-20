@@ -186,3 +186,12 @@ The endpoint currently returns `can_execute: false` even when a provider candida
 `POST /api/v1/collection/runs/{run_id}/cancel` requests cancellation for an owner-scoped run only while it is still queued or waiting for quota. The database function locks the run and its linked job, checks ownership through the caller's RLS context, and cancels both in one transaction. If the scheduler has already claimed the job, cancellation is rejected with a conflict rather than falsely reporting success.
 
 This is queued-work cancellation, not interruption of an active network request. Active execution cancellation will require an adapter worker that propagates an abort signal and persists a terminal state safely.
+
+
+## Bounded adapter runner
+
+The runtime foundation now includes `src/collection/runner.ts`. It validates actor input and adapter capability coverage, applies an actor-specific deadline, propagates an AbortSignal, enforces the actor item ceiling, validates required provenance fields before persistence, and checks that adapter-reported item counts match the number of items actually persisted. Progress and items are written through injected persistence hooks so the durable worker can bind them to Supabase without coupling the runner to HTTP or database credentials.
+
+Automated tests cover accepted/rejected public URL inputs, fail-closed provider planning, adapter capability mismatch, provenance validation, item-count consistency and timeout cancellation. The GitHub Actions workflow runs both `npm run typecheck` and `npm test`.
+
+**Important boundary:** this runner is a tested execution primitive, not yet a deployed collection worker. No collection job type is enabled, no adapter is registered, and no external collection request is made. The next implementation step is to bind the runner to transactional run/job state, checkpoint persistence, dataset/item upserts and safe worker cancellation; only then can a reviewed connector be activated.
