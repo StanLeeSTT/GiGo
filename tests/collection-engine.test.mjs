@@ -173,3 +173,43 @@ test("bounded runner rejects final counters lower than persisted progress", asyn
     (error) => error instanceof CollectionExecutionError && error.code === "INVALID_ADAPTER_RESULT"
   );
 });
+
+
+test("bounded runner preserves adapter execution errors", async () => {
+  const failure = new Error("fixture adapter failure");
+  await assert.rejects(
+    runCollectionActor(actor, { urls: ["https://example.com"] }, adapterFor(async () => { throw failure; }), baseContext, {
+      persistProgress: async () => {},
+      persistItem: async () => {}
+    }),
+    (error) => error === failure
+  );
+});
+
+test("bounded runner surfaces item persistence failures without reporting success", async () => {
+  const failure = new Error("database write failed");
+  await assert.rejects(
+    runCollectionActor(actor, { urls: ["https://example.com"] }, adapterFor(async (_a, _i, ctx) => {
+      await ctx.emitItem(outputItem());
+      return { status: "completed", counters: { pages: 1, items: 1, requests: 1 } };
+    }), baseContext, {
+      persistProgress: async () => {},
+      persistItem: async () => { throw failure; }
+    }),
+    (error) => error === failure
+  );
+});
+
+test("bounded runner surfaces checkpoint persistence failures", async () => {
+  const failure = new Error("checkpoint write failed");
+  await assert.rejects(
+    runCollectionActor(actor, { urls: ["https://example.com"] }, adapterFor(async () => ({
+      status: "completed",
+      counters: { pages: 0, items: 0, requests: 0 }
+    })), baseContext, {
+      persistProgress: async () => { throw failure; },
+      persistItem: async () => {}
+    }),
+    (error) => error === failure
+  );
+});
