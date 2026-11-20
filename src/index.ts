@@ -421,6 +421,7 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
   }
+  endpoint = "/rest/v1/" + resource + "?" + filters.toString();
   try {
     const upstream = await fetch(new URL(endpoint, env.SUPABASE_URL!), {
       method,
@@ -642,6 +643,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
   }
 
   const filters = new URLSearchParams({ select: OPERATIONS_COLUMNS[resource], order: "created_at.desc", limit: "100" });
+  if (method === "PATCH") filters.set("id", "eq." + id);
   if (method === "GET") {
     if (resource === "approval_requests" || resource === "notification_events" || resource === "jobs") {
       const status = url.searchParams.get("status");
@@ -725,7 +727,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
         body.metadata = body.metadata ?? {};
       }
       if (resource === "operation_events" && method === "POST") body.data = body.data ?? {};
-      if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
+
     }
   }
   try {
