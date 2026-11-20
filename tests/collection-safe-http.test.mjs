@@ -12,6 +12,7 @@ test("robots rules use longest matching path and allow wins ties",()=>{
   assert.equal(robotsAllows(robots,"https://example.com/private/page"),false);
   assert.equal(robotsAllows(robots,"https://example.com/private/public/page"),true);
   assert.equal(robotsAllows(robots,"https://example.com/open"),true);
+  assert.equal(robotsAllows("User-agent: *\\nDisallow: /*.pdf$","https://example.com/report.pdf"),false);
 });
 test("metadata extraction returns title, description and canonical URL",()=>{
   const html='<html><head><title>Example &amp; Demo</title><meta name="description" content="A useful page"><link rel="canonical" href="/canonical"></head></html>';
