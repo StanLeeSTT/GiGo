@@ -60,9 +60,9 @@ export async function runCollectionWorkerBatch(
           ? "The claimed job references an unregistered actor version."
           : "No verified adapter is registered for the selected provider."
       };
-      const retried = await store.retry(claim.job_id, claim.lease_token, error, 900);
-      if (retried) result.retried += 1;
-      else result.failed += 1;
+      const outcome = await store.retry(claim.job_id, claim.lease_token, error, 900);
+      if (outcome === 'retry_scheduled') result.retried += 1;
+      else if (outcome === 'failed') result.failed += 1;
       continue;
     }
 
@@ -113,9 +113,9 @@ export async function runCollectionWorkerBatch(
         if (finished) result.failed += 1;
         else result.retried += 1;
       } else {
-        const retried = await store.retry(claim.job_id, claim.lease_token, details, 300);
-        if (retried) result.retried += 1;
-        else result.failed += 1;
+        const outcome = await store.retry(claim.job_id, claim.lease_token, details, 300);
+        if (outcome === 'retry_scheduled') result.retried += 1;
+        else if (outcome === 'failed') result.failed += 1;
       }
     }
   }
