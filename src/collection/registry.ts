@@ -19,6 +19,7 @@ export type CollectionCapability =
   | "news_discovery";
 
 export type ProviderVerification =
+  | "internal_verified"
   | "verified_open_source"
   | "official_api"
   | "integration_scaffold"
@@ -46,6 +47,18 @@ export interface CollectionProviderDefinition {
 }
 
 const providers: readonly CollectionProviderDefinition[] = [
+  {
+    key: "gigo_safe_http_batch",
+    name: "GiGo Safe HTTP Batch",
+    category: "web_crawl",
+    verification: "internal_verified",
+    executionModes: ["batch_runner"],
+    capabilities: ["web_fetch"],
+    platforms: ["web"],
+    freeTier: "self_hosted_software",
+    defaultEnabled: false,
+    notes: "GiGo-owned bounded HTTPS metadata collector. Requires a manually dispatched trusted GitHub Actions runner and owner-configured provider record; not active by default."
+  },
   {
     key: "crawlee",
     name: "Crawlee",
@@ -236,6 +249,7 @@ export function getCollectionProviderVerificationSummary(): Record<ProviderVerif
     summary[provider.verification] += 1;
     return summary;
   }, {
+    internal_verified: 0,
     verified_open_source: 0,
     official_api: 0,
     integration_scaffold: 0,
