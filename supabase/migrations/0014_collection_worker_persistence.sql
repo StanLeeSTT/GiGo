@@ -248,7 +248,7 @@ begin
     where id = p_job_id;
   return case when retry_allowed then 'retry_scheduled' else 'failed' end;
 end;
-$;
+$$;
 
 revoke all on function public.gigo_collection_worker_progress(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.gigo_collection_worker_item(uuid, uuid, jsonb) from public, anon, authenticated;
