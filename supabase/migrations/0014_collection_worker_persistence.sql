@@ -64,11 +64,11 @@ create or replace function public.gigo_collection_worker_item(
   p_lease_token uuid,
   p_item jsonb
 )
-returns boolean
+returns text
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $
 declare
   owner_id uuid;
   target_run_id uuid;
@@ -82,8 +82,8 @@ begin
      or char_length(p_item->>'sourceType') > 80
      or coalesce(p_item->>'accessMethod','') = ''
      or char_length(p_item->>'accessMethod') > 80
-     or jsonb_typeof(p_item->'permissionContext') <> 'object'
-     or jsonb_typeof(p_item->'record') <> 'object'
+     or jsonb_typeof(p_item->'permissionContext') is distinct from 'object'
+     or jsonb_typeof(p_item->'record') is distinct from 'object'
      or char_length(coalesce(p_item->>'sourceUrl','')) > 2048
      or char_length(coalesce(p_item->>'sourcePlatform','')) > 80 then
     raise exception 'invalid collection item' using errcode = '22023';
@@ -99,7 +99,7 @@ begin
       and (j.progress->>'collection_lease_expires_at')::timestamptz > now()
     for update;
 
-  if not found then return false; end if;
+  if not found then return 'lease_lost'; end if;
 
   insert into public.collection_items (
     user_id, dataset_id, run_id, item_key, source_url, source_platform,
@@ -136,7 +136,7 @@ begin
     set progress = coalesce(progress, '{}'::jsonb) ||
       jsonb_build_object('heartbeat_at',now(),'collection_lease_expires_at',now() + interval '120 seconds')
     where id = p_job_id;
-  return inserted_id is not null;
+  return case when inserted_id is not null then 'inserted' else 'duplicate' end;
 end;
 $$;
 
@@ -244,9 +244,9 @@ begin
         progress = (coalesce(progress, '{}'::jsonb) - 'collection_lease_token' - 'collection_lease_expires_at') ||
           jsonb_build_object('stage',case when retry_allowed then 'retry_scheduled' else 'failed' end,'retry_scheduled_at',now())
     where id = p_job_id;
-  return retry_allowed;
+  return true;
 end;
-$$;
+$;
 
 revoke all on function public.gigo_collection_worker_progress(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.gigo_collection_worker_item(uuid, uuid, jsonb) from public, anon, authenticated;
