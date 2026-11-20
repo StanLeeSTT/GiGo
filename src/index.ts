@@ -1039,6 +1039,30 @@ export default {
     }
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
 
+    const cancelCollectionRunMatch = url.pathname.match(/^\\/api\\/v1\\/collection\\/runs\\/([0-9a-f-]{36})\\/cancel$/i);
+    if (cancelCollectionRunMatch) {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to cancel a collection run." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const response = await fetch(new URL("/rest/v1/rpc/gigo_cancel_collection_run", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_run_id: cancelCollectionRunMatch[1] }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "CANCELLATION_FAILED", message: "The database could not process the cancellation. Confirm migration 0010 is applied." } }, 502, headers);
+        const cancelled = await response.json();
+        if (cancelled !== true) return json({ error: { code: "RUN_NOT_CANCELLABLE", message: "The run was not found, is already terminal, or its job has already been claimed." } }, 409, headers);
+        return json({ data: { run_id: cancelCollectionRunMatch[1], status: "cancelled" } }, 200, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_CANCEL_FAILED", message: "Could not cancel the collection run." } }, 502, headers);
+      }
+    }
+
     const collectionReadRoutes: Record<string, CollectionReadResource> = {
       "/api/v1/collection/providers": "collection_providers",
       "/api/v1/collection/actors": "collection_actors",
