@@ -4,7 +4,8 @@ import { handleAssistantChat } from "./assistant/runtime";
 import { providerPoolStatus } from "./assistant/providers";
 import { handleMaxunRequest } from "./integrations/maxun";
 import { listCollectionProviders, getCollectionProviderVerificationSummary } from "./collection/registry";
-import { listCollectionActors } from "./collection/actors";
+import { listCollectionActors, getCollectionActor } from "./collection/actors";
+import { planCollectionProviders } from "./collection/planner";
 import { listRegisteredCollectionAdapters } from "./collection/adapters";
 export interface Env {
   SUPABASE_URL?: string;
@@ -1047,6 +1048,33 @@ export default {
     };
     const collectionResource = collectionReadRoutes[url.pathname];
     if (collectionResource) return handleCollectionRead(request, env, headers, collectionResource);
+
+    if (url.pathname === "/api/v1/collection/plan") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to plan a collection." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const input = await readJson(request);
+        if (!input || typeof input.actor_key !== "string" || input.actor_key.length > 96) return json({ error: { code: "INVALID_BODY", message: "actor_key and actor_input are required." } }, 400, headers);
+        const actor = getCollectionActor(input.actor_key);
+        if (!actor) return json({ error: { code: "UNKNOWN_ACTOR", message: "That collection actor is not in the catalogue." } }, 404, headers);
+        if (!actor.validateInput(input.actor_input)) return json({ error: { code: "INVALID_ACTOR_INPUT", message: "The supplied actor input does not match its schema or safety limits." } }, 400, headers);
+        const providerResponse = await fetch(new URL("/rest/v1/collection_providers?select=id,provider_key,status,capabilities,quota_state", env.SUPABASE_URL!), {
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!providerResponse.ok) return json({ error: { code: "PROVIDER_LOOKUP_FAILED", message: "Could not inspect your configured collection providers. Confirm migration 0010 has been applied." } }, 502, headers);
+        const connected = await providerResponse.json() as Array<{id:string;provider_key:string;status:string;capabilities:unknown;quota_state?:Record<string,unknown>}>;
+        const candidates = planCollectionProviders(actor.requiredCapabilities, listCollectionProviders(), Array.isArray(connected) ? connected as never : []);
+        const selected = candidates.find((candidate) => candidate.ready);
+        return json({ data: { actor: { key: actor.key, version: actor.version }, valid: true, required_capabilities: actor.requiredCapabilities, candidates, selected_provider: selected ?? null, can_execute: false, reason: selected ? "A healthy provider is available, but execution remains disabled until the durable collection worker is implemented." : "No connected healthy provider currently satisfies this actor's requirements." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_PLAN_FAILED", message: "Could not build the collection plan." } }, 502, headers);
+      }
+    }
 
     if (url.pathname === "/api/v1/collection/catalogue") {
       if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } }, 405, headers);
