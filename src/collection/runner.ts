@@ -80,7 +80,11 @@ export async function runCollectionActor(
   const timeout = new Promise<never>((_, reject) => { timeoutReject = reject; });
   const aborted = new Promise<never>((_, reject) => { abortReject = reject; });
   const onAbort = () => {
-    if (!timedOut) abortReject?.(new CollectionExecutionError("ABORTED", "Collection run was cancelled."));
+    if (timedOut) return;
+    const reason = controller.signal.reason;
+    abortReject?.(reason instanceof CollectionExecutionError
+      ? reason
+      : new CollectionExecutionError("ABORTED", "Collection run was cancelled."));
   };
   controller.signal.addEventListener("abort", onAbort, { once: true });
   timeoutHandle = setTimeout(() => {
@@ -106,8 +110,9 @@ export async function runCollectionActor(
       if (controller.signal.aborted) throw new CollectionExecutionError("ABORTED", "Collection run was cancelled.");
       if (!validateOutputItem(item)) throw new CollectionExecutionError("INVALID_ITEM", "Adapter emitted an invalid or incomplete provenance record.");
       if (emittedItems >= actor.maxItems) {
-        controller.abort(new Error("Actor output limit reached."));
-        throw new CollectionExecutionError("ITEM_LIMIT", "Actor exceeded its maximum item count.");
+        const limitError = new CollectionExecutionError("ITEM_LIMIT", "Actor exceeded its maximum item count.");
+        controller.abort(limitError);
+        throw limitError;
       }
       // Reserve synchronously before awaiting persistence so concurrent adapter
       // emissions cannot race past the actor's maximum item count.
