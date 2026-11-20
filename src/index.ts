@@ -251,6 +251,69 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 }
 
 
+
+type ResearchResource = "research_runs" | "research_sources" | "research_opportunities";
+const RESEARCH_FIELDS: Record<ResearchResource, string[]> = {
+  research_runs: ["title","research_question","market_scope","status","summary","findings","methodology","completed_at"],
+  research_sources: ["research_run_id","source_type","title","url","publisher","published_at","excerpt","relevance_score","evidence_status","metadata"],
+  research_opportunities: ["research_run_id","title","customer_problem","target_customer","proposed_solution","revenue_model","validation_score","risks","validation_steps","status"]
+};
+const RESEARCH_COLUMNS: Record<ResearchResource, string> = {
+  research_runs: "id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at",
+  research_sources: "id,research_run_id,source_type,title,url,publisher,published_at,retrieved_at,excerpt,relevance_score,evidence_status,metadata,created_at",
+  research_opportunities: "id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status,created_at,updated_at"
+};
+async function handleResearchResource(request: Request, env: Env, headers: Headers, resource: ResearchResource): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access research." } }, 401, headers);
+  const method = request.method;
+  if (!["GET","POST","PATCH"].includes(method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } }, 405, headers);
+  const url = new URL(request.url);
+  const id = url.searchParams.get("id");
+  const runId = url.searchParams.get("research_run_id");
+  if ((method === "PATCH" && (!id || !/^[0-9a-f-]{36}$/i.test(id))) || (runId && !/^[0-9a-f-]{36}$/i.test(runId))) return json({ error: { code: "INVALID_ID", message: "A valid record ID is required." } }, 400, headers);
+  let ownerId: string | null = null;
+  if (method === "POST") {
+    try { ownerId = await verifiedUserId(token, env); }
+    catch { return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers); }
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+  }
+  const fields = RESEARCH_FIELDS[resource];
+  let endpoint = "/rest/v1/" + resource + "?select=" + RESEARCH_COLUMNS[resource];
+  const params = new URLSearchParams({ order: resource === "research_sources" ? "created_at.desc" : "updated_at.desc", limit: "100" });
+  if (resource !== "research_runs" && runId) params.set("research_run_id", "eq." + runId);
+  if (method === "GET") endpoint += "&" + params.toString();
+  let body: JsonRecord | undefined;
+  if (method === "POST" || method === "PATCH") {
+    const input = await readJson(request);
+    if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+    for (const key of Object.keys(input)) if (!fields.includes(key)) return json({ error: { code: "INVALID_BODY", message: "Unsupported research field: " + key } }, 400, headers);
+    const required = resource === "research_runs" ? ["title","research_question"] : resource === "research_sources" ? ["research_run_id","title","url"] : ["research_run_id","title","customer_problem"];
+    if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" ? 5000 : key === "url" ? 2048 : key === "customer_problem" ? 5000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
+    if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
+    if (resource === "research_runs" && input.status !== undefined && !["draft","queued","running","completed","failed","cancelled"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid research status." } }, 400, headers);
+    if (resource === "research_sources" && input.evidence_status !== undefined && !["unreviewed","supports","contradicts","context","rejected"].includes(String(input.evidence_status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid evidence status." } }, 400, headers);
+    if (resource === "research_opportunities" && input.status !== undefined && !["discovered","investigating","validated","rejected","pursuing"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid opportunity status." } }, 400, headers);
+    if (resource !== "research_runs" && input.research_run_id !== undefined && !/^[0-9a-f-]{36}$/i.test(String(input.research_run_id))) return json({ error: { code: "INVALID_ID", message: "A valid research_run_id is required." } }, 400, headers);
+    body = { ...input };
+    if (method === "POST") body.user_id = ownerId;
+    if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
+    if (method === "POST" && resource === "research_runs" && body.status === undefined) body.status = "draft";
+  }
+  try {
+    const response = await fetch(new URL(endpoint, env.SUPABASE_URL!), {
+      method, headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", ...(body ? { "content-type": "application/json", prefer: "return=representation" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    const raw = await response.text();
+    const payload = raw ? JSON.parse(raw) : null;
+    if (!response.ok) return json({ error: { code: "RESEARCH_STORAGE_FAILED", message: response.status >= 500 ? "Research storage could not complete the request. Confirm migration 0005 has been applied." : (payload?.message ?? "The research request was rejected.") } }, response.status >= 500 ? 502 : response.status, headers);
+    if (method === "PATCH" && Array.isArray(payload) && payload.length === 0) return json({ error: { code: "NOT_FOUND", message: "Research record not found." } }, 404, headers);
+    return json({ data: payload ?? [] }, method === "POST" ? 201 : 200, headers);
+  } catch { return json({ error: { code: "DATABASE_UNAVAILABLE", message: "Research storage is temporarily unavailable." } }, 502, headers); }
+}
+
 type AssistantResource = "assistant_conversations" | "assistant_messages" | "memory_items";
 async function verifiedUserId(token: string, env: Env): Promise<string | null> {
   let response: Response;
@@ -471,6 +534,14 @@ export default {
     };
     const resource = resourceRoutes[url.pathname];
     if (resource) return handleResource(request, env, headers, resource);
+
+    const researchRoutes: Record<string, ResearchResource> = {
+      "/api/v1/research/runs": "research_runs",
+      "/api/v1/research/sources": "research_sources",
+      "/api/v1/research/opportunities": "research_opportunities",
+    };
+    const researchResource = researchRoutes[url.pathname];
+    if (researchResource) return handleResearchResource(request, env, headers, researchResource);
 
     const assistantRoutes: Record<string, AssistantResource> = {
       "/api/v1/conversations": "assistant_conversations",
