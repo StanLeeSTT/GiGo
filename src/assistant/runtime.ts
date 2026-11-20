@@ -50,6 +50,10 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "products_create", description: "Save a product brief in Product Studio. This creates a draft record; it does not manufacture or publish the product.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, summary: { type: ["string","null"], maxLength: 5000 }, target_customer: { type: ["string","null"], maxLength: 2000 }, customer_problem: { type: ["string","null"], maxLength: 5000 }, proposed_solution: { type: ["string","null"], maxLength: 5000 }, product_type: { type: "string", enum: ["ebook","course","workbook","template","membership","software","service","other"] }, outline: { type: "array", items: { type: "string" } }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, research_run_id: { type: ["string","null"] } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "partners_list", description: "List the owner's saved partner candidates and their evidence-based scorecards.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "partners_save_candidate", description: "Save a creator or distribution partner candidate. Score only evidence supplied or actually inspected. The score components use the documented 100-point policy: audience fit 20, authenticity and engagement 20, credibility and reputation 15, reach and consistency 10, commercial potential 15, brand and values 10, operational readiness 5, legal and rights readiness 5. Set hard_stop for a disqualifying issue. Missing evidence must remain unscored.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, platform: { type: "string", minLength: 1, maxLength: 80 }, profile_url: { type: "string", minLength: 1, maxLength: 2048 }, niche: { type: ["string","null"], maxLength: 500 }, follower_count: { type: ["integer","null"], minimum: 0 }, average_views: { type: ["integer","null"], minimum: 0 }, business_email: { type: ["string","null"], maxLength: 320 }, has_competing_offer: { type: ["boolean","null"] }, score_components: { type: ["object","null"], properties: { audience_fit: { type: "number", minimum: 0, maximum: 20 }, authenticity_engagement: { type: "number", minimum: 0, maximum: 20 }, credibility_reputation: { type: "number", minimum: 0, maximum: 15 }, reach_consistency: { type: "number", minimum: 0, maximum: 10 }, commercial_potential: { type: "number", minimum: 0, maximum: 15 }, brand_values: { type: "number", minimum: 0, maximum: 10 }, operational_readiness: { type: "number", minimum: 0, maximum: 5 }, legal_rights_readiness: { type: "number", minimum: 0, maximum: 5 } }, additionalProperties: false }, evidence: { type: "array", items: { type: "string", maxLength: 2048 } }, due_diligence: { type: ["object","null"] }, hard_stop: { type: "boolean" } }, required: ["name","platform","profile_url"], additionalProperties: false } } },
+  { type: "function", function: { name: "leads_list", description: "List the owner's CRM leads and pipeline stages. Respect do-not-contact flags.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "leads_create", description: "Save a prospect in the owner's CRM. This does not contact the person. Preserve do-not-contact preferences.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, organisation: { type: ["string","null"], maxLength: 200 }, email: { type: ["string","null"], maxLength: 320 }, website: { type: ["string","null"], maxLength: 2048 }, source: { type: ["string","null"], maxLength: 200 }, source_url: { type: ["string","null"], maxLength: 2048 }, customer_problem: { type: ["string","null"], maxLength: 5000 }, fit_score: { type: ["number","null"], minimum: 0, maximum: 100 }, stage: { type: "string", enum: ["new","qualified","contacted","proposal","won","lost","do_not_contact"] }, do_not_contact: { type: "boolean" }, notes: { type: ["string","null"], maxLength: 10000 } }, required: ["name"], additionalProperties: false } } },
+  { type: "function", function: { name: "offers_list", description: "List saved offers and their pricing assumptions.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "offers_create", description: "Create an offer draft and calculate indicative net-before-tax economics from price, delivery cost, payment fee and partner share assumptions. This is an estimate, not a guarantee.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, product_id: { type: ["string","null"] }, target_customer: { type: ["string","null"], maxLength: 2000 }, promised_outcome: { type: ["string","null"], maxLength: 5000 }, deliverables: { type: "array", items: { type: "string" } }, exclusions: { type: ["string","null"], maxLength: 5000 }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, delivery_cost: { type: ["number","null"], minimum: 0 }, payment_fee_percent: { type: ["number","null"], minimum: 0, maximum: 100 }, partner_share_percent: { type: ["number","null"], minimum: 0, maximum: 100 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "projects_list", description: "List the owner's projects.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "projects_create", description: "Create a project in the owner's GiGo workspace.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 160 }, description: { type: ["string", "null"], maxLength: 5000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "tasks_list", description: "List the owner's tasks. Optionally filter by project_id or status.", parameters: { type: "object", properties: { project_id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, additionalProperties: false } } },
@@ -228,6 +232,63 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       status: "new"
     }) as Row[];
     return { saved: rows?.[0] ?? null, scoring: { total_score: score, recommendation, complete: score !== null, hard_stop: hardStop, maximum: 100 }, note: score === null ? "Candidate saved without a score because all eight evidence-backed score components were not supplied." : "Score is based only on the supplied evidence and should be reviewed before acting." };
+  }
+  if (name === "leads_list") {
+    return { leads: await db(env, token, "/rest/v1/leads?select=id,name,organisation,email,website,source,source_url,customer_problem,fit_score,stage,do_not_contact,notes,last_contacted_at,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "leads_create") {
+    const nameValue = typeof args.name === "string" ? args.name.trim() : "";
+    if (!nameValue || nameValue.length > 200) return { error: "Lead name must be 1–200 characters." };
+    const doNotContact = args.do_not_contact === true || args.stage === "do_not_contact";
+    const fit = args.fit_score ?? null;
+    if (fit !== null && (typeof fit !== "number" || fit < 0 || fit > 100)) return { error: "fit_score must be between 0 and 100." };
+    const stage = doNotContact ? "do_not_contact" : args.stage ?? "new";
+    if (!["new","qualified","contacted","proposal","won","lost","do_not_contact"].includes(String(stage))) return { error: "Invalid lead stage." };
+    const rows = await db(env, token, "/rest/v1/leads?select=id,name,organisation,email,stage,do_not_contact,created_at", "POST", {
+      user_id: ownerId, name: nameValue, organisation: args.organisation ?? null, email: args.email ?? null,
+      website: args.website ?? null, source: args.source ?? null, source_url: args.source_url ?? null,
+      customer_problem: args.customer_problem ?? null, fit_score: fit, stage, do_not_contact: doNotContact,
+      notes: args.notes ?? null
+    }) as Row[];
+    return { created: rows?.[0] ?? null, note: "Lead saved. No message or outreach was sent." };
+  }
+  if (name === "offers_list") {
+    return { offers: await db(env, token, "/rest/v1/offers?select=id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "offers_create") {
+    const nameValue = typeof args.name === "string" ? args.name.trim() : "";
+    if (!nameValue || nameValue.length > 200) return { error: "Offer name must be 1–200 characters." };
+    const price = args.price_amount ?? null;
+    const deliveryCost = args.delivery_cost ?? 0;
+    const paymentFeePercent = args.payment_fee_percent ?? 0;
+    const partnerSharePercent = args.partner_share_percent ?? 0;
+    if (price !== null && (typeof price !== "number" || !Number.isFinite(price) || price < 0)) return { error: "price_amount must be a non-negative number or null." };
+    if (typeof deliveryCost !== "number" || !Number.isFinite(deliveryCost) || deliveryCost < 0) return { error: "delivery_cost must be a non-negative number." };
+    if (typeof paymentFeePercent !== "number" || paymentFeePercent < 0 || paymentFeePercent > 100 || typeof partnerSharePercent !== "number" || partnerSharePercent < 0 || partnerSharePercent > 100) return { error: "Fee and partner share percentages must be between 0 and 100." };
+    const currency = typeof args.price_currency === "string" ? args.price_currency.toUpperCase() : "NGN";
+    if (!/^[A-Z]{3}$/.test(currency)) return { error: "price_currency must be a three-letter currency code." };
+    if (args.product_id !== undefined && args.product_id !== null) {
+      if (!validUuid(args.product_id)) return { error: "product_id must be a valid UUID or null." };
+      const product = await db(env, token, "/rest/v1/products?select=id&id=eq." + encodeURIComponent(String(args.product_id)) + "&limit=1") as Row[];
+      if (!Array.isArray(product) || !product.length) return { error: "Linked product was not found in this workspace." };
+    }
+    const deliverables = Array.isArray(args.deliverables) && args.deliverables.every(item => typeof item === "string") ? args.deliverables.slice(0,50) : [];
+    let economics: Row = { estimate_available: false, note: "Add a price to calculate indicative economics." };
+    if (typeof price === "number") {
+      const paymentFee = price * paymentFeePercent / 100;
+      const contribution = price - paymentFee - deliveryCost;
+      const partnerShare = Math.max(0, contribution) * partnerSharePercent / 100;
+      const netBeforeTax = contribution - partnerShare;
+      economics = { estimate_available: true, gross_price: price, payment_fee_estimate: paymentFee, delivery_cost: deliveryCost, partner_share_estimate: partnerShare, net_before_tax_estimate: netBeforeTax, margin_percent_before_tax: price > 0 ? netBeforeTax / price * 100 : null, assumptions: "Indicative only; excludes taxes, refunds, chargebacks, support overhead and other unlisted costs." };
+    }
+    const rows = await db(env, token, "/rest/v1/offers?select=id,name,status,price_amount,price_currency,assumptions,created_at", "POST", {
+      user_id: ownerId, product_id: args.product_id ?? null, name: nameValue, target_customer: args.target_customer ?? null,
+      promised_outcome: args.promised_outcome ?? null, deliverables, exclusions: args.exclusions ?? null,
+      price_amount: price, price_currency: currency, delivery_cost: deliveryCost,
+      payment_fee_percent: paymentFeePercent, partner_share_percent: partnerSharePercent,
+      status: "draft", assumptions: economics
+    }) as Row[];
+    return { created: rows?.[0] ?? null, economics };
   }
   if (name === "projects_list") {
     const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
