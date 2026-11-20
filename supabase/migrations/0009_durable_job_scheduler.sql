@@ -6,7 +6,7 @@ create or replace function public.gigo_dispatch_due_schedules(p_limit integer de
 returns integer
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare
   schedule_row public.operation_schedules%rowtype;
@@ -104,7 +104,7 @@ create or replace function public.gigo_claim_due_jobs(p_limit integer default 5)
 returns setof public.jobs
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 begin
   -- Recover work abandoned by a terminated worker after a conservative timeout.
