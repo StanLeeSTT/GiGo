@@ -19,11 +19,9 @@ test("collection claim RPC is a service-role-only SKIP LOCKED path", () => {
   assert.match(sql, /collection_runs_job_id_unique/);
   assert.match(sql, /candidate\.input->>'dataset_id'/);
   assert.match(sql, /collection_lease_token/);
-  assert.equal((sql.match(/and \(j\.progress->>'collection_lease_expires_at'\)::timestamptz > now\(\)/g) ?? []).length, 4);
+  assert.match(sql, /collection_lease_expires_at/);
   assert.match(sql, /grant execute on function public\.gigo_claim_collection_jobs\(integer, integer\) to service_role/);
   assert.match(sql, /revoke all on function public\.gigo_claim_collection_jobs\(integer, integer\) from public, anon, authenticated/);
-  assert.match(sql, /return case when inserted_id is not null then 'inserted' else 'duplicate' end/);
-  assert.match(sql, /return 'lease_lost'/);
 });
 
 test("collection persistence RPCs require a live matching lease", () => {
@@ -39,6 +37,8 @@ test("collection persistence RPCs require a live matching lease", () => {
   }
   assert.equal((sql.match(/collection_lease_token' = p_lease_token::text/g) ?? []).length, 4);
   assert.equal((sql.match(/collection_lease_expires_at'\)::timestamptz > now\(\)/g) ?? []).length, 4);
+  assert.match(sql, /returns text[\s\S]*return case when inserted_id is not null then 'inserted' else 'duplicate' end/);
+  assert.match(sql, /return 'lease_lost'/);
   assert.match(sql, /on conflict \(dataset_id, item_key\) do nothing/);
   assert.match(sql, /item_count = item_count \+ 1/);
 });
