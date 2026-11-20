@@ -240,3 +240,9 @@ Migration `0014_collection_worker_persistence.sql` adds service-role-only RPCs f
 Each mutation checks the job type, processing state, lease token and lease expiry. Item insertion and dataset count changes occur in one transaction. Duplicate item keys are ignored rather than counted as additional stored dataset rows.
 
 **Not yet an executable worker:** these migrations define the trusted database boundary only. No Cloudflare scheduled handler claims collection jobs, no adapter is registered, and no network collection is activated. The SQL migrations are committed to the feature branch but have not been applied to Supabase. The current CI workflow runs TypeScript and Node tests; it does not execute PostgreSQL migrations against a live database. A real PostgreSQL/Supabase integration test is still required before applying these migrations.
+
+### Worker database contract refinements
+
+The claim RPC now binds a job to the exact `collection_run_id` and `dataset_id` stored in its job input, and a unique partial index prevents multiple collection runs from sharing one job. The item persistence RPC returns distinct outcomes (`inserted`, `duplicate`, or `lease_lost`) so a deduplicated record is not confused with an expired worker lease. Item insertion, dataset counts and run counters are kept in one transaction; missing linked rows raise an error and roll back the write.
+
+The SQL contract tests check the scheduler allowlist, worker-only grants, lease checks, exact run/dataset binding, deduplication and balanced SQL function delimiters. These are static contract tests, not a substitute for executing the migrations against PostgreSQL. The dedicated worker still has not been connected to the Cloudflare scheduled handler.
