@@ -226,3 +226,17 @@ Migration `0012_collection_run_enqueue.sql` adds the authenticated RPC `gigo_cre
 The Worker exposes authenticated `POST /api/v1/collection/runs`. It validates the actor key and actor input against the in-code actor definition before calling the RPC with the user's bearer token. It returns HTTP 202 with the run, job and dataset identifiers.
 
 **Safety boundary:** this only creates durable queued records. Migration 0011's generic scheduler allowlist excludes `collection_run`, so the generic AI worker cannot claim it. The endpoint explicitly returns `execution_enabled: false`. No provider is called and no external network request is made. The RPC and endpoint are not live until migrations 0010, 0011 and 0012 are applied and the Worker is deployed.
+
+## Dedicated collection worker database boundary (migrations 0013–0014)
+
+Migration `0013_collection_worker_claim.sql` adds a separate service-role-only claim function. It claims only `collection_run` jobs, uses `FOR UPDATE SKIP LOCKED`, verifies the owner-linked run and dataset, and issues an expiring lease token. Expired collection leases are recovered by this collection-specific function; migration 0011's generic scheduler recovery was narrowed to its own five supported job types so it cannot reset collection jobs.
+
+Migration `0014_collection_worker_persistence.sql` adds service-role-only RPCs for:
+- progress and checkpoint persistence with a matching, unexpired lease;
+- provenance-bearing item insertion with dataset/item-key deduplication;
+- terminal completion, partial completion, failure or cancellation;
+- bounded retry scheduling, with a five-attempt ceiling.
+
+Each mutation checks the job type, processing state, lease token and lease expiry. Item insertion and dataset count changes occur in one transaction. Duplicate item keys are ignored rather than counted as additional stored dataset rows.
+
+**Not yet an executable worker:** these migrations define the trusted database boundary only. No Cloudflare scheduled handler claims collection jobs, no adapter is registered, and no network collection is activated. The SQL migrations are committed to the feature branch but have not been applied to Supabase. The current CI workflow runs TypeScript and Node tests; it does not execute PostgreSQL migrations against a live database. A real PostgreSQL/Supabase integration test is still required before applying these migrations.
