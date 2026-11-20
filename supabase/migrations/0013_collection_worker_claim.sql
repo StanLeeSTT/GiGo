@@ -43,7 +43,11 @@ begin
         progress = coalesce(j.progress, '{}'::jsonb) - 'collection_lease_token' - 'collection_lease_expires_at'
     where j.job_type = 'collection_run'
       and j.status = 'processing'
-      and coalesce((j.progress ->> 'collection_lease_expires_at')::timestamptz, j.updated_at + interval '20 minutes') <= now();
+      and case
+        when (j.progress ->> 'collection_lease_expires_at') ~ '^\\d{4}-\\d{2}-\\d{2}T'
+          then (j.progress ->> 'collection_lease_expires_at')::timestamptz <= now()
+        else j.updated_at < now() - interval '20 minutes'
+      end;
 
   update public.collection_runs r
     set status = case when exists (
