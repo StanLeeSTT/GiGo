@@ -1,6 +1,6 @@
 import type { CollectionActorDefinition } from "./types";
 
-export interface PublicPageInput {
+export interface PublicPageInput extends Record<string, unknown> {
   urls: string[];
   max_pages?: number;
 }
