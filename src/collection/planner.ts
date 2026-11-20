@@ -19,6 +19,7 @@ export interface CollectionProviderCandidate {
 
 const blockedStatuses = new Set(["not_configured", "disabled", "quota_exhausted", "permission_required", "error"]);
 const verificationRank: Record<CollectionProviderDefinition["verification"], number> = {
+  internal_verified: -1,
   official_api: 0,
   verified_open_source: 1,
   integration_scaffold: 2,
