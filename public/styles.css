@@ -389,3 +389,10 @@ input,textarea,select{accent-color:#70d8d0}
 .risk-label{display:inline-flex;padding:6px 9px;margin:6px 0;border-radius:7px;background:rgba(255,116,116,.12);border:1px solid rgba(255,116,116,.3);color:#ffaaaa;font-size:9px;letter-spacing:1px;font-weight:800}
 .lead-card,.offer-card{animation:trace-in .3s ease both}
 .offer-card h3,.lead-card h3{color:#e2f7f8}
+
+/* Operations Centre */
+.operation-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.operation-actions button{white-space:nowrap}
+#schedule-form{margin-top:18px}
+#schedule-note{margin-top:12px}
+@media(max-width:900px){.operation-actions{width:100%}.operation-actions button{flex:1}}
