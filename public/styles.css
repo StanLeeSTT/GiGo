@@ -396,3 +396,7 @@ input,textarea,select{accent-color:#70d8d0}
 #schedule-form{margin-top:18px}
 #schedule-note{margin-top:12px}
 @media(max-width:900px){.operation-actions{width:100%}.operation-actions button{flex:1}}
+
+.job-result{margin-top:13px;border-top:1px solid var(--line);padding-top:10px;color:var(--accent)}
+.job-result summary{cursor:pointer;font-size:12px;font-weight:700}
+.job-result pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:520px;overflow:auto;margin:12px 0 0;padding:14px;border:1px solid var(--line);border-radius:9px;background:#101a1b;color:var(--text);font:12px/1.65 'DM Sans',sans-serif}
