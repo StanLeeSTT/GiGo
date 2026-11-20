@@ -175,9 +175,9 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     const category = args.category ?? "general";
     const source = args.source ?? "assistant";
     if (typeof category !== "string" || category.length > 80 || typeof source !== "string" || source.length > 80) return { error: "Category and source must be text up to 80 characters." };
-    const normalized = args.content.trim().toLowerCase().replace(/\\s+/g, " ");
+    const normalized = args.content.trim().toLowerCase().replace(/\s+/g, " ");
     const existing = await db(env, token, `/rest/v1/memory_items?select=id,category,content,is_active&category=eq.${encodeURIComponent(category)}&is_active=eq.true&order=updated_at.desc&limit=100`) as Row[];
-    const duplicate = (Array.isArray(existing) ? existing : []).find(row => String(row.content ?? "").trim().toLowerCase().replace(/\\s+/g, " ") === normalized);
+    const duplicate = (Array.isArray(existing) ? existing : []).find(row => String(row.content ?? "").trim().toLowerCase().replace(/\s+/g, " ") === normalized);
     if (duplicate) return { already_exists: duplicate, note: "An identical active memory already exists; no duplicate was created." };
     const rows = await db(env, token, "/rest/v1/memory_items?select=id,category,content,source,confidence,is_active,created_at", "POST", { user_id: ownerId, category, content: args.content.trim(), source, confidence: 1, is_active: true }) as Row[];
     return { created: rows?.[0] ?? null };
