@@ -666,6 +666,9 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
       if (Object.keys(input).some(k => !["status","decision_note"].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Approval decisions can only change status and decision note." } }, 400, headers);
       if (!["approved","rejected"].includes(String(input.status))) return json({ error: { code: "INVALID_DECISION", message: "A decision must be approved or rejected." } }, 400, headers);
       body = { status: input.status, decision_note: typeof input.decision_note === "string" ? input.decision_note.slice(0,2000) : null, decided_at: new Date().toISOString() };
+      // Decisions are one-way: only a pending, non-expired request can be decided.
+      filters.set("status", "eq.pending");
+      filters.set("or", "(expires_at.is.null,expires_at.gt." + new Date().toISOString() + ")");
     } else {
       if (method === "PATCH" && resource !== "operation_schedules") return json({ error: { code: "READ_ONLY_RESOURCE", message: "This operations resource cannot be edited." } }, 405, headers);
       if (Object.keys(input).some(k => !allowed[resource].includes(k))) return json({ error: { code: "INVALID_BODY", message: "Unsupported operations field." } }, 400, headers);
@@ -683,7 +686,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
         if (input.job_id !== undefined && input.job_id !== null && !/^[0-9a-f-]{36}$/i.test(String(input.job_id))) return json({ error: { code: "INVALID_ID", message: "job_id must be a UUID or null." } }, 400, headers);
       } else if (resource === "notification_events") {
         if (method !== "POST") return json({ error: { code: "READ_ONLY_RESOURCE", message: "Notifications can only be queued, not directly edited." } }, 405, headers);
-        if (!["in_app","email","push","voice_call"].includes(String(input.channel)) || !validText(input.event_type,100) || !validText(input.title,200) || !validText(input.body,5000)) return json({ error: { code: "INVALID_BODY", message: "Valid channel, event_type, title and body are required." } }, 400, headers);
+        if (input.channel !== "in_app" || !validText(input.event_type,100) || !validText(input.title,200) || !validText(input.body,5000)) return json({ error: { code: "INVALID_BODY", message: "Only in-app notifications can be queued until email, push and voice delivery adapters are implemented." } }, 400, headers);
         if (input.scheduled_for !== undefined && (typeof input.scheduled_for !== "string" || !Number.isFinite(Date.parse(input.scheduled_for)))) return json({ error: { code: "INVALID_DATE", message: "scheduled_for must be a valid timestamp." } }, 400, headers);
       } else {
         if (!validText(input.event_type,100) || !validText(input.title,200)) return json({ error: { code: "INVALID_BODY", message: "event_type and title are required." } }, 400, headers);
