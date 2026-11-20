@@ -73,6 +73,8 @@ function redirectTarget(response,currentUrl) {
 async function getWithRedirects(rawUrl,options={}) {
   let current=validateUrl(rawUrl).toString();
   for(let hop=0;hop<=MAX_REDIRECTS;hop++) {
+    const currentParsed=validateUrl(current);
+    if(!(await checkRobots(currentParsed,options.signal))) throw new Error("Robots policy disallows this page or redirect destination.");
     const response=await safeHttpsGet(current,options), next=redirectTarget(response,current);
     if(!next) return {...response,finalUrl:current};
     if(hop===MAX_REDIRECTS) throw new Error("Redirect limit exceeded.");
@@ -93,17 +95,24 @@ export function robotsAllows(robotsText,targetUrl) {
   }
   flush();
   const matching=groups.filter(group=>group.agents.some(agent=>agent==="*"||USER_AGENT.toLowerCase().includes(agent)));
-  const matched=matching.flatMap(group=>group.rules).filter(rule=>path.startsWith(rule.value)).sort((a,b)=>b.value.length-a.value.length);
+  const applicable=matching.flatMap(group=>group.rules);
+  // Wildcard/end-anchor syntax is not interpreted by this minimal parser.
+  // Fail closed rather than accidentally treating a restrictive rule as a literal prefix.
+  if(applicable.some(rule=>/[*$]/.test(rule.value))) return false;
+  const matched=applicable.filter(rule=>path.startsWith(rule.value)).sort((a,b)=>b.value.length-a.value.length);
   return !matched.length || matched[0].allow;
 }
 const robotsCache=new Map();
 async function checkRobots(url,signal) {
-  if(robotsCache.has(url.origin)) return robotsCache.get(url.origin);
+  if(robotsCache.has(url.origin)) {
+    const cached=robotsCache.get(url.origin);
+    return typeof cached==="string" ? robotsAllows(cached,url.toString()) : cached;
+  }
   const response=await safeHttpsGet(new URL("/robots.txt",url.origin).toString(),{maxBytes:MAX_ROBOTS_BYTES,signal});
-  const allowed=response.status===404||response.status===410 ? true :
-    response.status>=200&&response.status<300 ? robotsAllows(response.body,url.toString()) : false;
-  robotsCache.set(url.origin,allowed);
-  return allowed;
+  const policy=response.status===404||response.status===410 ? true :
+    response.status>=200&&response.status<300 ? response.body : false;
+  robotsCache.set(url.origin,policy);
+  return typeof policy==="string" ? robotsAllows(policy,url.toString()) : policy;
 }
 function decodeHtml(value) {
   return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(_m,e)=>{
@@ -134,7 +143,6 @@ async function executePublicMetadata(_actor,input,context) {
     if(completed.has(suppliedUrl)) continue;
     try {
       const start=validateUrl(suppliedUrl);
-      if(!(await checkRobots(start,context.signal))) { blocked++;completed.add(suppliedUrl);continue; }
       const response=await getWithRedirects(start.toString(),{maxBytes:MAX_HTML_BYTES,signal:context.signal});
       requests+=2;
       if(response.status<200||response.status>=300) throw new Error("Page returned HTTP "+response.status+".");
