@@ -643,7 +643,7 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
     if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
   }
 
-  const filters = new URLSearchParams({ select: OPERATIONS_COLUMNS[resource], order: "created_at.desc", limit: "100" });
+  const filters = new URLSearchParams({ select: OPERATIONS_COLUMNS[resource], order: "created_at.desc", limit: resource === "jobs" ? "30" : "100" });
   if (method === "PATCH") filters.set("id", "eq." + id);
   if (method === "GET") {
     if (resource === "approval_requests" || resource === "notification_events" || resource === "jobs") {
