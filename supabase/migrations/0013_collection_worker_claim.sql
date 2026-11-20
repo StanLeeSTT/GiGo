@@ -44,7 +44,7 @@ begin
     where j.job_type = 'collection_run'
       and j.status = 'processing'
       and case
-        when (j.progress ->> 'collection_lease_expires_at') ~ '^\\d{4}-\\d{2}-\\d{2}T'
+        when (j.progress ->> 'collection_lease_expires_at') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T'
           then (j.progress ->> 'collection_lease_expires_at')::timestamptz <= now()
         else j.updated_at < now() - interval '20 minutes'
       end;
