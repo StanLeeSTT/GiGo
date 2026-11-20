@@ -21,29 +21,33 @@ function normalizeChatGPTConversation(conversation,index){
   return {id:conversationId||"conversation-"+index,title:String(conversation.title||"Imported ChatGPT conversation").slice(0,160),created_at:Number.isFinite(Number(conversation.create_time))?new Date(Number(conversation.create_time)*1000).toISOString():undefined,messages};
 }
 async function importChatGPTHistory(){
-  const file=historyFile?.files?.[0];
-  if(!file){historyStatus.textContent="Choose your conversations.json file first.";return;}
-  if(file.size>200*1024*1024){historyStatus.textContent="This export is over 200 MB. Please split it into smaller JSON files.";return;}
+  const selected=Array.from(historyFile?.files||[]);
+  if(!selected.length){historyStatus.textContent="Choose one or more conversation JSON files first.";return;}
+  if(selected.some(file=>file.size>200*1024*1024)){historyStatus.textContent="One of the selected files is over 200 MB. Split it into smaller JSON files.";return;}
   historyButton.disabled=true;historyFile.disabled=true;historyStatus.textContent="Reading export…";
   try{
-    const parsed=JSON.parse(await file.text());
-    const conversations=Array.isArray(parsed)?parsed:(Array.isArray(parsed.conversations)?parsed.conversations:null);
-    if(!conversations)throw new Error("This does not look like a ChatGPT conversations.json export.");
     let conversationCount=0,messageCount=0,skippedCount=0,emptyCount=0;
-    for(let i=0;i<conversations.length;i++){
-      const conversation=normalizeChatGPTConversation(conversations[i],i);
-      if(!conversation.messages.length){emptyCount++;continue;}
-      for(let start=0;start<conversation.messages.length;start+=60){
-        const batch=conversation.messages.slice(start,start+60);
-        const result=await api.request("/api/v1/assistant/history/import",{method:"POST",body:JSON.stringify({chatgpt_conversation_id:conversation.id,title:conversation.title,created_at:conversation.created_at,messages:batch})});
-        messageCount+=Number(result.imported||0);skippedCount+=Number(result.skipped_duplicates||0);
+    for(let fileIndex=0;fileIndex<selected.length;fileIndex++){
+      const file=selected[fileIndex];
+      historyStatus.textContent="Reading file "+(fileIndex+1)+" of "+selected.length+"…";
+      const parsed=JSON.parse(await file.text());
+      const conversations=Array.isArray(parsed)?parsed:(Array.isArray(parsed.conversations)?parsed.conversations:null);
+      if(!conversations)throw new Error(file.name+" is not a supported ChatGPT conversations JSON file.");
+      for(let i=0;i<conversations.length;i++){
+        const conversation=normalizeChatGPTConversation(conversations[i],conversationCount+i);
+        if(!conversation.messages.length){emptyCount++;continue;}
+        for(let start=0;start<conversation.messages.length;start+=60){
+          const batch=conversation.messages.slice(start,start+60);
+          const result=await api.request("/api/v1/assistant/history/import",{method:"POST",body:JSON.stringify({chatgpt_conversation_id:conversation.id,title:conversation.title,created_at:conversation.created_at,messages:batch})});
+          messageCount+=Number(result.imported||0);skippedCount+=Number(result.skipped_duplicates||0);
+        }
+        conversationCount++;
+        historyStatus.textContent="Processed "+conversationCount+" conversations · "+messageCount+" messages saved";
       }
-      conversationCount++;
-      historyStatus.textContent="Imported "+conversationCount+" of "+conversations.length+" conversations · "+messageCount+" messages saved";
     }
     historyStatus.textContent="Finished: "+conversationCount+" conversations processed, "+messageCount+" messages imported, "+skippedCount+" duplicates skipped, "+emptyCount+" empty conversations skipped.";
     historyFile.value="";
-  }catch(error){historyStatus.textContent="Import stopped: "+(error?.message||"Unknown error")+". You can safely retry the same export.";}
+  }catch(error){historyStatus.textContent="Import stopped: "+(error?.message||"Unknown error")+". You can safely select the same files again; already saved messages will be skipped.";}
   finally{historyButton.disabled=false;historyFile.disabled=false;}
 }
 historyButton?.addEventListener("click",importChatGPTHistory);
