@@ -246,3 +246,9 @@ Each mutation checks the job type, processing state, lease token and lease expir
 The claim RPC now binds a job to the exact `collection_run_id` and `dataset_id` stored in its job input, and a unique partial index prevents multiple collection runs from sharing one job. The item persistence RPC returns distinct outcomes (`inserted`, `duplicate`, or `lease_lost`) so a deduplicated record is not confused with an expired worker lease. Item insertion, dataset counts and run counters are kept in one transaction; missing linked rows raise an error and roll back the write.
 
 The SQL contract tests check the scheduler allowlist, worker-only grants, lease checks, exact run/dataset binding, deduplication and balanced SQL function delimiters. These are static contract tests, not a substitute for executing the migrations against PostgreSQL. The dedicated worker still has not been connected to the Cloudflare scheduled handler.
+
+### Service-role persistence client
+
+`src/collection/store.ts` now provides a typed client for the dedicated worker RPCs: claim, progress/checkpoint, item persistence, finish and retry. It supports the current Supabase `sb_secret_*` API key format (sent as `apikey` only) and legacy service-role JWTs (also sent as Bearer), keeps database response bodies out of errors, and uses bounded request timeouts. Mocked-fetch tests cover the request payloads, lease-token forwarding, duplicate-versus-lost-lease outcomes and both key formats.
+
+This is a database client, not a running worker. It is not called by the scheduled handler. No provider has yet passed end-to-end execution verification, so collection jobs remain excluded from automatic claiming.
