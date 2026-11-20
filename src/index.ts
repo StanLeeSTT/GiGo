@@ -5,6 +5,7 @@ import { providerPoolStatus } from "./assistant/providers";
 import { handleMaxunRequest } from "./integrations/maxun";
 import { listCollectionProviders, getCollectionProviderVerificationSummary } from "./collection/registry";
 import { listCollectionActors } from "./collection/actors";
+import { listRegisteredCollectionAdapters } from "./collection/adapters";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -1054,7 +1055,8 @@ export default {
       try {
         const userId = await verifiedUserId(token, env);
         if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
-        return json({ data: { providers: listCollectionProviders(), actors: listCollectionActors().map(({ validateInput, ...actor }) => actor), verification: getCollectionProviderVerificationSummary(), execution_enabled: false, note: "Catalogue only: no collection adapter is currently registered, so no collection job can execute yet." } }, 200, headers);
+        const registeredAdapters = listRegisteredCollectionAdapters();
+        return json({ data: { providers: listCollectionProviders(), actors: listCollectionActors().map(({ validateInput, ...actor }) => actor), verification: getCollectionProviderVerificationSummary(), registered_adapters: registeredAdapters, execution_enabled: false, note: "Catalogue only: adapter registration and durable execution are not enabled. No collection job can execute yet." } }, 200, headers);
       } catch {
         return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
       }
