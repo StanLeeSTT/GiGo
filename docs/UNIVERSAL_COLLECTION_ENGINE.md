@@ -195,3 +195,10 @@ The runtime foundation now includes `src/collection/runner.ts`. It validates act
 Automated tests cover accepted/rejected public URL inputs, fail-closed provider planning, adapter capability mismatch, provenance validation, item-count consistency and timeout cancellation. The GitHub Actions workflow runs both `npm run typecheck` and `npm test`.
 
 **Important boundary:** this runner is a tested execution primitive, not yet a deployed collection worker. No collection job type is enabled, no adapter is registered, and no external collection request is made. The next implementation step is to bind the runner to transactional run/job state, checkpoint persistence, dataset/item upserts and safe worker cancellation; only then can a reviewed connector be activated.
+
+
+### Runner durability boundary (review update)
+
+The bounded runner now persists a final counter/checkpoint snapshot through its injected progress hook after an adapter returns. Final page/request counters must not move backwards from previously persisted progress, and the final item count must exactly match successful item emissions. Item slots are reserved before awaiting persistence so concurrent adapter emissions cannot exceed the actor limit. Parent cancellation rejects the runner promptly while also propagating the abort signal to the adapter.
+
+These hooks are deliberately storage-agnostic. They are not yet wired to Supabase, and the scheduler does not accept a `collection_run` job type. Do not enqueue collection jobs or apply migration 0010 until the durable worker handler, transactional run/job creation, persistence adapters, recovery semantics and integration tests are complete. The existing scheduler claims supported durable jobs generically, so enabling a new job type prematurely could route it through the wrong handler.
