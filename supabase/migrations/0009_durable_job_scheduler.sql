@@ -30,6 +30,31 @@ begin
     for update skip locked
     limit greatest(1, least(coalesce(p_limit, 10), 20))
   loop
+    -- The first scheduler pass calculates the first future run; it does not fire immediately.
+    if schedule_row.next_run_at is null then
+      if schedule_row.schedule_type = 'interval' then
+        minutes := greatest(5, least(coalesce((schedule_row.schedule_config->>'interval_minutes')::integer, 60), 10080));
+        next_at := now() + make_interval(mins => minutes);
+      else
+        tz := coalesce(nullif(schedule_row.schedule_config->>'timezone', ''), 'UTC');
+        local_now := now() at time zone tz;
+        target_time := coalesce(nullif(schedule_row.schedule_config->>'time', ''), '08:00')::time;
+        target_local := local_now::date + target_time;
+        if schedule_row.schedule_type = 'daily' then
+          if target_local <= local_now then target_local := target_local + interval '1 day'; end if;
+        else
+          target_day := greatest(1, least(coalesce((schedule_row.schedule_config->>'day_of_week')::integer, 1), 7));
+          target_local := target_local + ((target_day - extract(isodow from local_now)::integer + 7) % 7) * interval '1 day';
+          if target_local <= local_now then target_local := target_local + interval '7 days'; end if;
+        end if;
+        next_at := target_local at time zone tz;
+      end if;
+      update public.operation_schedules
+        set next_run_at = next_at
+        where id = schedule_row.id and user_id = schedule_row.user_id;
+      continue;
+    end if;
+
     run_key := 'schedule:' || schedule_row.id::text || ':' ||
       to_char(coalesce(schedule_row.next_run_at, now()), 'YYYYMMDDHH24MISS');
 
