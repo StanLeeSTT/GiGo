@@ -282,3 +282,18 @@ The runner:
 The workflow is `workflow_dispatch` only and is restricted to the trusted feature branch. It requires GitHub repository secrets named `SUPABASE_URL` and `SUPABASE_SECRET_KEY`; do not place these values in source files or chat. The provider remains disabled until the SQL migrations are applied and an owner-scoped provider row is configured as healthy with `web_fetch`.
 
 **Security review still required before live use:** the implementation is a conservative first boundary, not a guarantee against every network or content-parser attack. The tests and CI must pass; SQL migrations need a real PostgreSQL/Supabase integration test; the workflow must be reviewed; and a low-risk owner-controlled test URL should be used first. No public arbitrary-URL collection should be activated before those gates.
+
+
+## Safe HTTP provider onboarding
+
+The authenticated endpoint `POST /api/v1/collection/providers/register` accepts exactly one field:
+
+```json
+{ "provider_key": "gigo_safe_http_batch" }
+```
+
+It creates or refreshes the caller's owner-scoped provider row using a fixed server-side definition. The client cannot supply status, capabilities, access mode, endpoint URLs, headers, credentials, or arbitrary configuration. No secret is stored in the provider record. Registration sets status to `configured`, access mode to `public_web_permitted`, and the declared `web_fetch` capability, but this is not an execution approval: the planner requires `healthy`, and the SQL enqueue RPC also requires the provider row to be healthy.
+
+The endpoint is intentionally idempotent through the unique `(user_id, provider_key)` constraint and PostgREST upsert. It requires the caller's authenticated Supabase session and migration 0010.
+
+**Onboarding is not health verification.** The endpoint cannot mark a provider healthy. The next gate is a runner-side verification that checks the configured GitHub Actions environment, confirms the exact adapter is registered, and proves the service-role store can reach the expected database RPCs. Only a separate trusted service-role health transition should promote the provider to `healthy`. Until that transition exists and is verified, do not enqueue a run and do not add GitHub secrets to an unreviewed workflow.
