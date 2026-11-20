@@ -693,6 +693,17 @@ async function handleOperationsResource(request: Request, env: Env, headers: Hea
         if (method === "POST" && (!validText(input.name,160) || !validText(input.job_type,100))) return json({ error: { code: "INVALID_BODY", message: "Schedule name and job_type are required." } }, 400, headers);
         if (input.schedule_type !== undefined && !["interval","daily","weekly","event"].includes(String(input.schedule_type))) return json({ error: { code: "INVALID_SCHEDULE", message: "Invalid schedule type." } }, 400, headers);
         if (input.schedule_config !== undefined && (!input.schedule_config || typeof input.schedule_config !== "object" || Array.isArray(input.schedule_config))) return json({ error: { code: "INVALID_BODY", message: "schedule_config must be an object." } }, 400, headers);
+        if (method === "POST") {
+          const kind = String(input.schedule_type ?? "event");
+          const config = (input.schedule_config && typeof input.schedule_config === "object" ? input.schedule_config : {}) as JsonRecord;
+          if (kind === "interval" && config.interval_minutes !== undefined && (!Number.isInteger(config.interval_minutes) || Number(config.interval_minutes) < 5 || Number(config.interval_minutes) > 10080)) return json({ error: { code: "INVALID_INTERVAL", message: "Interval must be a whole number from 5 to 10080 minutes." } }, 400, headers);
+          if ((kind === "daily" || kind === "weekly") && config.time !== undefined && (typeof config.time !== "string" || !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(config.time))) return json({ error: { code: "INVALID_SCHEDULE_TIME", message: "Daily and weekly times must use 24-hour HH:MM format." } }, 400, headers);
+          if (kind === "weekly" && config.day_of_week !== undefined && (!Number.isInteger(config.day_of_week) || Number(config.day_of_week) < 1 || Number(config.day_of_week) > 7)) return json({ error: { code: "INVALID_WEEKDAY", message: "Weekly day_of_week must be 1 (Monday) through 7 (Sunday)." } }, 400, headers);
+          if (config.timezone !== undefined) {
+            if (typeof config.timezone !== "string" || config.timezone.length > 64) return json({ error: { code: "INVALID_TIMEZONE", message: "Timezone must be a valid IANA timezone." } }, 400, headers);
+            try { new Intl.DateTimeFormat("en-US", { timeZone: config.timezone }); } catch { return json({ error: { code: "INVALID_TIMEZONE", message: "Timezone must be a valid IANA timezone." } }, 400, headers); }
+          }
+        }
         if (input.job_input !== undefined && (!input.job_input || typeof input.job_input !== "object" || Array.isArray(input.job_input))) return json({ error: { code: "INVALID_BODY", message: "job_input must be an object." } }, 400, headers);
         if (input.is_enabled !== undefined && typeof input.is_enabled !== "boolean") return json({ error: { code: "INVALID_BODY", message: "is_enabled must be boolean." } }, 400, headers);
         if (input.next_run_at !== undefined && input.next_run_at !== null && (typeof input.next_run_at !== "string" || !Number.isFinite(Date.parse(input.next_run_at)))) return json({ error: { code: "INVALID_DATE", message: "next_run_at must be a valid timestamp." } }, 400, headers);
