@@ -16,6 +16,7 @@ begin
         finished_at = case when attempts >= 5 then now() else null end,
         last_error = 'Recovered after an interrupted worker execution.'
     where status = 'processing'
+      and job_type in ('research_scan','business_review','daily_briefing','lead_review','custom')
       and updated_at < now() - interval '20 minutes';
 
   return query
