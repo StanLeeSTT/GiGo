@@ -54,6 +54,9 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "leads_create", description: "Save a prospect in the owner's CRM. This does not contact the person. Preserve do-not-contact preferences.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, organisation: { type: ["string","null"], maxLength: 200 }, email: { type: ["string","null"], maxLength: 320 }, website: { type: ["string","null"], maxLength: 2048 }, source: { type: ["string","null"], maxLength: 200 }, source_url: { type: ["string","null"], maxLength: 2048 }, customer_problem: { type: ["string","null"], maxLength: 5000 }, fit_score: { type: ["number","null"], minimum: 0, maximum: 100 }, stage: { type: "string", enum: ["new","qualified","contacted","proposal","won","lost","do_not_contact"] }, do_not_contact: { type: "boolean" }, notes: { type: ["string","null"], maxLength: 10000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "offers_list", description: "List saved offers and their pricing assumptions.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "offers_create", description: "Create an offer draft and calculate indicative net-before-tax economics from price, delivery cost, payment fee and partner share assumptions. This is an estimate, not a guarantee.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, product_id: { type: ["string","null"] }, target_customer: { type: ["string","null"], maxLength: 2000 }, promised_outcome: { type: ["string","null"], maxLength: 5000 }, deliverables: { type: "array", items: { type: "string" } }, exclusions: { type: ["string","null"], maxLength: 5000 }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, delivery_cost: { type: ["number","null"], minimum: 0 }, payment_fee_percent: { type: ["number","null"], minimum: 0, maximum: 100 }, partner_share_percent: { type: ["number","null"], minimum: 0, maximum: 100 } }, required: ["name"], additionalProperties: false } } },
+  { type: "function", function: { name: "jobs_list", description: "List the owner's durable GiGo job queue. Jobs are saved for future execution; do not claim they are running until the background runner is active.", parameters: { type: "object", properties: { status: { type: "string", enum: ["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"] } }, additionalProperties: false } } },
+  { type: "function", function: { name: "jobs_create", description: "Queue an internal GiGo task for future execution. This saves a durable pending job only; it does not run the work yet. Never use it to send messages, publish, contact people, spend money or make commitments.", parameters: { type: "object", properties: { job_type: { type: "string", enum: ["research_scan","business_review","daily_briefing","lead_review","custom"] }, task_prompt: { type: "string", minLength: 1, maxLength: 5000 } }, required: ["job_type","task_prompt"], additionalProperties: false } } },
+  { type: "function", function: { name: "jobs_cancel", description: "Cancel one pending or paused GiGo job owned by the user. This cannot stop a task that is already executing.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } },
   { type: "function", function: { name: "projects_list", description: "List the owner's projects.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "projects_create", description: "Create a project in the owner's GiGo workspace.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 160 }, description: { type: ["string", "null"], maxLength: 5000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "tasks_list", description: "List the owner's tasks. Optionally filter by project_id or status.", parameters: { type: "object", properties: { project_id: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "blocked", "done", "cancelled"] } }, additionalProperties: false } } },
@@ -289,6 +292,28 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       status: "draft", assumptions: economics
     }) as Row[];
     return { created: rows?.[0] ?? null, economics };
+  }
+  if (name === "jobs_list") {
+    const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
+    if (args.status !== undefined) {
+      if (!["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"].includes(String(args.status))) return { error: "Invalid job status." };
+      params.set("status", "eq." + String(args.status));
+    }
+    return { jobs: await db(env, token, "/rest/v1/jobs?" + params.toString()) as Row[], execution_note: "The durable queue is available; the background executor is not active yet." };
+  }
+  if (name === "jobs_create") {
+    const types = ["research_scan","business_review","daily_briefing","lead_review","custom"];
+    const jobType = String(args.job_type ?? "");
+    const taskPrompt = typeof args.task_prompt === "string" ? args.task_prompt.trim() : "";
+    if (!types.includes(jobType) || !taskPrompt || taskPrompt.length > 5000) return { error: "Choose a supported job category and provide a task prompt of 1–5,000 characters." };
+    const key = crypto.randomUUID();
+    const rows = await db(env, token, "/rest/v1/jobs?select=id,job_type,status,input,run_after,created_at", "POST", { user_id: ownerId, job_type: jobType, input: { task_prompt: taskPrompt }, status: "pending", progress: {}, checkpoint: {}, attempts: 0, run_after: new Date().toISOString(), idempotency_key: key }) as Row[];
+    return { created: rows?.[0] ?? null, note: "Job saved as pending. The background runner has not been deployed, so no work has started." };
+  }
+  if (name === "jobs_cancel") {
+    if (!validUuid(args.id)) return { error: "A valid job ID is required." };
+    const rows = await db(env, token, "/rest/v1/jobs?id=eq." + encodeURIComponent(String(args.id)) + "&status=in.(pending,paused,waiting_for_worker,waiting_for_quota,awaiting_approval)&select=id,status", "PATCH", { status: "cancelled", finished_at: new Date().toISOString() }) as Row[];
+    return { cancelled: Array.isArray(rows) && rows.length > 0, job: Array.isArray(rows) ? rows[0] ?? null : null, note: "Only jobs that had not started execution can be cancelled here." };
   }
   if (name === "projects_list") {
     const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
