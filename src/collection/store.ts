@@ -20,7 +20,7 @@ export interface CollectionWorkerStore {
   progress(jobId: string, leaseToken: string, counters: { pages: number; items: number; requests: number }, checkpoint: Record<string, unknown>): Promise<boolean>;
   persistItem(jobId: string, leaseToken: string, item: CollectionOutputItem): Promise<"inserted" | "duplicate" | "lease_lost">;
   finish(jobId: string, leaseToken: string, status: "completed" | "partial" | "failed" | "cancelled", error?: Record<string, unknown> | null): Promise<boolean>;
-  retry(jobId: string, leaseToken: string, error: Record<string, unknown>, delaySeconds?: number): Promise<boolean>;
+  retry(jobId: string, leaseToken: string, error: Record<string, unknown>, delaySeconds?: number): Promise<"retry_scheduled" | "failed" | "lease_lost">;
 }
 
 export interface CollectionWorkerStoreConfig {
@@ -113,7 +113,7 @@ export function createCollectionWorkerStore(config: CollectionWorkerStoreConfig)
       });
     },
     retry(jobId, leaseToken, error, delaySeconds = 300) {
-      return rpc<boolean>("gigo_retry_collection_job", {
+      return rpc<"retry_scheduled" | "failed" | "lease_lost">("gigo_retry_collection_job", {
         p_job_id: jobId,
         p_lease_token: leaseToken,
         p_error: error,
