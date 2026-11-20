@@ -371,3 +371,14 @@ input,textarea,select{accent-color:#70d8d0}
 @keyframes thinking-glow{0%,100%{box-shadow:0 0 0 rgba(75,208,225,0)}50%{box-shadow:0 0 20px rgba(75,208,225,.16)}}
 @media(max-width:700px){.assistant-hero{padding:28px 14px 23px;margin-top:14px;border-radius:18px}.neural-orb{width:120px;height:120px}.console-grid{grid-template-columns:1fr;gap:12px}.reactor{width:135px;height:135px}.tool-activity{max-height:130px}.jarvis-console{padding:13px}.chat-shell{border-radius:16px}}
 @media(prefers-reduced-motion:reduce){.neural-orb,.orb-core,.orb-ring,.reactor-ring,.reactor-sweep,.status-pulse,.console-live,.chat-bubble.thinking{animation:none!important;transition:none!important}}
+
+/* Product and partner workbench controls */
+.form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.score-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px;border:1px solid rgba(100,186,205,.17);border-radius:14px;background:rgba(6,23,36,.45)}
+.score-grid label{font-size:11px;color:#a7cbd2}
+.product-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0;color:#8eb5c0;font-size:11px}
+.product-meta strong{color:#8ce9d9;font-size:12px}
+.product-card,.partner-card{animation:trace-in .35s ease both}
+.product-card h3,.partner-card h3{margin:12px 0 6px;color:#e0f7f8}
+.product-card>a,.partner-card>a{color:#78d8df;font-size:11px}
+@media(max-width:640px){.form-row,.score-grid{grid-template-columns:1fr}}
