@@ -68,7 +68,7 @@ returns text
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   owner_id uuid;
   target_run_id uuid;
@@ -248,7 +248,7 @@ begin
     where id = p_job_id;
   return true;
 end;
-$;
+$$;
 
 revoke all on function public.gigo_collection_worker_progress(uuid, uuid, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.gigo_collection_worker_item(uuid, uuid, jsonb) from public, anon, authenticated;
