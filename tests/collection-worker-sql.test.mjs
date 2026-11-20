@@ -26,7 +26,8 @@ test("collection claim RPC is a service-role-only SKIP LOCKED path", () => {
 
 test("collection persistence RPCs require a live matching lease", () => {
   const sql = migration("0014_collection_worker_persistence.sql");
-  assert.equal(sql.split("$").length - 1, 8, "each of four SQL functions must have balanced dollar delimiters");
+  assert.equal(sql.split("\n").filter((line) => line.trim() === "as $$").length, 4);
+  assert.equal(sql.split("\n").filter((line) => line.trim() === "$$;").length, 4, "each SQL function must have a closing delimiter");
   for (const fn of [
     "gigo_collection_worker_progress",
     "gigo_collection_worker_item",
