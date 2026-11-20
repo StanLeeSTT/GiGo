@@ -184,6 +184,41 @@ async function executePublicMetadata(_actor,input,context) {
 export function registerSafeHttpBatchAdapter() {
   registerCollectionAdapter({key:"gigo_safe_http_batch",executionModes:["batch_runner"],supports:capabilities=>capabilities.every(capability=>capability==="web_fetch"),execute:executePublicMetadata});
 }
+async function findSingleSafeHttpProvider(supabaseUrl, serviceKey) {
+  const base = supabaseUrl.replace(/\\/+$/, "");
+  const headers = { apikey: serviceKey, accept: "application/json" };
+  if (!serviceKey.startsWith("sb_secret_")) headers.authorization = "Bearer " + serviceKey;
+  const response = await fetch(base + "/rest/v1/collection_providers?provider_key=eq.gigo_safe_http_batch&select=id,status,configuration,capabilities", { headers, signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error("Provider lookup failed (" + response.status + ").");
+  const rows = await response.json();
+  if (!Array.isArray(rows) || rows.length !== 1 || typeof rows[0]?.id !== "string") {
+    throw new Error("Expected exactly one registered safe HTTP provider; found " + (Array.isArray(rows) ? rows.length : "an invalid result") + ".");
+  }
+  const row = rows[0], config = row.configuration ?? {};
+  if (!Array.isArray(row.capabilities) || !row.capabilities.includes("web_fetch")
+      || config.adapter_key !== "gigo_safe_http_batch" || config.adapter_version !== 1
+      || config.execution_mode !== "batch_runner" || config.runner !== "github_actions"
+      || config.network_policy !== "public_https_only" || config.authentication !== "none") {
+    throw new Error("Registered provider configuration does not match the reviewed runner.");
+  }
+  return row;
+}
+export async function runHealthCheck() {
+  const supabaseUrl = process.env.SUPABASE_URL, serviceKey = process.env.SUPABASE_SECRET_KEY;
+  if (!supabaseUrl || !serviceKey) throw new Error("Required worker secrets are not configured.");
+  registerSafeHttpBatchAdapter();
+  const { listRegisteredCollectionAdapters } = await import("../src/collection/adapters.ts");
+  const adapter = listRegisteredCollectionAdapters().find(entry => entry.key === "gigo_safe_http_batch");
+  if (!adapter || !adapter.executionModes.includes("batch_runner") || !adapter.supports(["web_fetch"])) {
+    throw new Error("Safe HTTP adapter self-test failed.");
+  }
+  const store = createCollectionWorkerStore({ supabaseUrl, serviceKey });
+  if (await store.healthCheck() !== "gigo-collection-worker-v1") throw new Error("Collection worker health RPC returned an unexpected version.");
+  const provider = await findSingleSafeHttpProvider(supabaseUrl, serviceKey);
+  if (!await store.promoteSafeHttpProvider(provider.id)) throw new Error("Provider health promotion was rejected by database policy.");
+  process.stdout.write(JSON.stringify({ health_check: "passed", provider_key: "gigo_safe_http_batch", provider_status: "healthy", jobs_claimed: 0 }) + "\\n");
+  return { health_check: "passed", provider_status: "healthy", jobs_claimed: 0 };
+}
 export async function runBatchFromEnvironment() {
   const supabaseUrl=process.env.SUPABASE_URL,serviceKey=process.env.SUPABASE_SECRET_KEY;
   if(!supabaseUrl||!serviceKey) throw new Error("Required worker secrets are not configured.");
