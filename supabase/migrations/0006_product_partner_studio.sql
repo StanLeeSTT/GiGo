@@ -59,7 +59,13 @@ alter table public.partner_candidates enable row level security;
 
 drop policy if exists products_owner_all on public.products;
 create policy products_owner_all on public.products
-  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+  for all using (user_id = auth.uid()) with check (
+    user_id = auth.uid()
+    and (research_run_id is null or exists (
+      select 1 from public.research_runs r
+      where r.id = research_run_id and r.user_id = auth.uid()
+    ))
+  );
 
 drop policy if exists partner_candidates_owner_all on public.partner_candidates;
 create policy partner_candidates_owner_all on public.partner_candidates
