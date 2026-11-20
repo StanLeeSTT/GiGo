@@ -43,6 +43,7 @@ async function db(env: AssistantRuntimeEnv, token: string, path: string, method 
 const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "research_list", description: "List saved research briefs.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "research_create", description: "Create a research brief. This only saves the brief; it does not perform web research.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, research_question: { type: "string", minLength: 1, maxLength: 5000 }, market_scope: { type: ["string","null"], maxLength: 1000 } }, required: ["title","research_question"], additionalProperties: false } } },
+  { type: "function", function: { name: "research_discover_sources", description: "Search Crossref and OpenAlex public scholarly metadata indexes for records relevant to a saved research brief, then store matching records and abstracts as unreviewed evidence. Metadata discovery is not full-text verification.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, query: { type: "string", minLength: 2, maxLength: 500 }, limit: { type: "integer", minimum: 1, maximum: 10 } }, required: ["research_run_id","query"], additionalProperties: false } } },
   { type: "function", function: { name: "research_save_source", description: "Save an already verified or user-provided source and excerpt. Never invent a source.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 500 }, url: { type: "string", minLength: 1, maxLength: 2048 }, publisher: { type: ["string","null"], maxLength: 300 }, excerpt: { type: ["string","null"], maxLength: 10000 }, source_type: { type: "string", enum: ["web","paper","dataset","report","social","other"] } }, required: ["research_run_id","title","url"], additionalProperties: false } } },
   { type: "function", function: { name: "research_save_opportunity", description: "Save a business opportunity with customer problem and validation plan.", parameters: { type: "object", properties: { research_run_id: { type: "string" }, title: { type: "string", minLength: 1, maxLength: 200 }, customer_problem: { type: "string", minLength: 1, maxLength: 5000 }, target_customer: { type: ["string","null"], maxLength: 1000 }, proposed_solution: { type: ["string","null"], maxLength: 5000 }, revenue_model: { type: ["string","null"], maxLength: 1000 }, validation_steps: { type: "array", items: { type: "string" } } }, required: ["research_run_id","title","customer_problem"], additionalProperties: false } } },
   { type: "function", function: { name: "projects_list", description: "List the owner's projects.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
@@ -81,6 +82,79 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     if (market !== null && (typeof market !== "string" || market.length > 1000)) return { error: "Market scope must be text up to 1,000 characters." };
     const rows = await db(env, token, "/rest/v1/research_runs?select=id,title,research_question,market_scope,status,created_at", "POST", { user_id: ownerId, title, research_question: question, market_scope: market, status: "draft" }) as Row[];
     return { created: rows?.[0] ?? null };
+  }
+  if (name === "research_discover_sources") {
+    if (!validUuid(args.research_run_id)) return { error: "A valid research_run_id is required." };
+    const query = typeof args.query === "string" ? args.query.trim() : "";
+    if (query.length < 2 || query.length > 500) return { error: "Research query must be 2–500 characters." };
+    const limit = Number.isInteger(args.limit) ? Math.max(1, Math.min(10, Number(args.limit))) : 5;
+    const ownedRuns = await db(env, token, "/rest/v1/research_runs?select=id&id=eq." + encodeURIComponent(args.research_run_id) + "&limit=1") as Row[];
+    if (!Array.isArray(ownedRuns) || !ownedRuns.length) return { error: "Research brief not found in this workspace." };
+    const crossrefUrl = new URL("https://api.crossref.org/works");
+    crossrefUrl.searchParams.set("query.bibliographic", query);
+    crossrefUrl.searchParams.set("rows", String(limit));
+    crossrefUrl.searchParams.set("select", "DOI,title,URL,publisher,published,created,type,abstract");
+    const openAlexUrl = new URL("https://api.openalex.org/works");
+    openAlexUrl.searchParams.set("search", query);
+    openAlexUrl.searchParams.set("per-page", String(limit));
+    openAlexUrl.searchParams.set("select", "id,doi,title,publication_year,primary_location,authorships,abstract_inverted_index,type");
+    const results = await Promise.allSettled([
+      fetch(crossrefUrl.toString(), { headers: { accept: "application/json", "user-agent": "GiGoResearch/1.0 (public metadata discovery)" } }),
+      fetch(openAlexUrl.toString(), { headers: { accept: "application/json" } })
+    ]);
+    const candidates: Array<{ title: string; url: string; publisher: string | null; excerpt: string | null; source_type: "paper" | "report"; provider: string; published_year: number | null }> = [];
+    if (results[0].status === "fulfilled" && results[0].value.ok) {
+      const payload = await results[0].value.json() as { message?: { items?: Row[] } };
+      for (const item of payload.message?.items ?? []) {
+        const title = Array.isArray(item.title) ? String(item.title[0] ?? "") : "";
+        const doi = typeof item.DOI === "string" ? item.DOI : "";
+        const url = typeof item.URL === "string" ? item.URL : (doi ? "https://doi.org/" + doi : "");
+        if (!title || !url) continue;
+        const abstract = typeof item.abstract === "string" ? item.abstract.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000) : "";
+        const published = item.published as Row | undefined;
+        const dateParts = published?.["date-parts"] as number[][] | undefined;
+        candidates.push({ title, url, publisher: typeof item.publisher === "string" ? item.publisher : null, excerpt: abstract || null, source_type: item.type === "journal-article" ? "paper" : "report", provider: "Crossref", published_year: dateParts?.[0]?.[0] ?? null });
+      }
+    }
+    if (results[1].status === "fulfilled" && results[1].value.ok) {
+      const payload = await results[1].value.json() as { results?: Row[] };
+      for (const item of payload.results ?? []) {
+        const title = typeof item.title === "string" ? item.title : "";
+        const location = item.primary_location as Row | null;
+        const url = (location && typeof location.landing_page_url === "string" ? location.landing_page_url : "") || (typeof item.doi === "string" ? item.doi : "");
+        if (!title || !url) continue;
+        const index = item.abstract_inverted_index as Record<string, number[]> | null;
+        let abstract = "";
+        if (index && typeof index === "object") {
+          const words: string[] = [];
+          for (const [word, positions] of Object.entries(index)) for (const position of positions) words[position] = word;
+          abstract = words.filter(Boolean).join(" ").slice(0, 4000);
+        }
+        const authorships = Array.isArray(item.authorships) ? item.authorships as Row[] : [];
+        const authors = authorships.slice(0, 3).map(author => {
+          const person = author.author as Row | undefined;
+          return typeof person?.display_name === "string" ? person.display_name : "";
+        }).filter(Boolean);
+        candidates.push({ title, url, publisher: authors.length ? authors.join(", ") : "OpenAlex indexed work", excerpt: abstract || null, source_type: "paper", provider: "OpenAlex", published_year: typeof item.publication_year === "number" ? item.publication_year : null });
+      }
+    }
+    const unique = [...new Map(candidates.map(item => [item.url.toLowerCase(), item])).values()].slice(0, limit * 2);
+    if (!unique.length) return { discovered: 0, saved: 0, message: "No records were returned. Public metadata services may be unavailable or the query may be too narrow.", services: { crossref: results[0].status === "fulfilled" ? results[0].value.status : "unavailable", openalex: results[1].status === "fulfilled" ? results[1].value.status : "unavailable" } };
+    const existing = await db(env, token, "/rest/v1/research_sources?select=url&research_run_id=eq." + encodeURIComponent(args.research_run_id) + "&limit=500") as Row[];
+    const known = new Set((Array.isArray(existing) ? existing : []).map(row => String(row.url ?? "").toLowerCase()));
+    let saved = 0;
+    for (const source of unique) {
+      if (known.has(source.url.toLowerCase())) continue;
+      const rows = await db(env, token, "/rest/v1/research_sources?select=id,title,url,evidence_status,created_at", "POST", {
+        user_id: ownerId, research_run_id: args.research_run_id, source_type: source.source_type,
+        title: source.title.slice(0, 500), url: source.url.slice(0, 2048), publisher: source.publisher?.slice(0, 300) ?? null,
+        published_at: source.published_year ? source.published_year + "-01-01T00:00:00Z" : null,
+        excerpt: source.excerpt, evidence_status: "unreviewed",
+        metadata: { discovery_provider: source.provider, metadata_discovered_at: new Date().toISOString(), full_text_verified: false }
+      }) as Row[];
+      if (rows?.length) { saved++; known.add(source.url.toLowerCase()); }
+    }
+    return { discovered: unique.length, saved, skipped_duplicates: unique.length - saved, sources: unique.map(item => ({ title: item.title, url: item.url, publisher: item.publisher, provider: item.provider, published_year: item.published_year, has_abstract: Boolean(item.excerpt), evidence_status: "unreviewed", full_text_verified: false })), note: "Metadata records were discovered from Crossref/OpenAlex. They are saved as unreviewed; full text and claim-level accuracy have not been verified." };
   }
   if (name === "research_save_source") {
     if (!validUuid(args.research_run_id)) return { error: "A valid research_run_id is required." };
