@@ -26,7 +26,70 @@ begin
   safe_actor_key := lower(btrim(coalesce(p_actor_key, '')));
   safe_dataset_name := btrim(coalesce(p_dataset_name, 'Collected data'));
 
-  if safe_actor_key !~ '^[a-z][a-z0-9_-]{1,95}$'
+  -- The only executable actor currently registered in the application catalogue.
+  -- Keep the SQL boundary aligned with the API allowlist so direct RPC callers
+  -- cannot enqueue arbitrary actor names or unreviewed versions.
+  if safe_actor_key <> 'public_page_metadata'
+     or p_actor_version <> 1
+     or safe_actor_key !~ '^[a-z][a-z0-9_-]{1,95}
+     or jsonb_typeof(coalesce(p_input, '{}'::jsonb)) <> 'object'
+     or octet_length(coalesce(p_input, '{}'::jsonb)::text) > 32768
+     or char_length(safe_dataset_name) not between 1 and 180 then
+    raise exception 'invalid collection run request' using errcode = '22023';
+  end if;
+
+  insert into public.jobs (user_id, job_type, status, input, progress, run_after, idempotency_key)
+  values (
+    auth.uid(), 'collection_run', 'pending',
+    jsonb_build_object(
+      'actor_key', safe_actor_key,
+      'actor_version', p_actor_version,
+      'actor_input', coalesce(p_input, '{}'::jsonb)
+    ),
+    jsonb_build_object('stage','queued'),
+    now(),
+    'collection:' || gen_random_uuid()::text
+  )
+  returning id into new_job_id;
+
+  insert into public.collection_runs (
+    user_id, job_id, actor_key, actor_version, status, input
+  )
+  values (
+    auth.uid(), new_job_id, safe_actor_key, p_actor_version, 'queued', coalesce(p_input, '{}'::jsonb)
+  )
+  returning id into new_run_id;
+
+  insert into public.collection_datasets (user_id, run_id, name, metadata)
+  values (
+    auth.uid(), new_run_id, safe_dataset_name,
+    jsonb_build_object('actor_key', safe_actor_key, 'actor_version', p_actor_version)
+  )
+  returning id into new_dataset_id;
+
+  update public.jobs
+    set input = input || jsonb_build_object(
+      'collection_run_id', new_run_id,
+      'dataset_id', new_dataset_id
+    )
+    where id = new_job_id and user_id = auth.uid();
+
+  return jsonb_build_object(
+    'job_id', new_job_id,
+    'run_id', new_run_id,
+    'dataset_id', new_dataset_id,
+    'status', 'queued',
+    'execution_enabled', false
+  );
+end;
+$$;
+
+revoke all on function public.gigo_create_collection_run(text, integer, jsonb, text) from public, anon;
+grant execute on function public.gigo_create_collection_run(text, integer, jsonb, text) to authenticated;
+
+comment on function public.gigo_create_collection_run(text, integer, jsonb, text) is
+  'Atomically creates a queued collection job, run and dataset for the authenticated owner. Generic scheduler deliberately does not claim collection_run.';
+
      or coalesce(p_actor_version, 0) < 1
      or jsonb_typeof(coalesce(p_input, '{}'::jsonb)) <> 'object'
      or octet_length(coalesce(p_input, '{}'::jsonb)::text) > 32768
