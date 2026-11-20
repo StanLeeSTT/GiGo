@@ -11,3 +11,6 @@ ALLOWED_ORIGINS = "https://gigo-api.thegreatmind601.workers.dev"
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*", "/healthz"]
+
+[triggers]
+crons = ["*/5 * * * *"]
