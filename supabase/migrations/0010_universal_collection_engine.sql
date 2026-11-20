@@ -184,8 +184,8 @@ comment on table public.collection_items is 'Normalized collected records with s
 
 
 -- Owner-authorized cancellation for runs that have not started executing.
--- Lock the run and job rows in one transaction to avoid cancelling a job
--- after the scheduler has already claimed it.
+-- Lock order is jobs -> collection_runs, matching the scheduler's job-first
+-- claim path. This avoids a lock inversion when cancellation races a claim.
 create or replace function public.gigo_cancel_collection_run(p_run_id uuid)
 returns boolean
 language plpgsql
@@ -195,14 +195,15 @@ as $$
 declare
   target_job_id uuid;
   target_job_status text;
+  target_run_status text;
 begin
+  -- Read the association without locking the run. The job_id is immutable
+  -- after a run is created; lock the job first if one is attached.
   select r.job_id
     into target_job_id
     from public.collection_runs r
     where r.id = p_run_id
-      and r.user_id = auth.uid()
-      and r.status in ('queued','waiting_for_quota')
-    for update;
+      and r.user_id = auth.uid();
 
   if not found then
     return false;
@@ -219,7 +220,22 @@ begin
     if not found or target_job_status not in ('pending','waiting_for_worker','waiting_for_quota') then
       return false;
     end if;
+  end if;
 
+  -- Recheck run state after obtaining the job lock. A worker may have
+  -- advanced the run while this request was waiting.
+  select r.status
+    into target_run_status
+    from public.collection_runs r
+    where r.id = p_run_id
+      and r.user_id = auth.uid()
+    for update;
+
+  if not found or target_run_status not in ('queued','waiting_for_quota') then
+    return false;
+  end if;
+
+  if target_job_id is not null then
     update public.jobs
       set status = 'cancelled',
           finished_at = now(),
