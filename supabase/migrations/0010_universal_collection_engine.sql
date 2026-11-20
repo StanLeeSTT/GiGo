@@ -73,14 +73,15 @@ create table if not exists public.collection_datasets (
   schema_version integer not null default 1,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
-  unique (run_id, name)
+  unique (run_id, name),
+  unique (id, run_id, user_id)
 );
 
 create table if not exists public.collection_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  dataset_id uuid not null references public.collection_datasets(id) on delete cascade,
-  run_id uuid not null references public.collection_runs(id) on delete cascade,
+  dataset_id uuid not null,
+  run_id uuid not null,
   item_key text not null check (char_length(item_key) between 1 and 512),
   source_url text check (source_url is null or char_length(source_url) <= 2048),
   source_platform text,
@@ -92,7 +93,11 @@ create table if not exists public.collection_items (
   record jsonb not null,
   content_hash text,
   created_at timestamptz not null default now(),
-  unique (dataset_id, item_key)
+  unique (dataset_id, item_key),
+  constraint collection_items_dataset_run_owner_fk
+    foreign key (dataset_id, run_id, user_id)
+    references public.collection_datasets(id, run_id, user_id)
+    on delete cascade
 );
 
 create index if not exists collection_providers_user_status_idx
