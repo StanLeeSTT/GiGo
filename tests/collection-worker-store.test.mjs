@@ -90,3 +90,15 @@ test("worker store does not expose database response bodies in errors", async ()
   await assert.rejects(store.claim(), /database request failed \(500\)/);
   await assert.rejects(store.claim(), (error) => !error.message.includes("sensitive database detail"));
 });
+
+test("worker store preserves cooperative cancellation heartbeat outcomes", async () => {
+  const outcomes = ["renewed", "cancel_requested", "lease_lost"];
+  const store = createCollectionWorkerStore({
+    supabaseUrl: "https://project.supabase.co",
+    serviceKey: "sb_secret_example",
+    fetcher: async () => new Response(JSON.stringify(outcomes.shift()), { status: 200 })
+  });
+  assert.equal(await store.heartbeat("job-1", "lease-1"), "renewed");
+  assert.equal(await store.heartbeat("job-1", "lease-1"), "cancel_requested");
+  assert.equal(await store.heartbeat("job-1", "lease-1"), "lease_lost");
+});
