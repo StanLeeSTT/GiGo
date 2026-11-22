@@ -1373,7 +1373,7 @@ export default {
           const evidenceUrl = typeof body?.contact_authorization_evidence_url === "string" ? body.contact_authorization_evidence_url.trim() : "";
           if (!body || !["approved","blocked","unreviewed"].includes(status)
             || (status === "approved" && (!allowedBases.includes(body.contact_authorization_basis)
-              || !/^https:\/\/[^\\s]+$/i.test(evidenceUrl) || evidenceUrl.length > 2048
+              || !/^https:\/\/[^\s]+$/i.test(evidenceUrl) || evidenceUrl.length > 2048
               || body.marketing_contact_registered !== true))) {
             return json({ error: { code: "INVALID_CONTACT_AUTHORIZATION", message: "Approval requires a documented basis, HTTPS evidence URL and confirmation that the contact is registered in the provider's marketing audience. Review local law and provider rules before approval." } }, 400, headers);
           }
