@@ -382,3 +382,12 @@ Personalization is deterministic and fail-closed:
 Migration `0030_outreach_sequence_preparation.sql` adds the authenticated, owner-scoped RPC `gigo_prepare_outreach_sequence`. It locks campaign and recipient rows, checks campaign approval, recipient eligibility and suppressions, verifies the complete unique sequence against approved templates, then inserts all messages atomically with `ON CONFLICT DO NOTHING` and audit events. Follow-up schedule offsets are cumulative: follow-up 1 is due after delay 1; follow-up 2 after delay 1 + delay 2, and so on.
 
 **Important boundary:** preparation creates durable `queued` outbox records; it does not send email. No email provider is configured, no sending workflow is enabled, and no campaign has been activated by this code change. Migrations 0022–0030 remain unapplied until the owner explicitly applies them. A provider, inbound reply handling, unsubscribe mechanism and a reviewed sending worker are still required before any real outreach.
+
+
+## Inbound outreach stop controls (migration 0031)
+
+Migration `0031_outreach_inbound_event_safety.sql` adds the service-role-only RPC `gigo_record_outreach_recipient_event` for a future verified email-provider webhook adapter. It handles replies, hard bounces, unsubscribes and complaints. A reply marks the recipient as replied and cancels queued follow-ups. A bounce, unsubscribe or complaint also inserts an owner-scoped do-not-contact suppression. Repeated provider event IDs are detected to make webhook retries idempotent.
+
+The RPC is deliberately not exposed as an unauthenticated Worker route. A future provider adapter must verify the provider's webhook signature and bind the event to the expected provider account before calling the service-role RPC. The provider worker must also re-check recipient status and suppressions immediately before sending; an already in-flight provider request cannot always be recalled.
+
+No inbound webhook is configured and no provider is connected. This migration is a database safety boundary only.
