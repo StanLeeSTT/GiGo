@@ -23,13 +23,14 @@ create table if not exists public.lead_social_profiles (
   source_dataset_id uuid,
   source_run_id uuid,
   metadata jsonb not null default '{}'::jsonb check (jsonb_typeof(metadata) = 'object'),
+  check ((source_item_id is null and source_dataset_id is null and source_run_id is null) or (source_item_id is not null and source_dataset_id is not null and source_run_id is not null)),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint lead_social_profiles_lead_owner_fk
     foreign key (lead_id, user_id) references public.leads(id, user_id) on delete cascade,
   constraint lead_social_profiles_source_item_fk
     foreign key (source_item_id, source_dataset_id, source_run_id, user_id)
-    references public.collection_items(id, dataset_id, run_id, user_id) on delete set null,
+    references public.collection_items(id, dataset_id, run_id, user_id) on delete set null (source_item_id, source_dataset_id, source_run_id),
   unique (user_id, platform, profile_url),
   unique (id, user_id)
 );
@@ -51,6 +52,7 @@ create table if not exists public.lead_evidence (
   source_dataset_id uuid,
   source_run_id uuid,
   notes text check (notes is null or char_length(notes) <= 3000),
+  check ((source_item_id is null and source_dataset_id is null and source_run_id is null) or (source_item_id is not null and source_dataset_id is not null and source_run_id is not null)),
   created_at timestamptz not null default now(),
   constraint lead_evidence_lead_owner_fk
     foreign key (lead_id, user_id) references public.leads(id, user_id) on delete cascade,
