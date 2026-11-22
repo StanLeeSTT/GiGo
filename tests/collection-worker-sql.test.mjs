@@ -195,3 +195,12 @@ test("outreach outbox claim revalidates approval, suppression, templates and rec
   assert.ok(sql.includes("delivery outcome is uncertain"));
   assert.ok(sql.includes("grant execute on function public.gigo_claim_due_outreach_messages(integer,integer) to service_role"));
 });
+
+
+test("approved outreach campaigns require valid timezone, complete quiet hours and ordered follow-ups", () => {
+  const sql = migration("0029_outreach_campaign_window_guard.sql");
+  assert.ok(sql.includes("pg_catalog.pg_timezone_names"));
+  assert.ok(sql.includes("quiet hours require both a start and end time"));
+  assert.ok(sql.includes("follow-up delays must be strictly increasing"));
+  assert.ok(sql.includes("before update on public.outreach_campaigns"));
+});
