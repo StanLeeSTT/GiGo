@@ -130,3 +130,15 @@ test("outreach campaigns enforce explicit bounded approval, recipient state and 
   assert.ok(sql.includes("status in ('draft','awaiting_approval','queued','sending','sent','failed','cancelled')"));
   assert.ok(sql.includes("does not send email or enable a sender"));
 });
+
+
+test("outreach campaign approval is an explicit owner-authorized bounded policy", () => {
+  const sql = migration("0023_outreach_campaign_approval.sql");
+  assert.ok(sql.includes("gigo_approve_outreach_campaign"));
+  assert.ok(sql.includes("auth.uid()"));
+  assert.ok(sql.includes("p_max_recipients > 10000"));
+  assert.ok(sql.includes("p_max_messages_per_recipient > 6"));
+  assert.ok(sql.includes("p_initial_send_enabled is distinct from true"));
+  assert.ok(sql.includes("campaign_approved"));
+  assert.ok(sql.includes("grant execute on function public.gigo_approve_outreach_campaign"));
+});
