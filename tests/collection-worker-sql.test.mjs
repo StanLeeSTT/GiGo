@@ -153,3 +153,13 @@ test("outreach recipient admission is guarded by database policy and suppression
   assert.ok(sql.includes("campaign.status <> 'active'"));
   assert.ok(sql.includes("before insert on public.outreach_recipients"));
 });
+
+
+test("outreach campaign templates are owner-scoped and sequence-numbered", () => {
+  const sql = migration("0025_outreach_templates.sql");
+  assert.ok(sql.includes("create table if not exists public.outreach_templates"));
+  assert.ok(sql.includes("unique (campaign_id, sequence_number)"));
+  assert.ok(sql.includes("sequence_number = 0 and message_type = 'initial'"));
+  assert.ok(sql.includes("outreach_templates_owner_all"));
+  assert.ok(sql.includes("approved_at timestamptz"));
+});
