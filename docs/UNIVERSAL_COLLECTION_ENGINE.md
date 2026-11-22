@@ -391,3 +391,17 @@ Migration `0031_outreach_inbound_event_safety.sql` adds the service-role-only RP
 The RPC is deliberately not exposed as an unauthenticated Worker route. A future provider adapter must verify the provider's webhook signature and bind the event to the expected provider account before calling the service-role RPC. The provider worker must also re-check recipient status and suppressions immediately before sending; an already in-flight provider request cannot always be recalled.
 
 No inbound webhook is configured and no provider is connected. This migration is a database safety boundary only.
+
+
+## Follow-up timing and provider policy (migrations 0032; provider contract)
+
+Migration `0032_outreach_followup_clock.sql` changes follow-up timing so each delay begins only after the immediately preceding message has been accepted by the provider. The claim RPC also requires the previous sequence message to be in `sent` state before a follow-up can be claimed. This prevents a delayed/failed initial message from allowing later follow-ups to run early.
+
+### Free provider research (checked 22 November 2026)
+
+- **Resend:** its current free tier lists 3,000 emails/month with a 100/day cap. It separates transactional `/emails` from marketing broadcasts; broadcasts are limited to existing contacts. Its email API supports idempotency keys, documented as a same-payload retry key with a 24-hour window. Official details: [pricing](https://resend.com/pricing), [email API](https://resend.com/features/email-api), [idempotency](https://www.resend.com/blog/engineering-idempotency-keys).
+- **Brevo:** its current free plan lists 300 email sends/day, up to 100,000 stored contacts, and a visible Brevo branding footer. It distinguishes transactional email (non-promotional messages) from marketing email campaigns. Its marketing API can create campaigns and target registered contacts; its transactional API has webhook events. Official details: [free-plan limits](https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan), [campaign API](https://developers.brevo.com/reference/create-email-campaign), [transactional API](https://developers.brevo.com/docs/send-a-transactional-email).
+
+**Decision:** do not send creator/partnership solicitation through a transactional endpoint. GiGo now has a provider-neutral contract and channel-selection policy in `src/outreach/providers.ts`; marketing and relationship outreach require a marketing channel and, for the currently researched providers, an existing registered contact. No provider adapter is registered and no API key or sender has been configured. A future integration must also confirm the provider's acceptable-use rules, the lawful basis for contacting each recipient, unsubscribe handling, sender/domain authentication and any regional requirements before sending.
+
+The provider contract supports stable per-message idempotency keys and distinguishes explicit pre-send rejection from ambiguous outcomes. Ambiguous outcomes must not be automatically retried. This is still architecture only, not a live sender.
