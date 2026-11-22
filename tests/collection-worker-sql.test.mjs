@@ -163,3 +163,13 @@ test("outreach campaign templates are owner-scoped and sequence-numbered", () =>
   assert.ok(sql.includes("outreach_templates_owner_all"));
   assert.ok(sql.includes("approved_at timestamptz"));
 });
+
+
+test("outreach campaign approval requires a complete authored message sequence", () => {
+  const sql = migration("0026_outreach_template_approval_guard.sql");
+  assert.ok(sql.includes("gigo_validate_outreach_template_sequence"));
+  assert.ok(sql.includes("expected_followups + 1"));
+  assert.ok(sql.includes("last_sequence is distinct from expected_followups"));
+  assert.ok(sql.includes("set approved_at = now()"));
+  assert.ok(sql.includes("before update on public.outreach_campaigns"));
+});
