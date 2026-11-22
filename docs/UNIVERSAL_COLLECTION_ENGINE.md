@@ -311,3 +311,26 @@ The endpoint is intentionally idempotent through the unique `(user_id, provider_
 - Migration 0018 makes retry counters cumulative: page/request totals are restored from the durable checkpoint, while item totals are derived from the dataset's idempotent item count. This prevents a resumed run from reporting only the final attempt's counts or double-counting duplicate records.
 
 - Migration 0019 adds an evidence-backed intelligence layer: structured insights are kept separate from raw collected records, each insight must cite 1–25 items from the same owner/run/dataset, evidence can be classified as supporting/contradicting/contextual, and new insights default to `needs_review`. This is a storage and integrity foundation, not an AI analyst or automatic opportunity scorer yet.
+
+
+## Lead sourcing, partner acquisition and autonomous business operations
+
+GiGo's commercial workflow is designed around the user's requested Iman Gadzhi / Monetise-inspired method: **find the right market and people, qualify them with evidence, build a relevant offer, reach out personally, follow up consistently, develop the partnership or customer relationship, and promote/deliver the resulting offer.** This is an operating framework, not a claim of affiliation or a guarantee of results.
+
+The Universal Lead Engine must support permitted discovery across the social platforms relevant to a campaign, including YouTube, Instagram, TikTok, Facebook, X, LinkedIn and other sources as lawful integrations become available. Platform coverage is capability-based: an item in the catalogue is not an active connector. Each platform connector must be checked for official API access, current terms, permissions, free-tier limits, Nigeria availability, data rights and operational reliability. No private-profile or private-message harvesting, login bypass, CAPTCHA evasion, scraping behind access controls, proxy/account rotation or rate-limit circumvention.
+
+The engine should normalize and deduplicate prospects across platforms, retain public source evidence and timestamps, and build a unified prospect profile. It should distinguish creator/partner prospects from customer leads and apply the appropriate qualification rubric. For creator partnerships, retain the researched baseline of roughly 10k–100k followers and 50k–200k typical relevant views as screening signals, not automatic guarantees; verify typical performance rather than viral outliers, audience fit, engagement quality, credibility, competing offers, contact route and commercial readiness. Missing metrics remain unknown, never fabricated.
+
+The end-to-end outreach lifecycle is intended to include:
+- campaign objective, ideal prospect profile, offer and exclusions;
+- source-backed discovery, enrichment, deduplication and lead scoring;
+- personalized partnership/customer email drafts using real prospect evidence;
+- owner approval before first contact or any material change to a campaign;
+- durable follow-up sequences with configurable intervals, per-recipient caps and quiet hours;
+- reply, bounce, unsubscribe, complaint and do-not-contact detection, with immediate sequence suppression on reply or opt-out;
+- inbox triage, suggested responses, meeting scheduling and CRM stage updates;
+- negotiation/partnership pipeline, deliverables, launch coordination and performance tracking.
+
+GiGo should keep working while the owner is away through scheduled, resumable jobs, persistent campaign state, retry limits, notifications, and daily briefs. It may autonomously perform approved internal work (research, scoring, drafting, scheduling within an approved sequence, monitoring, reminders and reporting). Sending an initial email, sending follow-ups, agreeing to terms, publishing, spending, or making commitments must follow explicit owner-configured authorization. The user can approve a bounded campaign policy in advance—for example, a specific approved message sequence, recipient segment, sender identity, send window, maximum volume and stop conditions—so GiGo can execute that approved policy without asking for each routine follow-up. Any reply, opt-out, complaint, uncertain identity, legal concern, or out-of-policy action pauses the sequence and alerts the owner.
+
+This automation must be durable and auditable, not a continuously running process dependent on a phone or laptop. The present collection system is still a foundation: the current public-page metadata actor/provider is narrow, and broad social-platform connectors, lead qualification, email sending, inbox/reply monitoring and campaign orchestration are not yet implemented or operational.
