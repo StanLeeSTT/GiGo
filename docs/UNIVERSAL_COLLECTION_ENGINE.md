@@ -355,3 +355,13 @@ This automation must be durable and auditable, not a continuously running proces
 - The approval guard freezes the exact templates at approval time. Approved templates cannot be silently edited, replaced or deleted.
 - The campaign approval endpoint therefore approves both the bounded operating policy and the actual copy sequence. This is still authorization metadata and a queue foundation—not a live email integration.
 - Before a send worker is enabled, it must re-check campaign approval, recipient state, suppression, message sequence, sending window, quiet hours, per-recipient caps and idempotency at claim and send time.
+
+
+### Durable email outbox foundations (migrations 0028–0029)
+
+- Outbound messages now have a template reference and lease fields for durable processing.
+- The service-role-only claim RPC rechecks campaign approval and active state, approved immutable template sequence, recipient state, do-not-contact suppressions, message limits and local sending/quiet hours before claiming a queued message.
+- Claims use row locks and short leases. An expired lease is marked failed for reconciliation rather than blindly resent, because delivery may have happened before a worker crash.
+- The completion RPC records provider acceptance or a confirmed pre-send failure. Only confirmed safe failures may be retried; ambiguous outcomes fail closed to avoid duplicate partnership emails.
+- Campaign approval validates the timezone, quiet-hours pair and strictly increasing follow-up intervals.
+- No email provider is configured and no send worker/workflow is enabled. These are durable safety foundations only.
