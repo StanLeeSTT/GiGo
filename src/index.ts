@@ -1365,9 +1365,9 @@ export default {
         if (outreachCampaignApprovalMatch) {
           if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
           const body = await readJson(request);
-          const validTime = (value: unknown) => typeof value === "string" && /^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$/.test(value);
+          const validTime = (value: unknown) => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value);
           const delays = body?.followup_delays_days;
-          if (!body || typeof body.sender_email !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(body.sender_email)
+          if (!body || typeof body.sender_email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.sender_email)
             || typeof body.sender_name !== "string" || !body.sender_name.trim() || body.sender_name.length > 200
             || !Number.isInteger(body.max_recipients) || Number(body.max_recipients) < 1 || Number(body.max_recipients) > 10000
             || !Number.isInteger(body.max_messages_per_recipient) || Number(body.max_messages_per_recipient) < 1 || Number(body.max_messages_per_recipient) > 6
@@ -1416,7 +1416,7 @@ export default {
           const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
           const leadId = body?.lead_id;
           const validUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
-          if (!body || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 320
+          if (!body || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320
             || (leadId !== undefined && leadId !== null && !validUuid(leadId))
             || (body.recipient_name !== undefined && body.recipient_name !== null && (typeof body.recipient_name !== "string" || body.recipient_name.length > 240))
             || (body.organisation !== undefined && body.organisation !== null && (typeof body.organisation !== "string" || body.organisation.length > 240))) {
