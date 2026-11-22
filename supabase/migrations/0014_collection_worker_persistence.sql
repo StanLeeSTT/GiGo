@@ -236,7 +236,7 @@ begin
         finished_at = case when retry_allowed then null else now() end
     where id = target_run_id and user_id = owner_id and job_id = p_job_id and status = 'running';
 
-  if not found then return false; end if;
+  if not found then return 'lease_lost'; end if;
 
   update public.jobs
     set status = case when retry_allowed then 'waiting_for_worker' else 'failed' end,
