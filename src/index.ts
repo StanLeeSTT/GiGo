@@ -1449,7 +1449,9 @@ export default {
           const sequence = body?.sequence_number;
           const fields = body?.personalization_fields ?? [];
           const allowedFields = ["first_name","organisation","niche","specific_observation","offer_summary"];
-          if (!body || !Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5
+          const templateText = String(body?.subject_template ?? "") + "\\n" + String(body?.body_template ?? "");
+          const placeholders = Array.from(templateText.matchAll(/\\{\\{([a-z_]+)\\}\\}/g), match => match[1]);
+          if (!body || placeholders.some(field => !allowedFields.includes(field) || !fields.includes(field)) || !Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5
             || typeof body.subject_template !== "string" || !body.subject_template.trim() || body.subject_template.length > 300
             || typeof body.body_template !== "string" || !body.body_template.trim() || body.body_template.length > 20000
             || !Array.isArray(fields) || fields.length > allowedFields.length
