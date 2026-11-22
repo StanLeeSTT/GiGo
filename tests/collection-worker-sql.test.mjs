@@ -42,7 +42,7 @@ test("collection persistence RPCs require a live matching lease", () => {
   assert.equal((sql.match(/collection_lease_token' = p_lease_token::text/g) ?? []).length, 4);
   assert.equal((sql.match(/collection_lease_expires_at'\)::timestamptz > now\(\)/g) ?? []).length, 4);
   assert.match(sql, /returns text/);
-  for (const outcome of ["renewed", "cancel_requested", "lease_lost"]) assert.ok(sql.includes("'" + outcome + "'"));
+  assert.match(sql, /returns text[\s\S]*return case when inserted_id is not null then 'inserted' else 'duplicate' end/);
   assert.match(sql, /return 'lease_lost'/);
   assert.match(sql, /on conflict \(dataset_id, item_key\) do nothing/);
   assert.match(sql, /item_count = item_count \+ 1/);
@@ -64,7 +64,8 @@ test("enqueue RPC permits only the reviewed public-page actor version", () => {
 
 test("active collection cancellation is cooperative and lease-bound", () => {
   const sql = migration("0017_collection_cooperative_cancellation.sql");
-  assert.match(sql, /returns text[\s\S]*'renewed'[\s\S]*'cancel_requested'[\s\S]*'lease_lost'/);
+  assert.match(sql, /returns text/);
+  for (const outcome of ["renewed", "cancel_requested", "lease_lost"]) assert.ok(sql.includes(String.fromCharCode(39) + outcome + String.fromCharCode(39)));
   assert.match(sql, /progress->>'collection_lease_token' = p_lease_token::text/);
   assert.match(sql, /cancel_requested/);
   assert.match(sql, /update public\.collection_runs[\s\S]*status = final_status/);
