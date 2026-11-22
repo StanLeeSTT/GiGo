@@ -58,3 +58,16 @@ test("outreach preparation SQL is owner-scoped, template-bound, idempotent and d
   assert.ok(sql.includes("outreach_events"));
   assert.ok(sql.includes("to authenticated"));
 });
+
+
+test("inbound outreach events stop queued follow-ups and suppress negative responses", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0031_outreach_inbound_event_safety.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("gigo_record_outreach_recipient_event"));
+  assert.ok(sql.includes("'reply_received'"));
+  assert.ok(sql.includes("'unsubscribe_received'"));
+  assert.ok(sql.includes("outreach_suppressions"));
+  assert.ok(sql.includes("status = 'cancelled'"));
+  assert.ok(sql.includes("sequence_number > 0"));
+  assert.ok(sql.includes("to service_role"));
+  assert.ok(sql.includes("provider_event_id"));
+});
