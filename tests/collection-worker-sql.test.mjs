@@ -173,3 +173,12 @@ test("outreach campaign approval requires a complete authored message sequence",
   assert.ok(sql.includes("set approved_at = now()"));
   assert.ok(sql.includes("before update on public.outreach_campaigns"));
 });
+
+
+test("approved outreach templates cannot be silently edited or replaced", () => {
+  const sql = migration("0027_outreach_template_immutability.sql");
+  assert.ok(sql.includes("gigo_protect_approved_outreach_template"));
+  assert.ok(sql.includes("approved outreach templates are immutable"));
+  assert.ok(sql.includes("before insert or update or delete on public.outreach_templates"));
+  assert.ok(sql.includes("templates cannot be changed after campaign approval"));
+});
