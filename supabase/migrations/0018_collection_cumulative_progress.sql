@@ -42,7 +42,7 @@ begin
 
   if not found then return false; end if;
 
-  select p_counters || jsonb_build_object('items', d.item_count)
+  select coalesce(p_counters, '{}'::jsonb) || jsonb_build_object('items', d.item_count)
     into cumulative_counters
     from public.collection_datasets d
     where d.id = target_dataset_id
@@ -63,7 +63,7 @@ begin
 
   update public.jobs
     set progress = coalesce(progress, '{}'::jsonb) ||
-      jsonb_build_object('stage','collection_running','counters',cumulative_counters,'checkpoint',p_checkpoint,
+      jsonb_build_object('stage','collection_running','counters',cumulative_counters,'checkpoint',coalesce(p_checkpoint, '{}'::jsonb),
         'heartbeat_at',now(),'collection_lease_expires_at',now() + interval '120 seconds')
     where id = p_job_id;
   return true;
