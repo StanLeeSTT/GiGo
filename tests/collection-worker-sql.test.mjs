@@ -182,3 +182,16 @@ test("approved outreach templates cannot be silently edited or replaced", () => 
   assert.ok(sql.includes("before insert or update or delete on public.outreach_templates"));
   assert.ok(sql.includes("templates cannot be changed after campaign approval"));
 });
+
+
+test("outreach outbox claim revalidates approval, suppression, templates and recipient state", () => {
+  const sql = migration("0028_outreach_outbox_worker.sql");
+  assert.ok(sql.includes("gigo_claim_due_outreach_messages"));
+  assert.ok(sql.includes("gigo_finish_outreach_message"));
+  assert.ok(sql.includes("c.approval_status = 'approved'"));
+  assert.ok(sql.includes("t.approved_at is not null"));
+  assert.ok(sql.includes("outreach_suppressions"));
+  assert.ok(sql.includes("for update of m, r skip locked"));
+  assert.ok(sql.includes("delivery outcome is uncertain"));
+  assert.ok(sql.includes("grant execute on function public.gigo_claim_due_outreach_messages(integer,integer) to service_role"));
+});
