@@ -405,3 +405,19 @@ Migration `0032_outreach_followup_clock.sql` changes follow-up timing so each de
 **Decision:** do not send creator/partnership solicitation through a transactional endpoint. GiGo now has a provider-neutral contract and channel-selection policy in `src/outreach/providers.ts`; marketing and relationship outreach require a marketing channel and, for the currently researched providers, an existing registered contact. No provider adapter is registered and no API key or sender has been configured. A future integration must also confirm the provider's acceptable-use rules, the lawful basis for contacting each recipient, unsubscribe handling, sender/domain authentication and any regional requirements before sending.
 
 The provider contract supports stable per-message idempotency keys and distinguishes explicit pre-send rejection from ambiguous outcomes. Ambiguous outcomes must not be automatically retried. This is still architecture only, not a live sender.
+
+
+## Recipient contact authorization gate (migration 0033)
+
+New recipients default to `unreviewed`. Before message preparation, the owner must record an explicit recipient-level review through:
+
+`POST /api/v1/outreach/recipients/{recipient_id}/eligibility`
+
+Approval requires:
+- A documented basis selected from consent, existing relationship, assessed legitimate interest, or other documented basis.
+- An HTTPS evidence URL.
+- An explicit confirmation that the recipient is registered in the selected provider's marketing audience.
+
+The endpoint records the review timestamp. The preparation endpoint only selects approved and registered recipients. A database trigger independently blocks any outbox message from entering `sending` unless the recipient has approved contact authorization, evidence and provider-audience registration. This is an operational gate, not legal advice or a declaration that a selected basis is lawful. The owner must assess the applicable jurisdiction, provider acceptable-use terms and evidence for each contact. Public availability of an email address alone is not treated as permission.
+
+Existing recipient records remain unreviewed after migration until individually reviewed. No provider is connected and no messages are being sent.
