@@ -309,3 +309,5 @@ The endpoint is intentionally idempotent through the unique `(user_id, provider_
 - None of migrations 0010–0017 has been applied to the live Supabase project as part of this implementation. Provider health promotion and real collection remain disabled until migrations, secrets, review and explicit enablement are completed.
 
 - Migration 0018 makes retry counters cumulative: page/request totals are restored from the durable checkpoint, while item totals are derived from the dataset's idempotent item count. This prevents a resumed run from reporting only the final attempt's counts or double-counting duplicate records.
+
+- Migration 0019 adds an evidence-backed intelligence layer: structured insights are kept separate from raw collected records, each insight must cite 1–25 items from the same owner/run/dataset, evidence can be classified as supporting/contradicting/contextual, and new insights default to `needs_review`. This is a storage and integrity foundation, not an AI analyst or automatic opportunity scorer yet.
