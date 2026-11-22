@@ -59,7 +59,7 @@ create table if not exists public.outreach_recipients (
     foreign key (campaign_id, user_id) references public.outreach_campaigns(id, user_id) on delete cascade,
   constraint outreach_recipients_lead_owner_fk
     foreign key (lead_id, user_id) references public.leads(id, user_id) on delete set null (lead_id),
-  unique (id, user_id),
+  unique (id, user_id)
 );
 
 create table if not exists public.outreach_messages (
