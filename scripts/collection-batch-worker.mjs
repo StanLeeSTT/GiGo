@@ -140,8 +140,14 @@ export function extractPageMetadata(html,finalUrl) {
 }
 async function executePublicMetadata(_actor,input,context) {
   robotsCache.clear();
-  const urls=input.urls.slice(0,input.max_pages??5), completed=new Set(Array.isArray(context.checkpoint?.completed_urls)?context.checkpoint.completed_urls:[]);
-  let pages=0,items=0,requests=0,blocked=0;
+  const urls=input.urls.slice(0,input.max_pages??5);
+  const completed=new Set(Array.isArray(context.checkpoint?.completed_urls)?context.checkpoint.completed_urls:[]);
+  const savedTotals=context.checkpoint?.totals&&typeof context.checkpoint.totals==="object"?context.checkpoint.totals:{};
+  let pages=Number.isSafeInteger(savedTotals.pages)&&savedTotals.pages>=0?savedTotals.pages:0;
+  let items=0; // This attempt's emissions; the database derives cumulative items from dataset.item_count.
+  let requests=Number.isSafeInteger(savedTotals.requests)&&savedTotals.requests>=0?savedTotals.requests:0;
+  let blocked=Number.isSafeInteger(context.checkpoint?.blocked)&&context.checkpoint.blocked>=0?context.checkpoint.blocked:0;
+  const checkpoint=()=>({completed_urls:[...completed],blocked,totals:{pages,requests}});
   for(const suppliedUrl of urls) {
     if(context.signal.aborted) throw new Error("Collection cancelled.");
     if(completed.has(suppliedUrl)) continue;
@@ -152,34 +158,34 @@ async function executePublicMetadata(_actor,input,context) {
       if(response.status===429||response.status>=500) throw new Error("Temporary page response HTTP "+response.status+".");
       if(response.status<200||response.status>=300) {
         blocked++; completed.add(suppliedUrl);
-        await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+        await context.reportProgress({pages,items,requests,checkpoint:checkpoint()});
         continue;
       }
       const contentType=String(response.headers["content-type"]??"").toLowerCase();
       if(!contentType.includes("text/html")&&!contentType.includes("application/xhtml+xml")) {
         blocked++; completed.add(suppliedUrl);
-        await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+        await context.reportProgress({pages,items,requests,checkpoint:checkpoint()});
         continue;
       }
       const metadata=extractPageMetadata(response.body,response.finalUrl);
       const itemKey=createHash("sha256").update(response.finalUrl).digest("hex");
       await context.emitItem({itemKey,sourceUrl:response.finalUrl,sourcePlatform:"web",sourceType:"web_page_metadata",observedAt:new Date().toISOString(),accessMethod:"pinned_public_https_get",permissionContext:{robots_checked:true,robots_allowed:true,authentication:false,redirects_revalidated:true},record:{url:response.finalUrl,...metadata,http_status:response.status,content_type:contentType}});
       pages++;items++;completed.add(suppliedUrl);
-      await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+      await context.reportProgress({pages,items,requests,checkpoint:checkpoint()});
     } catch(error) {
       if(context.signal.aborted) throw error;
       if(String(error?.message??"").startsWith("Robots policy disallows")) {
         completed.add(suppliedUrl); blocked++;
-        await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked}});
+        await context.reportProgress({pages,items,requests,checkpoint:checkpoint()});
         continue;
       }
       // Network, DNS, timeout, redirect and 429/5xx failures are retryable.
-      // Leave the URL out of completed_urls so the durable retry resumes it.
-      await context.reportProgress({pages,items,requests,checkpoint:{completed_urls:[...completed],blocked,last_error:String(error?.message??"Collection error").slice(0,160)}});
+      // Completed URLs and cumulative page/request totals survive the retry.
+      await context.reportProgress({pages,items,requests,checkpoint:{...checkpoint(),last_error:String(error?.message??"Collection error").slice(0,160)}});
       throw error;
     }
   }
-  return {status:blocked?"partial":"completed",counters:{pages,items,requests},checkpoint:{completed_urls:[...completed],blocked}};
+  return {status:blocked?"partial":"completed",counters:{pages,items,requests},checkpoint:checkpoint()};
 }
 export function registerSafeHttpBatchAdapter() {
   registerCollectionAdapter({key:"gigo_safe_http_batch",executionModes:["batch_runner"],supports:capabilities=>capabilities.every(capability=>capability==="web_fetch"),execute:executePublicMetadata});
