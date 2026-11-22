@@ -1164,6 +1164,36 @@ export default {
       }
     }
 
+
+    const insightReviewMatch = url.pathname.match(/^\/api\/v1\/collection\/insights\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/review$/i);
+    if (insightReviewMatch) {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported for insight review." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to review collection insights." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const body = await readJson(request);
+        const allowedStatuses = ["accepted", "rejected", "superseded"];
+        if (!body || typeof body.review_status !== "string" || !allowedStatuses.includes(body.review_status)
+          || (body.note !== undefined && body.note !== null && (typeof body.note !== "string" || body.note.length > 2000))) {
+          return json({ error: { code: "INVALID_REVIEW", message: "Choose accepted, rejected or superseded and optionally provide a note up to 2,000 characters." } }, 400, headers);
+        }
+        const response = await fetch(new URL("/rest/v1/rpc/gigo_review_collection_insight", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_insight_id: insightReviewMatch[1], p_review_status: body.review_status, p_note: body.note ?? null }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "INSIGHT_REVIEW_REJECTED", message: "The insight could not be reviewed. It may not belong to this account or the requested status transition may not be allowed." } }, 409, headers);
+        const result = await response.json();
+        return json({ data: { id: insightReviewMatch[1], review_status: body.review_status, review_recorded: result === true } }, 200, headers);
+      } catch {
+        return json({ error: { code: "INSIGHT_REVIEW_FAILED", message: "Could not record the insight review." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/collection/runs") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
