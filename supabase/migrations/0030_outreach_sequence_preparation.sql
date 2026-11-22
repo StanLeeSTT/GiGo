@@ -30,7 +30,7 @@ begin
   if owner_id is null then
     raise exception 'authentication required' using errcode = '42501';
   end if;
-  if jsonb_typeof(p_messages) <> 'array' or jsonb_array_length(p_messages) < 1 or jsonb_array_length(p_messages) > 6 then
+  if p_messages is null or jsonb_typeof(p_messages) is distinct from 'array' or jsonb_array_length(p_messages) < 1 or jsonb_array_length(p_messages) > 6 then
     raise exception 'messages must be an array containing 1 to 6 items' using errcode = '22023';
   end if;
 
