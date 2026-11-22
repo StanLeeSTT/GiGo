@@ -306,7 +306,7 @@ The endpoint is intentionally idempotent through the unique `(user_id, provider_
 - The first internal adapter is a bounded public-HTTPS metadata collector. It checks robots.txt, pins validated public IPv4 destinations, revalidates redirects, has request/response limits, uses no credentials, and persists provenance. It is not a social-platform scraper.
 - GitHub Actions is currently a manual batch runner, not a continuously running service. It processes at most one durable collection job per invocation.
 - The worker's AbortSignal reaches the native HTTPS request. An adapter that ignores AbortSignal cannot be forcibly stopped by JavaScript; adapters must cooperate.
-- None of migrations 0010–0017 has been applied to the live Supabase project as part of this implementation. Provider health promotion and real collection remain disabled until migrations, secrets, review and explicit enablement are completed.
+- None of migrations 0010–0019 has been applied to the live Supabase project as part of this implementation. Provider health promotion and real collection remain disabled until migrations, secrets, review and explicit enablement are completed.
 
 - Migration 0018 makes retry counters cumulative: page/request totals are restored from the durable checkpoint, while item totals are derived from the dataset's idempotent item count. This prevents a resumed run from reporting only the final attempt's counts or double-counting duplicate records.
 
