@@ -1102,6 +1102,68 @@ export default {
     // Only dispatch the read handler for GET so POST reaches the enqueue route below.
     if (collectionResource && request.method === "GET") return handleCollectionRead(request, env, headers, collectionResource);
 
+    if (url.pathname === "/api/v1/collection/insights") {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access collection intelligence." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        if (request.method === "GET") {
+          const runId = url.searchParams.get("run_id");
+          const query = new URLSearchParams({
+            select: "id,run_id,dataset_id,insight_key,insight_type,title,summary,structured_data,confidence,review_status,created_by,created_at,updated_at,evidence:collection_insight_evidence(id,item_id,evidence_role,note,item:collection_items(id,item_key,source_url,source_type,record))",
+            order: "created_at.desc",
+            limit: "100"
+          });
+          if (runId) {
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) return json({ error: { code: "INVALID_RUN_ID", message: "run_id must be a valid UUID." } }, 400, headers);
+            query.set("run_id", "eq." + runId);
+          }
+          const response = await fetch(new URL("/rest/v1/collection_insights?" + query.toString(), env.SUPABASE_URL!), {
+            headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "COLLECTION_INTELLIGENCE_READ_FAILED", message: "Could not load collection insights. Confirm migration 0019 has been applied." } }, 502, headers);
+          const data = await response.json();
+          return json({ data }, 200, headers);
+        }
+        if (request.method === "POST") {
+          const body = await readJson(request);
+          const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+          const allowedTypes = ["market_signal","customer_problem","competitor","product_opportunity","lead_candidate","trend","risk","fact","other"];
+          if (!body || !uuid(body.run_id) || !uuid(body.dataset_id)
+            || typeof body.insight_key !== "string" || body.insight_key.length < 1 || body.insight_key.length > 160
+            || typeof body.insight_type !== "string" || !allowedTypes.includes(body.insight_type)
+            || typeof body.title !== "string" || body.title.trim().length < 1 || body.title.length > 240
+            || typeof body.summary !== "string" || body.summary.trim().length < 1 || body.summary.length > 8000
+            || (body.structured_data !== undefined && (!body.structured_data || typeof body.structured_data !== "object" || Array.isArray(body.structured_data)))
+            || (body.confidence !== undefined && body.confidence !== null && (typeof body.confidence !== "number" || !Number.isFinite(body.confidence) || body.confidence < 0 || body.confidence > 1))
+            || !Array.isArray(body.evidence_item_ids) || body.evidence_item_ids.length < 1 || body.evidence_item_ids.length > 25
+            || !body.evidence_item_ids.every(uuid) || new Set(body.evidence_item_ids).size !== body.evidence_item_ids.length) {
+            return json({ error: { code: "INVALID_INSIGHT", message: "Provide valid run/dataset IDs, an allowed insight type, a title, summary, optional structured data/confidence, and 1–25 unique evidence item IDs." } }, 400, headers);
+          }
+          const response = await fetch(new URL("/rest/v1/rpc/gigo_create_collection_insight", env.SUPABASE_URL!), {
+            method: "POST",
+            headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+            body: JSON.stringify({
+              p_run_id: body.run_id, p_dataset_id: body.dataset_id, p_insight_key: body.insight_key,
+              p_insight_type: body.insight_type, p_title: body.title.trim(), p_summary: body.summary.trim(),
+              p_structured_data: body.structured_data ?? {}, p_confidence: body.confidence ?? null,
+              p_evidence_item_ids: body.evidence_item_ids
+            }),
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "COLLECTION_INSIGHT_CREATE_FAILED", message: "Could not save the insight. Evidence must belong to the selected owner's run and dataset; confirm migration 0019 has been applied." } }, 400, headers);
+          const insightId = await response.json();
+          return json({ data: { id: insightId, review_status: "needs_review", evidence_count: body.evidence_item_ids.length } }, 201, headers);
+        }
+        return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_INTELLIGENCE_FAILED", message: "Could not process the collection intelligence request." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/collection/runs") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
