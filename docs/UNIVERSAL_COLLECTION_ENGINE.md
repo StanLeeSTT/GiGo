@@ -365,3 +365,20 @@ This automation must be durable and auditable, not a continuously running proces
 - The completion RPC records provider acceptance or a confirmed pre-send failure. Only confirmed safe failures may be retried; ambiguous outcomes fail closed to avoid duplicate partnership emails.
 - Campaign approval validates the timezone, quiet-hours pair and strictly increasing follow-up intervals.
 - No email provider is configured and no send worker/workflow is enabled. These are durable safety foundations only.
+
+
+## Evidence-backed outreach message preparation (migration 0030)
+
+The authenticated endpoint `POST /api/v1/outreach/campaigns/{campaign_id}/prepare` renders a bounded set of up to 25 eligible recipients using only an approved, active campaign and its immutable approved template sequence. An optional `recipient_id` limits preparation to one recipient.
+
+Personalization is deterministic and fail-closed:
+- `first_name` comes from the stored recipient name.
+- `organisation` comes from the stored recipient record.
+- `niche` comes from an owner-scoped social profile.
+- `specific_observation` comes from a stored lead-evidence excerpt with its source URL and observed timestamp retained as provenance.
+- `offer_summary` comes from the campaign's saved offer summary.
+- If a required placeholder has no verified value, that recipient is skipped and the missing field names are returned. GiGo does not invent metrics, facts or observations.
+
+Migration `0030_outreach_sequence_preparation.sql` adds the authenticated, owner-scoped RPC `gigo_prepare_outreach_sequence`. It locks campaign and recipient rows, checks campaign approval, recipient eligibility and suppressions, verifies the complete unique sequence against approved templates, then inserts all messages atomically with `ON CONFLICT DO NOTHING` and audit events. Follow-up schedule offsets are cumulative: follow-up 1 is due after delay 1; follow-up 2 after delay 1 + delay 2, and so on.
+
+**Important boundary:** preparation creates durable `queued` outbox records; it does not send email. No email provider is configured, no sending workflow is enabled, and no campaign has been activated by this code change. Migrations 0022–0030 remain unapplied until the owner explicitly applies them. A provider, inbound reply handling, unsubscribe mechanism and a reviewed sending worker are still required before any real outreach.
