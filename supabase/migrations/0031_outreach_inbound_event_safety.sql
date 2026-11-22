@@ -27,6 +27,9 @@ begin
   if normalized_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
     raise exception 'valid recipient email required' using errcode = '22023';
   end if;
+  if p_provider is null or length(trim(p_provider)) = 0 or p_provider_event_id is null or length(trim(p_provider_event_id)) = 0 or length(p_provider_event_id) > 300 then
+    raise exception 'provider identity and event ID are required for idempotent inbound processing' using errcode = '22023';
+  end if;
   if p_detail is not null and char_length(p_detail) > 3000 then
     raise exception 'event detail too long' using errcode = '22023';
   end if;
@@ -64,7 +67,7 @@ begin
   if suppression_reason is not null then
     insert into public.outreach_suppressions(user_id,email,reason,source)
     values(recipient_row.user_id,normalized_email,suppression_reason,'provider_event:' || p_event_type)
-    on conflict (user_id,email) do nothing;
+    on conflict do nothing;
   end if;
 
   if recipient_row.status in ('replied','bounced','unsubscribed','complained','cancelled','completed') then
