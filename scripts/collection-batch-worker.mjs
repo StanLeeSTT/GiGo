@@ -185,7 +185,7 @@ export function registerSafeHttpBatchAdapter() {
   registerCollectionAdapter({key:"gigo_safe_http_batch",executionModes:["batch_runner"],supports:capabilities=>capabilities.every(capability=>capability==="web_fetch"),execute:executePublicMetadata});
 }
 async function findSingleSafeHttpProvider(supabaseUrl, serviceKey) {
-  const base = supabaseUrl.replace(/\\/+$/, "");
+  const base = supabaseUrl.replace(/\/+$/, "");
   const headers = { apikey: serviceKey, accept: "application/json" };
   if (!serviceKey.startsWith("sb_secret_")) headers.authorization = "Bearer " + serviceKey;
   const response = await fetch(base + "/rest/v1/collection_providers?provider_key=eq.gigo_safe_http_batch&select=id,status,configuration,capabilities", { headers, signal: AbortSignal.timeout(10000) });
