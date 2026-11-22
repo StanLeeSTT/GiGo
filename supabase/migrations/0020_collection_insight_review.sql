@@ -1,4 +1,6 @@
 -- Explicit human review transitions and immutable review history for collection insights.
+create unique index if not exists collection_insights_id_user_unique
+  on public.collection_insights(id, user_id);
 create table if not exists public.collection_insight_reviews (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -22,6 +24,9 @@ alter table public.collection_insight_reviews enable row level security;
 drop policy if exists collection_insight_reviews_owner_read on public.collection_insight_reviews;
 create policy collection_insight_reviews_owner_read on public.collection_insight_reviews
   for select using (user_id = auth.uid());
+drop policy if exists collection_insight_reviews_owner_insert on public.collection_insight_reviews;
+create policy collection_insight_reviews_owner_insert on public.collection_insight_reviews
+  for insert with check (user_id = auth.uid());
 
 create or replace function public.gigo_review_collection_insight(
   p_insight_id uuid,
