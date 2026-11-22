@@ -31,6 +31,7 @@ function mockStore(overrides = {}) {
   const calls = { claims: 0, progress: [], items: [], finishes: [], retries: [] };
   const store = {
     async claim() { calls.claims += 1; return [claim]; },
+    async heartbeat() { return true; },
     async progress(...args) { calls.progress.push(args); return true; },
     async persistItem(...args) { calls.items.push(args); return "inserted"; },
     async finish(...args) { calls.finishes.push(args); return true; },
@@ -102,5 +103,23 @@ test("worker marks permanent actor-output errors as failed instead of retrying",
   assert.deepEqual(result, { claimed: 1, completed: 0, retried: 0, failed: 1, skipped: false });
   assert.equal(calls.finishes[0][2], "failed");
   assert.equal(calls.retries.length, 0);
+  clearCollectionAdaptersForTests();
+});
+
+test("worker retries safely when lease heartbeat is lost", async () => {
+  clearCollectionAdaptersForTests();
+  registerCollectionAdapter({
+    key: "crawlee", executionModes: ["batch_runner"], supports: () => true,
+    async execute(_actor, _input, context) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+      if (context.signal.aborted) throw context.signal.reason;
+      return { status: "completed", counters: { pages: 0, items: 0, requests: 0 } };
+    }
+  });
+  const { store, calls } = mockStore({ async heartbeat() { return false; } });
+  const result = await runCollectionWorkerBatch(store, { heartbeatIntervalMs: 1 });
+  assert.equal(result.completed, 0);
+  assert.equal(result.retried, 1);
+  assert.equal(calls.retries[0][2].code, "LEASE_HEARTBEAT_FAILED");
   clearCollectionAdaptersForTests();
 });
