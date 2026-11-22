@@ -84,3 +84,18 @@ test("retry progress preserves cumulative page/request counters and derives item
   assert.ok(sql.includes("set counters = cumulative_counters"));
   assert.ok(sql.includes("grant execute on function public.gigo_collection_worker_progress(uuid, uuid, jsonb, jsonb) to service_role"));
 });
+
+
+test("collection intelligence requires same-owner evidence from the same run and dataset", () => {
+  const sql = migration("0019_collection_intelligence.sql");
+  assert.ok(sql.includes("create table if not exists public.collection_insights"));
+  assert.ok(sql.includes("create table if not exists public.collection_insight_evidence"));
+  assert.ok(sql.includes("foreign key (dataset_id, run_id, user_id)"));
+  assert.ok(sql.includes("foreign key (item_id, dataset_id, run_id, user_id)"));
+  assert.ok(sql.includes("cardinality(p_evidence_item_ids) not between 1 and 25"));
+  assert.ok(sql.includes("ci.run_id = p_run_id"));
+  assert.ok(sql.includes("ci.dataset_id = p_dataset_id"));
+  assert.ok(sql.includes("ci.user_id = auth.uid()"));
+  assert.ok(sql.includes("grant execute on function public.gigo_create_collection_insight"));
+  assert.ok(sql.includes("review_status text not null default 'needs_review'"));
+});
