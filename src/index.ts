@@ -1057,7 +1057,7 @@ export default {
           body: JSON.stringify(row),
           signal: AbortSignal.timeout(10000)
         });
-        if (!response.ok) return json({ error: { code: "PROVIDER_REGISTRATION_FAILED", message: "Could not register the provider. Confirm migration 0010 is applied." } }, response.status >= 500 ? 502 : response.status, headers);
+        if (!response.ok) return json({ error: { code: "PROVIDER_REGISTRATION_FAILED", message: "Could not register the provider. Confirm migrations 0010 and 0017 are applied." } }, response.status >= 500 ? 502 : response.status, headers);
         const records = await response.json() as Array<Record<string, unknown>>;
         const provider = Array.isArray(records) ? records[0] : null;
         return json({ data: { provider, ready: false, execution_enabled: false, next_step: "Configure the GitHub Actions repository secrets and complete the separate runner verification before any collection job can execute." } }, 200, headers);
@@ -1084,7 +1084,7 @@ export default {
         if (!response.ok) return json({ error: { code: "CANCELLATION_FAILED", message: "The database could not process the cancellation. Confirm migration 0010 is applied." } }, 502, headers);
         const cancelled = await response.json();
         if (cancelled !== true) return json({ error: { code: "RUN_NOT_CANCELLABLE", message: "The run was not found, is already terminal, or its job has already been claimed." } }, 409, headers);
-        return json({ data: { run_id: cancelCollectionRunMatch[1], status: "cancelled" } }, 200, headers);
+        return json({ data: { run_id: cancelCollectionRunMatch[1], status: "cancellation_accepted" } }, 200, headers);
       } catch {
         return json({ error: { code: "COLLECTION_CANCEL_FAILED", message: "Could not cancel the collection run." } }, 502, headers);
       }
