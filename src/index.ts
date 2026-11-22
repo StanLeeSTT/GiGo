@@ -1447,11 +1447,11 @@ export default {
           if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
           const body = await readJson(request);
           const sequence = body?.sequence_number;
-          const fields = body?.personalization_fields ?? [];
+          const fields: unknown[] = Array.isArray(body?.personalization_fields) ? body.personalization_fields : [];
           const allowedFields = ["first_name","organisation","niche","specific_observation","offer_summary"];
           const templateText = String(body?.subject_template ?? "") + "\n" + String(body?.body_template ?? "");
           const placeholders = Array.from(templateText.matchAll(/\{\{([a-z_]+)\}\}/g), match => match[1]);
-          if (!body || !Array.isArray(fields) || fields.length > allowedFields.length
+          if (!body || (body.personalization_fields !== undefined && !Array.isArray(body.personalization_fields)) || fields.length > allowedFields.length
             || fields.some((v: unknown) => typeof v !== "string" || !allowedFields.includes(v))
             || placeholders.some(field => !allowedFields.includes(field) || !fields.includes(field))
             || !Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5
