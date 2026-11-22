@@ -16,5 +16,5 @@ test("collection intelligence API is authenticated and supports evidence-backed 
   assert.ok(route.includes("gigo_create_collection_insight"));
   assert.ok(route.includes("body.evidence_item_ids.length > 25"));
   assert.ok(route.includes('review_status: "needs_review"'));
-  assert.ok(route.includes("authorization: `Bearer ${token}`"));
+  assert.ok(route.includes('authorization: "Bearer " + token'));
 });
