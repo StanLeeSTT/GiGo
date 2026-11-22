@@ -1354,7 +1354,8 @@ export default {
 
     const outreachCampaignApprovalMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/approve$/i);
     const outreachRecipientsMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/recipients$/i);
-    if (url.pathname === "/api/v1/outreach/campaigns" || outreachCampaignApprovalMatch || outreachRecipientsMatch) {
+    const outreachTemplatesMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/templates$/i);
+    if (url.pathname === "/api/v1/outreach/campaigns" || outreachCampaignApprovalMatch || outreachRecipientsMatch || outreachTemplatesMatch) {
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
       const token = bearerToken(request);
       if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage outreach campaigns." } }, 401, headers);
@@ -1432,6 +1433,42 @@ export default {
             method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(record), signal: AbortSignal.timeout(10000)
           });
           if (!response.ok) return json({ error: { code: "RECIPIENT_CREATE_FAILED", message: "Could not add this recipient. Check campaign ownership and duplicate addresses." } }, 409, headers);
+          return json({ data: await response.json() }, 201, headers);
+        }
+
+        if (outreachTemplatesMatch) {
+          const campaignId = outreachTemplatesMatch[1];
+          if (request.method === "GET") {
+            const query = new URLSearchParams({ select: "id,campaign_id,sequence_number,message_type,subject_template,body_template,personalization_fields,approved_at,created_at,updated_at", campaign_id: "eq." + campaignId, order: "sequence_number.asc", limit: "6" });
+            const response = await fetch(new URL("/rest/v1/outreach_templates?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+            if (!response.ok) return json({ error: { code: "TEMPLATE_READ_FAILED", message: "Could not load campaign templates. Confirm migration 0025 has been applied." } }, 502, headers);
+            return json({ data: await response.json() }, 200, headers);
+          }
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+          const body = await readJson(request);
+          const sequence = body?.sequence_number;
+          const fields = body?.personalization_fields ?? [];
+          const allowedFields = ["first_name","organisation","niche","specific_observation","offer_summary"];
+          if (!body || !Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5
+            || typeof body.subject_template !== "string" || !body.subject_template.trim() || body.subject_template.length > 300
+            || typeof body.body_template !== "string" || !body.body_template.trim() || body.body_template.length > 20000
+            || !Array.isArray(fields) || fields.length > allowedFields.length
+            || fields.some((v: unknown) => typeof v !== "string" || !allowedFields.includes(v))) {
+            return json({ error: { code: "INVALID_TEMPLATE", message: "Provide sequence 0–5, a subject, a message body and supported personalization fields." } }, 400, headers);
+          }
+          const template = {
+            user_id: userId,
+            campaign_id: campaignId,
+            sequence_number: sequence,
+            message_type: Number(sequence) === 0 ? "initial" : "follow_up",
+            subject_template: body.subject_template.trim(),
+            body_template: body.body_template.trim(),
+            personalization_fields: fields
+          };
+          const response = await fetch(new URL("/rest/v1/outreach_templates?select=id,campaign_id,sequence_number,message_type,subject_template,body_template,personalization_fields,approved_at,created_at", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(template), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "TEMPLATE_CREATE_FAILED", message: "Could not save the template. Check campaign ownership, duplicate sequence numbers and approval status." } }, 409, headers);
           return json({ data: await response.json() }, 201, headers);
         }
         if (!["GET","POST"].includes(request.method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
