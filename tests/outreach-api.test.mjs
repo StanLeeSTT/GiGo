@@ -18,3 +18,15 @@ test("outreach campaign APIs require owner authentication and bounded explicit a
   assert.ok(route.includes('status: "draft"'));
   assert.ok(route.includes('request.method === "GET"'));
 });
+
+
+test("outreach template API restricts sequence size and personalization fields", () => {
+  const start = source.indexOf("const outreachTemplatesMatch =");
+  const end = source.indexOf('if (!["GET","POST"].includes(request.method))', start);
+  assert.ok(start >= 0 && end > start, "template route should be registered");
+  const route = source.slice(start, end);
+  assert.ok(route.includes("outreach_templates"));
+  assert.ok(route.includes("sequence_number"));
+  assert.ok(route.includes("specific_observation"));
+  assert.ok(route.includes("verifiedUserId(token, env)"));
+});
