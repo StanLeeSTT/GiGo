@@ -8,6 +8,7 @@ export interface CollectionWorkerBatchResult {
   completed: number;
   retried: number;
   failed: number;
+  cancelled: number;
   skipped: boolean;
 }
 
@@ -26,11 +27,11 @@ export async function runCollectionWorkerBatch(
   options: { limit?: number; leaseSeconds?: number; heartbeatIntervalMs?: number } = {}
 ): Promise<CollectionWorkerBatchResult> {
   if (listRegisteredCollectionAdapters().length === 0) {
-    return { claimed: 0, completed: 0, retried: 0, failed: 0, skipped: true };
+    return { claimed: 0, completed: 0, retried: 0, failed: 0, cancelled: 0, skipped: true };
   }
   const leaseSeconds = options.leaseSeconds ?? 120;
   const claims = await store.claim(options.limit ?? 1, leaseSeconds);
-  const result: CollectionWorkerBatchResult = { claimed: claims.length, completed: 0, retried: 0, failed: 0, skipped: false };
+  const result: CollectionWorkerBatchResult = { claimed: claims.length, completed: 0, retried: 0, failed: 0, cancelled: 0, skipped: false };
 
   for (const claim of claims) {
     const actor = getCollectionActor(claim.actor_key, claim.actor_version);
@@ -49,12 +50,16 @@ export async function runCollectionWorkerBatch(
     const intervalMs = options.heartbeatIntervalMs ?? 30000;
     let heartbeatInFlight: Promise<void> | null = null;
     let heartbeatFailed = false;
+    let cancellationRequested = false;
     const heartbeatTimer = setInterval(() => {
       if (heartbeatInFlight || controller.signal.aborted) return;
       heartbeatInFlight = (async () => {
         try {
-          const renewed = await store.heartbeat(claim.job_id, claim.lease_token);
-          if (!renewed) {
+          const heartbeat = await store.heartbeat(claim.job_id, claim.lease_token);
+          if (heartbeat === "cancel_requested") {
+            cancellationRequested = true;
+            controller.abort(new Error("Collection cancellation was requested."));
+          } else if (heartbeat === "lease_lost") {
             heartbeatFailed = true;
             controller.abort(new Error("Collection worker lease was lost."));
           }
@@ -89,10 +94,21 @@ export async function runCollectionWorkerBatch(
         }
       );
       if (heartbeatFailed) throw new Error("Collection worker heartbeat failed.");
-      const finished = await store.finish(claim.job_id, claim.lease_token, run.status, null);
-      if (!finished) throw new Error("Collection worker lease was lost before finalization.");
-      result.completed++;
+      if (cancellationRequested) {
+        const finished = await store.finish(claim.job_id, claim.lease_token, "cancelled", null);
+        if (finished) result.cancelled++;
+        else result.retried++;
+      } else {
+        const finished = await store.finish(claim.job_id, claim.lease_token, run.status, null);
+        if (!finished) throw new Error("Collection worker lease was lost before finalization.");
+        result.completed++;
+      }
     } catch (error) {
+      if (cancellationRequested) {
+        const finished = await store.finish(claim.job_id, claim.lease_token, "cancelled", null);
+        if (finished) result.cancelled++;
+        else result.retried++;
+      } else {
       const details = heartbeatFailed
         ? { code: "LEASE_HEARTBEAT_FAILED", message: "The collection worker could not renew its lease; the run will be resumed safely." }
         : errorRecord(error);
@@ -104,6 +120,7 @@ export async function runCollectionWorkerBatch(
         const outcome = await store.retry(claim.job_id, claim.lease_token, details, 300);
         if (outcome === "retry_scheduled") result.retried++;
         else if (outcome === "failed") result.failed++;
+      }
       }
     } finally {
       clearInterval(heartbeatTimer);
