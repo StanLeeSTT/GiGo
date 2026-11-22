@@ -60,3 +60,15 @@ test("enqueue RPC permits only the reviewed public-page actor version", () => {
   assert.match(sql, /insert into public\.collection_runs/);
   assert.match(sql, /insert into public\.collection_datasets/);
 });
+
+test("active collection cancellation is cooperative and lease-bound", () => {
+  const sql = migration("0017_collection_cooperative_cancellation.sql");
+  assert.match(sql, /returns text[\s\S]*'renewed'[\s\S]*'cancel_requested'[\s\S]*'lease_lost'/);
+  assert.match(sql, /progress->>'collection_lease_token' = p_lease_token::text/);
+  assert.match(sql, /cancel_requested/);
+  assert.match(sql, /update public\.collection_runs[\s\S]*status = final_status/);
+  assert.match(sql, /revoke all on function public\.gigo_collection_worker_heartbeat\(uuid, uuid\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.gigo_collection_worker_heartbeat\(uuid, uuid\) to service_role/);
+  assert.match(sql, /grant execute on function public\.gigo_cancel_collection_run\(uuid\) to authenticated/);
+  assert.match(sql, /final_status := case when coalesce/);
+});
