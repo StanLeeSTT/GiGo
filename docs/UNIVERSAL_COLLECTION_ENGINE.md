@@ -297,3 +297,13 @@ It creates or refreshes the caller's owner-scoped provider row using a fixed ser
 The endpoint is intentionally idempotent through the unique `(user_id, provider_key)` constraint and PostgREST upsert. It requires the caller's authenticated Supabase session and migration 0010.
 
 **Onboarding is not health verification.** The endpoint cannot mark a provider healthy. The next gate is a runner-side verification that checks the configured GitHub Actions environment, confirms the exact adapter is registered, and proves the service-role store can reach the expected database RPCs. Only a separate trusted service-role health transition should promote the provider to `healthy`. Until that transition exists and is verified, do not enqueue a run and do not add GitHub secrets to an unreviewed workflow.
+
+### Durable batch worker and cancellation update
+
+- Migrations 0011–0016 isolate collection jobs from the generic scheduler, bind each run to one verified provider, add dedicated lease-based claiming, persist checkpoints/items idempotently, and renew worker leases.
+- Migration 0017 adds cooperative cancellation for active runs. An owner request sets a cancellation flag while leaving the job processing; the worker observes it on heartbeat, aborts the adapter through AbortSignal, and acknowledges cancellation under the same live lease. Finalization rechecks the flag to close the completion race.
+- Heartbeat outcomes are explicit: `renewed`, `cancel_requested`, or `lease_lost`. A cancellation request is never treated as proof that the worker has already stopped.
+- The first internal adapter is a bounded public-HTTPS metadata collector. It checks robots.txt, pins validated public IPv4 destinations, revalidates redirects, has request/response limits, uses no credentials, and persists provenance. It is not a social-platform scraper.
+- GitHub Actions is currently a manual batch runner, not a continuously running service. It processes at most one durable collection job per invocation.
+- The worker's AbortSignal reaches the native HTTPS request. An adapter that ignores AbortSignal cannot be forcibly stopped by JavaScript; adapters must cooperate.
+- None of migrations 0010–0017 has been applied to the live Supabase project as part of this implementation. Provider health promotion and real collection remain disabled until migrations, secrets, review and explicit enablement are completed.
