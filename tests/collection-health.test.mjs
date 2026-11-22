@@ -20,4 +20,6 @@ test("health mode is a separate zero-claim operation", () => {
   assert.match(worker, /--health-check/);
   assert.match(worker, /runHealthCheck/);
   assert.match(worker, /jobs_claimed: 0/);
+  assert.match(worker, /safeHttpsGet\("https:\/\/example\.com\/robots\.txt"/);
+  assert.match(worker, /egress_probe: "passed"/);
 });
