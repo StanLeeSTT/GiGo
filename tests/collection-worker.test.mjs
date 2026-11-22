@@ -31,7 +31,7 @@ function mockStore(overrides = {}) {
   const calls = { claims: 0, progress: [], items: [], finishes: [], retries: [] };
   const store = {
     async claim() { calls.claims += 1; return [claim]; },
-    async heartbeat() { return true; },
+    async heartbeat() { return "renewed"; },
     async progress(...args) { calls.progress.push(args); return true; },
     async persistItem(...args) { calls.items.push(args); return "inserted"; },
     async finish(...args) { calls.finishes.push(args); return true; },
@@ -45,7 +45,7 @@ test("worker does not claim jobs while no adapters are registered", async () => 
   clearCollectionAdaptersForTests();
   const { store, calls } = mockStore();
   const result = await runCollectionWorkerBatch(store);
-  assert.deepEqual(result, { claimed: 0, completed: 0, retried: 0, failed: 0, skipped: true });
+  assert.deepEqual(result, { claimed: 0, completed: 0, retried: 0, failed: 0, cancelled: 0, skipped: true });
   assert.equal(calls.claims, 0);
 });
 
@@ -63,7 +63,7 @@ test("worker executes a claimed run and persists progress, items and completion"
   });
   const { store, calls } = mockStore();
   const result = await runCollectionWorkerBatch(store);
-  assert.deepEqual(result, { claimed: 1, completed: 1, retried: 0, failed: 0, skipped: false });
+  assert.deepEqual(result, { claimed: 1, completed: 1, retried: 0, failed: 0, cancelled: 0, skipped: false });
   assert.equal(calls.progress.length, 2, "intermediate and final snapshots should be saved");
   assert.equal(calls.items.length, 1);
   assert.equal(calls.finishes[0][2], "completed");
@@ -81,7 +81,7 @@ test("worker safely retries a job when its provider adapter is not registered", 
   });
   const { store, calls } = mockStore();
   const result = await runCollectionWorkerBatch(store);
-  assert.deepEqual(result, { claimed: 1, completed: 0, retried: 1, failed: 0, skipped: false });
+  assert.deepEqual(result, { claimed: 1, completed: 0, retried: 1, failed: 0, cancelled: 0, skipped: false });
   assert.equal(calls.retries.length, 1);
   assert.equal(calls.retries[0][2].code, "ADAPTER_NOT_REGISTERED");
   clearCollectionAdaptersForTests();
@@ -100,7 +100,7 @@ test("worker marks permanent actor-output errors as failed instead of retrying",
   });
   const { store, calls } = mockStore();
   const result = await runCollectionWorkerBatch(store);
-  assert.deepEqual(result, { claimed: 1, completed: 0, retried: 0, failed: 1, skipped: false });
+  assert.deepEqual(result, { claimed: 1, completed: 0, retried: 0, failed: 1, cancelled: 0, skipped: false });
   assert.equal(calls.finishes[0][2], "failed");
   assert.equal(calls.retries.length, 0);
   clearCollectionAdaptersForTests();
@@ -116,10 +116,31 @@ test("worker retries safely when lease heartbeat is lost", async () => {
       return { status: "completed", counters: { pages: 0, items: 0, requests: 0 } };
     }
   });
-  const { store, calls } = mockStore({ async heartbeat() { return false; } });
+  const { store, calls } = mockStore({ async heartbeat() { return "lease_lost"; } });
   const result = await runCollectionWorkerBatch(store, { heartbeatIntervalMs: 1 });
   assert.equal(result.completed, 0);
   assert.equal(result.retried, 1);
   assert.equal(calls.retries[0][2].code, "LEASE_HEARTBEAT_FAILED");
+  clearCollectionAdaptersForTests();
+});
+
+test("worker acknowledges cooperative cancellation instead of retrying", async () => {
+  clearCollectionAdaptersForTests();
+  registerCollectionAdapter({
+    key: "crawlee", executionModes: ["batch_runner"], supports: () => true,
+    async execute(_actor, _input, context) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      if (context.signal.aborted) throw context.signal.reason;
+      return { status: "completed", counters: { pages: 0, items: 0, requests: 0 } };
+    }
+  });
+  const { store, calls } = mockStore({
+    async heartbeat() { return "cancel_requested"; }
+  });
+  const result = await runCollectionWorkerBatch(store, { heartbeatIntervalMs: 1 });
+  assert.equal(result.cancelled, 1);
+  assert.equal(result.retried, 0);
+  assert.equal(calls.finishes[0][2], "cancelled");
+  assert.equal(calls.retries.length, 0);
   clearCollectionAdaptersForTests();
 });
