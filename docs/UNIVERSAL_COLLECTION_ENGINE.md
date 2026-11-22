@@ -346,3 +346,12 @@ This automation must be durable and auditable, not a continuously running proces
 - `/api/v1/outreach/campaigns/{campaign_id}/approve` is the explicit owner-initiated approval endpoint. Approval authorizes a bounded campaign policy only; it does not mean an email sender is configured or that messages are sent.
 - Reply/bounce/unsubscribe/complaint event types and recipient stop states are modelled for future inbox integration. Actual email provider connection, send worker, inbound reply monitoring, follow-up scheduler and automatic suppression processing remain future work.
 - The intended commercial method remains: source prospects from permitted social/platform data, qualify with evidence, craft relevant offers and personalized partnership outreach, then manage a compliant follow-up and relationship pipeline. No scraping behind access controls, private-message harvesting, CAPTCHA/login bypass or rate-limit evasion.
+
+
+### Outreach message approval and template controls (migrations 0025–0027)
+
+- Campaigns now support owner-authored message templates: sequence 0 is the initial email; each approved follow-up delay requires one matching follow-up template.
+- The API exposes `GET/POST /api/v1/outreach/campaigns/{campaign_id}/templates`. Supported personalization fields are allowlisted; campaign approval requires a complete contiguous sequence.
+- The approval guard freezes the exact templates at approval time. Approved templates cannot be silently edited, replaced or deleted.
+- The campaign approval endpoint therefore approves both the bounded operating policy and the actual copy sequence. This is still authorization metadata and a queue foundation—not a live email integration.
+- Before a send worker is enabled, it must re-check campaign approval, recipient state, suppression, message sequence, sending window, quiet hours, per-recipient caps and idempotency at claim and send time.
