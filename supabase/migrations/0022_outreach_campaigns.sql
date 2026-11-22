@@ -36,7 +36,7 @@ create table if not exists public.outreach_campaigns (
     and max_recipients > 0 and max_messages_per_recipient > 0
   )),
   check (cardinality(followup_delays_days) <= 5),
-  check (0 < all (followup_delays_days) and 0 < all (array(select unnest(followup_delays_days)))),
+  check (followup_delays_days <@ array[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30]),
   check (followups_enabled = false or cardinality(followup_delays_days) > 0)
 );
 
@@ -60,7 +60,6 @@ create table if not exists public.outreach_recipients (
   constraint outreach_recipients_lead_owner_fk
     foreign key (lead_id, user_id) references public.leads(id, user_id) on delete set null (lead_id),
   unique (id, user_id),
-  unique (campaign_id, email)
 );
 
 create table if not exists public.outreach_messages (
@@ -125,6 +124,10 @@ create table if not exists public.outreach_suppressions (
 
 create index if not exists outreach_campaigns_owner_status_idx
   on public.outreach_campaigns(user_id, status, updated_at desc);
+create unique index if not exists outreach_recipients_campaign_email_unique
+  on public.outreach_recipients(campaign_id, lower(email));
+create unique index if not exists outreach_suppressions_email_unique
+  on public.outreach_suppressions(user_id, lower(email));
 create index if not exists outreach_recipients_due_idx
   on public.outreach_recipients(user_id, campaign_id, status, next_action_at);
 create index if not exists outreach_messages_due_idx
