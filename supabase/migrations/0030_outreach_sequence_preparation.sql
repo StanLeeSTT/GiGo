@@ -68,6 +68,12 @@ begin
     raise exception 'follow-ups are not enabled' using errcode = '42501';
   end if;
 
+  if (select count(distinct (value->>'sequence_number')::integer) from jsonb_array_elements(p_messages)) <> expected_count
+    or (select min((value->>'sequence_number')::integer) from jsonb_array_elements(p_messages)) <> 0
+    or (select max((value->>'sequence_number')::integer) from jsonb_array_elements(p_messages)) <> expected_count - 1 then
+    raise exception 'prepared sequence numbers must be unique and contiguous' using errcode = '22023';
+  end if;
+
   for item in select value from jsonb_array_elements(p_messages) loop
     if jsonb_typeof(item) <> 'object' then
       raise exception 'invalid prepared message' using errcode = '22023';
