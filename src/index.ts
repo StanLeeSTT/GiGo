@@ -1351,6 +1351,114 @@ export default {
       }
     }
 
+
+    const outreachCampaignApprovalMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/approve$/i);
+    const outreachRecipientsMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/recipients$/i);
+    if (url.pathname === "/api/v1/outreach/campaigns" || outreachCampaignApprovalMatch || outreachRecipientsMatch) {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage outreach campaigns." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (outreachCampaignApprovalMatch) {
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+          const body = await readJson(request);
+          const validTime = (value: unknown) => typeof value === "string" && /^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$/.test(value);
+          const delays = body?.followup_delays_days;
+          if (!body || typeof body.sender_email !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(body.sender_email)
+            || typeof body.sender_name !== "string" || !body.sender_name.trim() || body.sender_name.length > 200
+            || !Number.isInteger(body.max_recipients) || Number(body.max_recipients) < 1 || Number(body.max_recipients) > 10000
+            || !Number.isInteger(body.max_messages_per_recipient) || Number(body.max_messages_per_recipient) < 1 || Number(body.max_messages_per_recipient) > 6
+            || body.initial_send_enabled !== true || typeof body.followups_enabled !== "boolean"
+            || !Array.isArray(delays) || delays.length > 5 || delays.some((v: unknown) => !Number.isInteger(v) || Number(v) < 1 || Number(v) > 30)
+            || (body.followups_enabled && delays.length === 0) || (!body.followups_enabled && delays.length !== 0)
+            || !validTime(body.send_window_start) || !validTime(body.send_window_end)
+            || typeof body.timezone !== "string" || !body.timezone.trim() || body.timezone.length > 100
+            || (body.quiet_hours_start !== undefined && body.quiet_hours_start !== null && !validTime(body.quiet_hours_start))
+            || (body.quiet_hours_end !== undefined && body.quiet_hours_end !== null && !validTime(body.quiet_hours_end))) {
+            return json({ error: { code: "INVALID_CAMPAIGN_POLICY", message: "Provide a valid sender, bounded recipient/message limits, initial-send permission, follow-up schedule, sending window and timezone." } }, 400, headers);
+          }
+          const rpcBody = {
+            p_campaign_id: outreachCampaignApprovalMatch[1],
+            p_sender_email: body.sender_email.trim().toLowerCase(),
+            p_sender_name: body.sender_name.trim(),
+            p_max_recipients: body.max_recipients,
+            p_max_messages_per_recipient: body.max_messages_per_recipient,
+            p_initial_send_enabled: body.initial_send_enabled,
+            p_followups_enabled: body.followups_enabled,
+            p_followup_delays_days: delays,
+            p_send_window_start: body.send_window_start,
+            p_send_window_end: body.send_window_end,
+            p_timezone: body.timezone.trim(),
+            p_quiet_hours_start: body.quiet_hours_start ?? null,
+            p_quiet_hours_end: body.quiet_hours_end ?? null
+          };
+          const response = await fetch(new URL("/rest/v1/rpc/gigo_approve_outreach_campaign", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json" }, body: JSON.stringify(rpcBody), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "CAMPAIGN_APPROVAL_FAILED", message: "The campaign could not be approved. Confirm migrations 0022 and 0023 are applied and that the campaign has eligible recipients." } }, 409, headers);
+          const approved = await response.json();
+          if (approved !== true) return json({ error: { code: "CAMPAIGN_NOT_FOUND", message: "The campaign was not found in your workspace." } }, 404, headers);
+          return json({ data: { campaign_id: outreachCampaignApprovalMatch[1], approval_status: "approved", status: "active", policy: rpcBody } }, 200, headers);
+        }
+        if (outreachRecipientsMatch) {
+          const campaignId = outreachRecipientsMatch[1];
+          if (request.method === "GET") {
+            const query = new URLSearchParams({ select: "id,campaign_id,lead_id,email,recipient_name,organisation,status,followup_count,last_message_at,next_action_at,stop_reason,created_at,updated_at", campaign_id: "eq." + campaignId, order: "created_at.desc", limit: "200" });
+            const response = await fetch(new URL("/rest/v1/outreach_recipients?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+            if (!response.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load campaign recipients. Confirm migration 0022 has been applied." } }, 502, headers);
+            return json({ data: await response.json() }, 200, headers);
+          }
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+          const body = await readJson(request);
+          const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+          const leadId = body?.lead_id;
+          const validUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+          if (!body || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 320
+            || (leadId !== undefined && leadId !== null && !validUuid(leadId))
+            || (body.recipient_name !== undefined && body.recipient_name !== null && (typeof body.recipient_name !== "string" || body.recipient_name.length > 240))
+            || (body.organisation !== undefined && body.organisation !== null && (typeof body.organisation !== "string" || body.organisation.length > 240))) {
+            return json({ error: { code: "INVALID_RECIPIENT", message: "Provide a valid email and optional lead ID, name and organisation." } }, 400, headers);
+          }
+          const suppressionQuery = new URLSearchParams({ select: "id", email: "eq." + email, limit: "1" });
+          const suppression = await fetch(new URL("/rest/v1/outreach_suppressions?" + suppressionQuery.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!suppression.ok) return json({ error: { code: "SUPPRESSION_CHECK_FAILED", message: "Could not verify the do-not-contact list. No recipient was added." } }, 502, headers);
+          const blocked = await suppression.json() as unknown[];
+          if (blocked.length) return json({ error: { code: "RECIPIENT_SUPPRESSED", message: "This address is on the do-not-contact list and cannot be added." } }, 409, headers);
+          const record: JsonRecord = { user_id: userId, campaign_id: campaignId, email: email, lead_id: leadId ?? null, recipient_name: body.recipient_name ?? null, organisation: body.organisation ?? null };
+          const response = await fetch(new URL("/rest/v1/outreach_recipients?select=id,campaign_id,lead_id,email,recipient_name,organisation,status,created_at", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(record), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "RECIPIENT_CREATE_FAILED", message: "Could not add this recipient. Check campaign ownership and duplicate addresses." } }, 409, headers);
+          return json({ data: await response.json() }, 201, headers);
+        }
+        if (!["GET","POST"].includes(request.method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+        if (request.method === "GET") {
+          const query = new URLSearchParams({ select: "id,name,objective,audience_definition,offer_summary,status,approval_status,approved_sender_email,approved_sender_name,approved_policy,max_recipients,max_messages_per_recipient,initial_send_enabled,followups_enabled,followup_delays_days,send_window_start,send_window_end,timezone,quiet_hours_start,quiet_hours_end,approved_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
+          const response = await fetch(new URL("/rest/v1/outreach_campaigns?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) return json({ error: { code: "CAMPAIGN_READ_FAILED", message: "Could not load outreach campaigns. Confirm migration 0022 has been applied." } }, 502, headers);
+          return json({ data: await response.json() }, 200, headers);
+        }
+        const body = await readJson(request);
+        if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.length > 180
+          || typeof body.objective !== "string" || !body.objective.trim() || body.objective.length > 3000
+          || (body.offer_summary !== undefined && body.offer_summary !== null && (typeof body.offer_summary !== "string" || body.offer_summary.length > 5000))
+          || (body.audience_definition !== undefined && (!body.audience_definition || typeof body.audience_definition !== "object" || Array.isArray(body.audience_definition)))) {
+          return json({ error: { code: "INVALID_CAMPAIGN", message: "Provide a campaign name, objective and optional audience definition and offer summary." } }, 400, headers);
+        }
+        const record: JsonRecord = { user_id: userId, name: body.name.trim(), objective: body.objective.trim(), audience_definition: body.audience_definition ?? {}, offer_summary: body.offer_summary ?? null, status: "draft" };
+        const response = await fetch(new URL("/rest/v1/outreach_campaigns?select=id,name,objective,audience_definition,offer_summary,status,approval_status,created_at", env.SUPABASE_URL!), {
+          method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(record), signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "CAMPAIGN_CREATE_FAILED", message: "Could not create the outreach campaign." } }, 502, headers);
+        return json({ data: await response.json() }, 201, headers);
+      } catch {
+        return json({ error: { code: "OUTREACH_REQUEST_FAILED", message: "Could not complete the outreach request." } }, 502, headers);
+      }
+    }
+
     if (request.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/api/v1/status")) {
       return json({ data: { service: "gigo-api", status: "ok", environment: env.APP_ENV ?? "unknown", version: "0.2.0", auth_configured: configured(env) } }, 200, headers);
     }
