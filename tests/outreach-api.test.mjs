@@ -28,5 +28,7 @@ test("outreach template API restricts sequence size and personalization fields",
   assert.ok(route.includes("outreach_templates"));
   assert.ok(route.includes("sequence_number"));
   assert.ok(route.includes("specific_observation"));
+  assert.ok(route.includes("placeholders.some"));
+  assert.ok(route.includes("matchAll"));
   assert.ok(route.includes("verifiedUserId(token, env)"));
 });
