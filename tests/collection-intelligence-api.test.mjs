@@ -18,3 +18,19 @@ test("collection intelligence API is authenticated and supports evidence-backed 
   assert.ok(route.includes('review_status: "needs_review"'));
   assert.ok(route.includes('authorization: "Bearer " + token'));
 });
+
+test("collection insight review is explicit, owner-authenticated and transition-controlled by SQL", () => {
+  const start = source.indexOf("const insightReviewMatch =");
+  const end = source.indexOf('if (url.pathname === "/api/v1/collection/runs")', start);
+  assert.ok(start >= 0 && end > start, "review route should be registered");
+  const route = source.slice(start, end);
+  assert.ok(route.includes('request.method !== "POST"'));
+  assert.ok(route.includes("verifiedUserId(token, env)"));
+  assert.ok(route.includes("gigo_review_collection_insight"));
+  assert.ok(route.includes("allowedStatuses"));
+  const sql = readFileSync(new URL("../supabase/migrations/0020_collection_insight_review.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("collection_insight_reviews"));
+  assert.ok(sql.includes("old_status = 'needs_review'"));
+  assert.ok(sql.includes("p_review_status = 'superseded'"));
+  assert.ok(sql.includes("grant execute on function public.gigo_review_collection_insight"));
+});
