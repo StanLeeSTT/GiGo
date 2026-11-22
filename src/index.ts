@@ -1278,6 +1278,79 @@ export default {
       }
     }
 
+
+    const leadEvidenceRouteMatch = url.pathname.match(/^\/api\/v1\/leads\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/(social-profiles|evidence)$/i);
+    if (leadEvidenceRouteMatch) {
+      const leadId = leadEvidenceRouteMatch[1];
+      const kind = leadEvidenceRouteMatch[2] === "social-profiles" ? "lead_social_profiles" : "lead_evidence";
+      if (!["GET", "POST"].includes(request.method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage lead evidence." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const columns = kind === "lead_social_profiles"
+          ? "id,lead_id,platform,profile_url,handle,display_name,account_type,follower_count,typical_views,engagement_rate,niche,public_contact_route,verified_at,source_item_id,source_dataset_id,source_run_id,metadata,created_at,updated_at"
+          : "id,lead_id,evidence_type,source_url,source_title,excerpt,observed_at,confidence,source_item_id,source_dataset_id,source_run_id,notes,created_at";
+        if (request.method === "GET") {
+          const query = new URLSearchParams({ select: columns, lead_id: "eq." + leadId, order: "created_at.desc", limit: "100" });
+          const response = await fetch(new URL("/rest/v1/" + kind + "?" + query.toString(), env.SUPABASE_URL!), {
+            headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "LEAD_EVIDENCE_READ_FAILED", message: "Could not load lead evidence. Confirm migration 0021 has been applied." } }, 502, headers);
+          return json({ data: await response.json() }, 200, headers);
+        }
+        const body = await readJson(request);
+        if (!body) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+        const profilePlatforms = ["youtube","instagram","tiktok","facebook","x","linkedin","other"];
+        const evidenceTypes = ["audience_fit","typical_reach","engagement","credibility","business_contact","customer_problem","buying_intent","competitor_conflict","reputation","other"];
+        const optionalText = (key: string, max: number) => body[key] === undefined || body[key] === null || (typeof body[key] === "string" && (body[key] as string).length <= max);
+        const validHttps = (value: unknown) => {
+          if (typeof value !== "string" || value.length < 8 || value.length > 2048) return false;
+          try { const parsed = new URL(value); return parsed.protocol === "https:" && !parsed.username && !parsed.password; } catch { return false; }
+        };
+        const uuidOrNull = (value: unknown) => value === undefined || value === null || (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+        const sourceFieldsValid = ["source_item_id","source_dataset_id","source_run_id"].every(k => uuidOrNull(body[k]))
+          && (["source_item_id","source_dataset_id","source_run_id"].every(k => body[k] === undefined || body[k] === null)
+            || ["source_item_id","source_dataset_id","source_run_id"].every(k => typeof body[k] === "string"));
+        const record: JsonRecord = { user_id: userId, lead_id: leadId };
+        if (kind === "lead_social_profiles") {
+          if (typeof body.platform !== "string" || !profilePlatforms.includes(body.platform) || !validHttps(body.profile_url)
+            || !optionalText("handle", 200) || !optionalText("display_name", 240) || !optionalText("account_type", 100)
+            || !optionalText("niche", 240) || !optionalText("public_contact_route", 500)
+            || !sourceFieldsValid || (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata)))) {
+            return json({ error: { code: "INVALID_PROFILE", message: "Provide a supported platform, HTTPS profile URL, valid optional fields and complete source provenance when supplied." } }, 400, headers);
+          }
+          record.platform = body.platform;
+          record.profile_url = body.profile_url;
+          for (const key of ["handle","display_name","account_type","follower_count","typical_views","engagement_rate","niche","public_contact_route","verified_at","source_item_id","source_dataset_id","source_run_id","metadata"]) if (body[key] !== undefined) record[key] = body[key];
+          for (const key of ["follower_count","typical_views"]) if (record[key] !== undefined && (!Number.isSafeInteger(record[key]) || Number(record[key]) < 0)) return json({ error: { code: "INVALID_PROFILE", message: key + " must be a non-negative whole number." } }, 400, headers);
+          if (record.engagement_rate !== undefined && (typeof record.engagement_rate !== "number" || record.engagement_rate < 0 || record.engagement_rate > 100)) return json({ error: { code: "INVALID_PROFILE", message: "engagement_rate must be between 0 and 100." } }, 400, headers);
+        } else {
+          if (typeof body.evidence_type !== "string" || !evidenceTypes.includes(body.evidence_type) || !validHttps(body.source_url)
+            || !optionalText("source_title", 500) || !optionalText("excerpt", 5000) || !optionalText("notes", 3000)
+            || !sourceFieldsValid || (body.confidence !== undefined && (typeof body.confidence !== "number" || body.confidence < 0 || body.confidence > 1))) {
+            return json({ error: { code: "INVALID_EVIDENCE", message: "Provide a supported evidence type, HTTPS source URL and valid evidence details." } }, 400, headers);
+          }
+          record.evidence_type = body.evidence_type;
+          record.source_url = body.source_url;
+          for (const key of ["source_title","excerpt","observed_at","confidence","source_item_id","source_dataset_id","source_run_id","notes"]) if (body[key] !== undefined) record[key] = body[key];
+        }
+        const response = await fetch(new URL("/rest/v1/" + kind + "?select=" + columns, env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json", prefer: "return=representation" },
+          body: JSON.stringify(record),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "LEAD_EVIDENCE_WRITE_FAILED", message: "Could not save this record. Confirm the lead belongs to your account and migration 0021 has been applied." } }, response.status === 400 ? 400 : response.status === 401 ? 401 : 502, headers);
+        return json({ data: await response.json() }, 201, headers);
+      } catch {
+        return json({ error: { code: "LEAD_EVIDENCE_UNAVAILABLE", message: "Could not complete the lead evidence request." } }, 502, headers);
+      }
+    }
+
     if (request.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/api/v1/status")) {
       return json({ data: { service: "gigo-api", status: "ok", environment: env.APP_ENV ?? "unknown", version: "0.2.0", auth_configured: configured(env) } }, 200, headers);
     }
