@@ -104,3 +104,17 @@ test("provider policy behavior blocks unregistered marketing contacts and ambigu
   assert.equal(policy.mayRetryProviderOutcome({ kind: "unknown", code: "TIMEOUT", message: "unknown" }), false);
   assert.equal(policy.mayRetryProviderOutcome({ kind: "rejected_before_send", code: "429", message: "rate limit", retryable: true }), true);
 });
+
+
+test("outreach recipients require a reviewed contact basis and marketing-audience registration", () => {
+  const sourceText = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  assert.ok(sourceText.includes("outreachRecipientEligibilityMatch"));
+  assert.ok(sourceText.includes("INVALID_CONTACT_AUTHORIZATION"));
+  assert.ok(sourceText.includes("contact_authorization_status: \"eq.approved\""));
+  assert.ok(sourceText.includes("marketing_contact_registered: \"eq.true\""));
+  const sql = readFileSync(new URL("../supabase/migrations/0033_outreach_contact_eligibility.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("contact_authorization_reviewed_at"));
+  assert.ok(sql.includes("marketing_contact_registered"));
+  assert.ok(sql.includes("gigo_guard_outreach_send_eligibility"));
+  assert.ok(sql.includes("recipient lacks reviewed marketing-contact authorization"));
+});
