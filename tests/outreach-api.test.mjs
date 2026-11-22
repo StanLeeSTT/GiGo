@@ -71,3 +71,23 @@ test("inbound outreach events stop queued follow-ups and suppress negative respo
   assert.ok(sql.includes("to service_role"));
   assert.ok(sql.includes("provider_event_id"));
 });
+
+
+test("follow-up delays start after the preceding message is provider-accepted", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0032_outreach_followup_clock.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("new.sent_at + make_interval(days => delay_days)"));
+  assert.ok(sql.includes("previous.sequence_number = m.sequence_number - 1"));
+  assert.ok(sql.includes("previous.status = 'sent'"));
+  assert.ok(sql.includes("gigo_claim_due_outreach_messages"));
+  assert.ok(sql.includes("followups_enabled = true"));
+});
+
+test("outbound provider policy never routes partnership outreach through transactional APIs", () => {
+  const provider = readFileSync(new URL("../src/outreach/providers.ts", import.meta.url), "utf8");
+  assert.ok(provider.includes('"relationship_outreach"'));
+  assert.ok(provider.includes('"marketing_campaign"'));
+  assert.ok(provider.includes("MARKETING_CONTACT_NOT_REGISTERED"));
+  assert.ok(provider.includes("outboundIdempotencyKey"));
+  assert.ok(provider.includes("mayRetryProviderOutcome"));
+  assert.ok(provider.includes("OUTBOUND_PROVIDER_ADAPTERS: readonly OutboundProviderAdapter[] = []"));
+});
