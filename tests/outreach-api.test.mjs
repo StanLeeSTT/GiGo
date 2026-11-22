@@ -91,3 +91,16 @@ test("outbound provider policy never routes partnership outreach through transac
   assert.ok(provider.includes("mayRetryProviderOutcome"));
   assert.ok(provider.includes("OUTBOUND_PROVIDER_ADAPTERS: readonly OutboundProviderAdapter[] = []"));
 });
+
+
+test("provider policy behavior blocks unregistered marketing contacts and ambiguous retries", async () => {
+  const policy = await import("../src/outreach/providers.ts");
+  const resend = policy.PROVIDER_CATALOGUE.find(p => p.id === "resend");
+  assert.ok(resend);
+  assert.equal(policy.selectOutboundChannel(resend, "transactional", false), "transactional_api");
+  assert.equal(policy.selectOutboundChannel(resend, "relationship_outreach", true), "marketing_campaign");
+  assert.throws(() => policy.selectOutboundChannel(resend, "relationship_outreach", false), /MARKETING_CONTACT_NOT_REGISTERED/);
+  assert.equal(policy.outboundIdempotencyKey("123e4567-e89b-12d3-a456-426614174000"), "gigo-outreach/123e4567-e89b-12d3-a456-426614174000");
+  assert.equal(policy.mayRetryProviderOutcome({ kind: "unknown", code: "TIMEOUT", message: "unknown" }), false);
+  assert.equal(policy.mayRetryProviderOutcome({ kind: "rejected_before_send", code: "429", message: "rate limit", retryable: true }), true);
+});
