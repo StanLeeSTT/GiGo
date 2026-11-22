@@ -114,3 +114,19 @@ test("cross-platform lead profiles and qualification evidence preserve owner and
   assert.ok(sql.includes("alter table public.lead_evidence enable row level security"));
   assert.ok(sql.includes("do not harvest private messages or sensitive personal data"));
 });
+
+
+test("outreach campaigns enforce explicit bounded approval, recipient state and suppression", () => {
+  const sql = migration("0022_outreach_campaigns.sql");
+  assert.ok(sql.includes("create table if not exists public.outreach_campaigns"));
+  assert.ok(sql.includes("create table if not exists public.outreach_recipients"));
+  assert.ok(sql.includes("create table if not exists public.outreach_messages"));
+  assert.ok(sql.includes("create table if not exists public.outreach_suppressions"));
+  assert.ok(sql.includes("approval_status text not null default 'not_requested'"));
+  assert.ok(sql.includes("initial_send_enabled boolean not null default false"));
+  assert.ok(sql.includes("followups_enabled boolean not null default false"));
+  assert.ok(sql.includes("unique (user_id, email)"));
+  assert.ok(sql.includes("alter table public.outreach_messages enable row level security"));
+  assert.ok(sql.includes("status in ('draft','awaiting_approval','queued','sending','sent','failed','cancelled')"));
+  assert.ok(sql.includes("does not send email or enable a sender"));
+});
