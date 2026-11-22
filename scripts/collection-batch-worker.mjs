@@ -212,11 +212,18 @@ export async function runHealthCheck() {
   if (!adapter || !adapter.executionModes.includes("batch_runner") || !adapter.supports(["web_fetch"])) {
     throw new Error("Safe HTTP adapter self-test failed.");
   }
+  // Verify outbound DNS pinning, TLS and bounded HTTPS response handling before
+  // advertising this provider as healthy. This probes robots.txt only; it does
+  // not collect page content or claim a durable job.
+  const egressProbe = await safeHttpsGet("https://example.com/robots.txt", { maxBytes: MAX_ROBOTS_BYTES });
+  if (![200, 204, 404, 410].includes(egressProbe.status)) {
+    throw new Error("Public HTTPS egress probe returned an unexpected status.");
+  }
   const store = createCollectionWorkerStore({ supabaseUrl, serviceKey });
   if (await store.healthCheck() !== "gigo-collection-worker-v1") throw new Error("Collection worker health RPC returned an unexpected version.");
   const provider = await findSingleSafeHttpProvider(supabaseUrl, serviceKey);
   if (!await store.promoteSafeHttpProvider(provider.id)) throw new Error("Provider health promotion was rejected by database policy.");
-  process.stdout.write(JSON.stringify({ health_check: "passed", provider_key: "gigo_safe_http_batch", provider_status: "healthy", jobs_claimed: 0 }) + "\n");
+  process.stdout.write(JSON.stringify({ health_check: "passed", provider_key: "gigo_safe_http_batch", provider_status: "healthy", egress_probe: "passed", jobs_claimed: 0 }) + "\n");
   return { health_check: "passed", provider_status: "healthy", jobs_claimed: 0 };
 }
 export async function runBatchFromEnvironment() {
