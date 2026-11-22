@@ -142,3 +142,14 @@ test("outreach campaign approval is an explicit owner-authorized bounded policy"
   assert.ok(sql.includes("campaign_approved"));
   assert.ok(sql.includes("grant execute on function public.gigo_approve_outreach_campaign"));
 });
+
+
+test("outreach recipient admission is guarded by database policy and suppression checks", () => {
+  const sql = migration("0024_outreach_recipient_guard.sql");
+  assert.ok(sql.includes("gigo_guard_outreach_recipient"));
+  assert.ok(sql.includes("auth.uid()"));
+  assert.ok(sql.includes("outreach_suppressions"));
+  assert.ok(sql.includes("campaign.max_recipients"));
+  assert.ok(sql.includes("campaign.status <> 'active'"));
+  assert.ok(sql.includes("before insert on public.outreach_recipients"));
+});
