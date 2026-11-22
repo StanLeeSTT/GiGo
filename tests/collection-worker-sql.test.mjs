@@ -74,3 +74,13 @@ test("active collection cancellation is cooperative and lease-bound", () => {
   assert.match(sql, /grant execute on function public\.gigo_cancel_collection_run\(uuid\) to authenticated/);
   assert.match(sql, /final_status := case when coalesce/);
 });
+
+
+test("retry progress preserves cumulative page/request counters and derives items from the dataset", () => {
+  const sql = migration("0018_collection_cumulative_progress.sql");
+  assert.match(sql, /create or replace function public\\.gigo_collection_worker_progress/);
+  assert.match(sql, /target_dataset_id uuid/);
+  assert.match(sql, /select p_counters \\|\\| jsonb_build_object\\('items', d\\.item_count\\)/);
+  assert.match(sql, /set counters = cumulative_counters/);
+  assert.match(sql, /grant execute on function public\\.gigo_collection_worker_progress\\(uuid, uuid, jsonb, jsonb\\) to service_role/);
+});
