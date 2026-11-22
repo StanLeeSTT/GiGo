@@ -1352,11 +1352,12 @@ export default {
     }
 
 
+    const outreachRecipientEligibilityMatch = url.pathname.match(/^\/api\/v1\/outreach\/recipients\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12})\/eligibility$/i);
     const outreachPrepareMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/prepare$/i);
     const outreachCampaignApprovalMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/approve$/i);
     const outreachRecipientsMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/recipients$/i);
     const outreachTemplatesMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/templates$/i);
-    if (url.pathname === "/api/v1/outreach/campaigns" || outreachCampaignApprovalMatch || outreachRecipientsMatch || outreachTemplatesMatch || outreachPrepareMatch) {
+    if (url.pathname === "/api/v1/outreach/campaigns" || outreachCampaignApprovalMatch || outreachRecipientsMatch || outreachTemplatesMatch || outreachPrepareMatch || outreachRecipientEligibilityMatch) {
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
       const token = bearerToken(request);
       if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage outreach campaigns." } }, 401, headers);
@@ -1364,6 +1365,29 @@ export default {
         const userId = await verifiedUserId(token, env);
         if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
         const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (outreachRecipientEligibilityMatch) {
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+          const body = await readJson(request);
+          const status = body?.contact_authorization_status;
+          const allowedBases = ["consent","existing_relationship","legitimate_interest_assessed","other_documented"];
+          const evidenceUrl = typeof body?.contact_authorization_evidence_url === "string" ? body.contact_authorization_evidence_url.trim() : "";
+          if (!body || !["approved","blocked","unreviewed"].includes(status)
+            || (status === "approved" && (!allowedBases.includes(body.contact_authorization_basis)
+              || !/^https:\/\/[^\\s]+$/i.test(evidenceUrl) || evidenceUrl.length > 2048
+              || body.marketing_contact_registered !== true))) {
+            return json({ error: { code: "INVALID_CONTACT_AUTHORIZATION", message: "Approval requires a documented basis, HTTPS evidence URL and confirmation that the contact is registered in the provider's marketing audience. Review local law and provider rules before approval." } }, 400, headers);
+          }
+          const update = status === "approved"
+            ? { contact_authorization_status: "approved", contact_authorization_basis: body.contact_authorization_basis, contact_authorization_evidence_url: evidenceUrl, contact_authorization_reviewed_at: new Date().toISOString(), marketing_contact_registered: true }
+            : { contact_authorization_status: status, contact_authorization_basis: null, contact_authorization_evidence_url: null, contact_authorization_reviewed_at: null, marketing_contact_registered: false };
+          const response = await fetch(new URL("/rest/v1/outreach_recipients?id=eq." + outreachRecipientEligibilityMatch[1] + "&select=id,email,contact_authorization_status,contact_authorization_basis,contact_authorization_evidence_url,contact_authorization_reviewed_at,marketing_contact_registered", env.SUPABASE_URL!), {
+            method: "PATCH", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(update), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "CONTACT_AUTHORIZATION_UPDATE_FAILED", message: "Could not update recipient contact authorization." } }, 409, headers);
+          const rows = await response.json() as unknown[];
+          if (!rows.length) return json({ error: { code: "RECIPIENT_NOT_FOUND", message: "Recipient not found for this account." } }, 404, headers);
+          return json({ data: rows }, 200, headers);
+        }
         if (outreachPrepareMatch) {
           if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
           const body = await readJson(request);
@@ -1383,7 +1407,7 @@ export default {
           const templates = await templateResponse.json() as Array<JsonRecord>;
           if (!templates.length || templates.some((t, i) => t.approved_at == null || t.sequence_number !== i || (i === 0 ? t.message_type !== "initial" : t.message_type !== "follow_up"))) return json({ error: { code: "TEMPLATE_SEQUENCE_INVALID", message: "The approved template sequence is incomplete or inconsistent." } }, 409, headers);
           if (templates.length > 1 && campaign.followups_enabled !== true) return json({ error: { code: "FOLLOWUPS_DISABLED", message: "The template sequence includes follow-ups but the campaign policy disables them." } }, 409, headers);
-          const recipientParams = new URLSearchParams({ select: "id,lead_id,email,recipient_name,organisation,status", campaign_id: "eq." + campaignId, status: "in.(queued,ready)", order: "created_at.asc", limit: "25" });
+          const recipientParams = new URLSearchParams({ select: "id,lead_id,email,recipient_name,organisation,status,contact_authorization_status,marketing_contact_registered", campaign_id: "eq." + campaignId, status: "in.(queued,ready)", contact_authorization_status: "eq.approved", marketing_contact_registered: "eq.true", order: "created_at.asc", limit: "25" });
           if (requestedRecipientId) recipientParams.set("id", "eq." + String(requestedRecipientId));
           const recipientResponse = await fetch(new URL("/rest/v1/outreach_recipients?" + recipientParams.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
           if (!recipientResponse.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load eligible campaign recipients." } }, 502, headers);
@@ -1471,7 +1495,7 @@ export default {
         if (outreachRecipientsMatch) {
           const campaignId = outreachRecipientsMatch[1];
           if (request.method === "GET") {
-            const query = new URLSearchParams({ select: "id,campaign_id,lead_id,email,recipient_name,organisation,status,followup_count,last_message_at,next_action_at,stop_reason,created_at,updated_at", campaign_id: "eq." + campaignId, order: "created_at.desc", limit: "200" });
+            const query = new URLSearchParams({ select: "id,campaign_id,lead_id,email,recipient_name,organisation,status,contact_authorization_status,contact_authorization_basis,contact_authorization_evidence_url,contact_authorization_reviewed_at,marketing_contact_registered,followup_count,last_message_at,next_action_at,stop_reason,created_at,updated_at", campaign_id: "eq." + campaignId, order: "created_at.desc", limit: "200" });
             const response = await fetch(new URL("/rest/v1/outreach_recipients?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
             if (!response.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load campaign recipients. Confirm migration 0022 has been applied." } }, 502, headers);
             return json({ data: await response.json() }, 200, headers);
