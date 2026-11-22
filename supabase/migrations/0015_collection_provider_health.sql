@@ -8,6 +8,7 @@ set search_path = ''
 as $$
 begin
   if to_regprocedure('public.gigo_claim_collection_jobs(integer,integer)') is null
+     or to_regprocedure('public.gigo_collection_worker_heartbeat(uuid,uuid)') is null
      or to_regprocedure('public.gigo_collection_worker_progress(uuid,uuid,jsonb,jsonb)') is null
      or to_regprocedure('public.gigo_collection_worker_item(uuid,uuid,jsonb)') is null
      or to_regprocedure('public.gigo_finish_collection_job(uuid,uuid,text,jsonb)') is null
