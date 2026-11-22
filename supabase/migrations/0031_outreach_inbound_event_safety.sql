@@ -21,7 +21,7 @@ declare
   suppression_reason text;
   cancelled_count integer := 0;
 begin
-  if p_event_type not in ('reply_received','bounce_received','unsubscribe_received','complaint_received') then
+  if p_event_type is null or p_event_type not in ('reply_received','bounce_received','unsubscribe_received','complaint_received') then
     raise exception 'unsupported inbound event type' using errcode = '22023';
   end if;
   if normalized_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
@@ -52,14 +52,23 @@ begin
     suppression_reason := 'complaint';
   end if;
 
-  if recipient_row.status in ('replied','bounced','unsubscribed','complained','cancelled','completed') then
-    return jsonb_build_object('recipient_id',recipient_row.id,'status',recipient_row.status,'already_terminal',true,'cancelled_followups',0);
+  if p_provider_event_id is not null and exists (
+    select 1 from public.outreach_events e
+    where e.user_id = recipient_row.user_id
+      and e.event_data->>'provider' = p_provider
+      and e.event_data->>'provider_event_id' = p_provider_event_id
+  ) then
+    return jsonb_build_object('recipient_id',recipient_row.id,'status',recipient_row.status,'duplicate_event',true,'cancelled_followups',0);
   end if;
 
   if suppression_reason is not null then
     insert into public.outreach_suppressions(user_id,email,reason,source)
     values(recipient_row.user_id,normalized_email,suppression_reason,'provider_event:' || p_event_type)
     on conflict (user_id,email) do nothing;
+  end if;
+
+  if recipient_row.status in ('replied','bounced','unsubscribed','complained','cancelled','completed') then
+    return jsonb_build_object('recipient_id',recipient_row.id,'status',recipient_row.status,'already_terminal',true,'cancelled_followups',0);
   end if;
 
   update public.outreach_recipients
