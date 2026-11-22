@@ -99,3 +99,18 @@ test("collection intelligence requires same-owner evidence from the same run and
   assert.ok(sql.includes("grant execute on function public.gigo_create_collection_insight"));
   assert.ok(sql.includes("review_status text not null default 'needs_review'"));
 });
+
+
+test("cross-platform lead profiles and qualification evidence preserve owner and collection provenance", () => {
+  const sql = migration("0021_cross_platform_lead_evidence.sql");
+  assert.ok(sql.includes("create table if not exists public.lead_social_profiles"));
+  assert.ok(sql.includes("create table if not exists public.lead_evidence"));
+  assert.ok(sql.includes("youtube','instagram','tiktok','facebook','x','linkedin','other"));
+  assert.ok(sql.includes("typical_views bigint"));
+  assert.ok(sql.includes("public_contact_route"));
+  assert.ok(sql.includes("foreign key (lead_id, user_id)"));
+  assert.ok(sql.includes("foreign key (source_item_id, source_dataset_id, source_run_id, user_id)"));
+  assert.ok(sql.includes("alter table public.lead_social_profiles enable row level security"));
+  assert.ok(sql.includes("alter table public.lead_evidence enable row level security"));
+  assert.ok(sql.includes("do not harvest private messages or sensitive personal data"));
+});
