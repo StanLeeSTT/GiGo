@@ -1368,17 +1368,18 @@ export default {
         if (outreachRecipientEligibilityMatch) {
           if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
           const body = await readJson(request);
-          const status = body?.contact_authorization_status;
+          const status = typeof body?.contact_authorization_status === "string" ? body.contact_authorization_status : "";
+          const basis = typeof body?.contact_authorization_basis === "string" ? body.contact_authorization_basis : "";
           const allowedBases = ["consent","existing_relationship","legitimate_interest_assessed","other_documented"];
           const evidenceUrl = typeof body?.contact_authorization_evidence_url === "string" ? body.contact_authorization_evidence_url.trim() : "";
           if (!body || !["approved","blocked","unreviewed"].includes(status)
-            || (status === "approved" && (!allowedBases.includes(body.contact_authorization_basis)
+            || (status === "approved" && (!allowedBases.includes(basis)
               || !/^https:\/\/[^\s]+$/i.test(evidenceUrl) || evidenceUrl.length > 2048
               || body.marketing_contact_registered !== true))) {
             return json({ error: { code: "INVALID_CONTACT_AUTHORIZATION", message: "Approval requires a documented basis, HTTPS evidence URL and confirmation that the contact is registered in the provider's marketing audience. Review local law and provider rules before approval." } }, 400, headers);
           }
           const update = status === "approved"
-            ? { contact_authorization_status: "approved", contact_authorization_basis: body.contact_authorization_basis, contact_authorization_evidence_url: evidenceUrl, contact_authorization_reviewed_at: new Date().toISOString(), marketing_contact_registered: true }
+            ? { contact_authorization_status: "approved", contact_authorization_basis: basis, contact_authorization_evidence_url: evidenceUrl, contact_authorization_reviewed_at: new Date().toISOString(), marketing_contact_registered: true }
             : { contact_authorization_status: status, contact_authorization_basis: null, contact_authorization_evidence_url: null, contact_authorization_reviewed_at: null, marketing_contact_registered: false };
           const response = await fetch(new URL("/rest/v1/outreach_recipients?id=eq." + outreachRecipientEligibilityMatch[1] + "&select=id,email,contact_authorization_status,contact_authorization_basis,contact_authorization_evidence_url,contact_authorization_reviewed_at,marketing_contact_registered", env.SUPABASE_URL!), {
             method: "PATCH", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(update), signal: AbortSignal.timeout(10000)
