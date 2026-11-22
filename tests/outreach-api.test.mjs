@@ -32,3 +32,29 @@ test("outreach template API restricts sequence size and personalization fields",
   assert.ok(route.includes("matchAll"));
   assert.ok(route.includes("verifiedUserId(token, env)"));
 });
+
+
+test("outreach preparation requires approval, uses evidence-backed placeholders and persists only through atomic RPC", () => {
+  const start = source.indexOf("const outreachPrepareMatch =");
+  const end = source.indexOf('if (request.method === "GET" && (url.pathname === "/healthz"', start);
+  assert.ok(start >= 0 && end > start, "outreach preparation route should be registered");
+  const route = source.slice(start, end);
+  assert.ok(route.includes('approval_status !== "approved"'));
+  assert.ok(route.includes("lead_social_profiles"));
+  assert.ok(route.includes("lead_evidence"));
+  assert.ok(route.includes("missing_verified_personalization"));
+  assert.ok(route.includes("gigo_prepare_outreach_sequence"));
+  assert.ok(route.includes("provider_send_performed: false"));
+  assert.ok(route.includes('limit: "25"'));
+});
+
+test("outreach preparation SQL is owner-scoped, template-bound, idempotent and does not send", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0030_outreach_sequence_preparation.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("auth.uid()"));
+  assert.ok(sql.includes("approval_status <> 'approved'") || sql.includes("approval_status = 'approved'"));
+  assert.ok(sql.includes("approved_at is not null"));
+  assert.ok(sql.includes("on conflict (recipient_id,sequence_number) do nothing"));
+  assert.ok(sql.includes("outreach_suppressions"));
+  assert.ok(sql.includes("outreach_events"));
+  assert.ok(sql.includes("to authenticated"));
+});
