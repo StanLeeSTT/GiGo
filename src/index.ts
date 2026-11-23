@@ -333,7 +333,8 @@ const BUSINESS_FIELDS: Record<BusinessResource, string[]> = {
   leads: ["name","organisation","email","website","source","source_url","customer_problem","fit_score","stage","do_not_contact","notes","last_contacted_at"],
   offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"],
   marketing_assets: ["title","asset_type","platform","campaign_name","objective","audience","content","status","metadata"],
-  customer_support_cases: ["customer_name","customer_email","subject","issue_description","priority","status","response_draft","internal_notes","source","resolved_at"]
+  customer_support_cases: ["customer_name","customer_email","subject","issue_description","priority","status","response_draft","internal_notes","source","resolved_at"],
+  creative_briefs: ["title","asset_type","brief","generation_prompt","target_platform","aspect_ratio","reference_urls","status","output_url","notes"]
 };
 const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
   products: "id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at",
@@ -341,7 +342,8 @@ const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
   leads: "id,name,organisation,email,website,source,source_url,customer_problem,fit_score,stage,do_not_contact,notes,last_contacted_at,created_at,updated_at",
   offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at",
   marketing_assets: "id,title,asset_type,platform,campaign_name,objective,audience,content,status,metadata,created_at,updated_at",
-  customer_support_cases: "id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at,resolved_at"
+  customer_support_cases: "id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at,resolved_at",
+  creative_briefs: "id,title,asset_type,brief,generation_prompt,target_platform,aspect_ratio,reference_urls,status,output_url,notes,created_at,updated_at"
 };
 async function handleBusinessResource(request: Request, env: Env, headers: Headers, resource: BusinessResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -455,7 +457,8 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (resource === "leads" && body.stage === undefined) body.stage = "new";
       if (resource === "offers" && body.status === undefined) body.status = "draft";
       if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";
-      if (resource === "customer_support_cases" && body.status === undefined) body.status = "open";\n      if (resource === "creative_briefs" && body.status === undefined) body.status = "draft";
+      if (resource === "customer_support_cases" && body.status === undefined) body.status = "open";
+      if (resource === "creative_briefs" && body.status === undefined) body.status = "draft";
       if (resource === "customer_support_cases" && body.priority === undefined) body.priority = "normal";
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
