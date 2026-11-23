@@ -94,7 +94,7 @@ The source code and CI are not the same as a live deployment. Before calling GiG
 
 Partnership proposals must state a 50/50 split of net revenue attributable to the agreed partnership, after only direct costs both parties approve and document in advance. This is not a split of gross revenue or all company revenue. Attribution, eligible revenue, costs, responsibilities, payment records/timing, refunds, duration and exit terms must be defined before a binding agreement. GiGo cannot accept counteroffers, sign contracts, promise earnings or make financial commitments.
 
-Automatic outreach is not enabled. Campaign preparation does not send messages. Publicly visible contact details do not automatically create marketing permission.
+Automatic outreach is not enabled. Campaign preparation does not send messages. A guarded Resend adapter exists as unregistered code only; there is no send worker, webhook route or configured sender. Publicly visible contact details do not automatically create marketing permission.
 
 ## CI
 
