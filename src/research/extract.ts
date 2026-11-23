@@ -41,7 +41,7 @@ function splitPassages(text: string, method: ResearchExtractionMethod, locator: 
       output.push({
         passage_text: block.slice(offset, offset + MAX_PASSAGE_CHARS),
         locator_type: locator,
-        locator_value: locator === "paragraph" ? String(i + 1) : "",
+        locator_value: locator === "paragraph" ? (offset === 0 ? String(i + 1) : `${i + 1}:${Math.floor(offset / MAX_PASSAGE_CHARS) + 1}`) : "",
         extraction_method: method
       });
     }
