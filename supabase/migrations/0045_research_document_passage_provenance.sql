@@ -1,3 +1,6 @@
+-- Allow the authenticated owner to update only the extraction lifecycle state.
+grant update (ingestion_status) on public.research_documents to authenticated;
+
 -- Connect exact extracted passages to the private uploaded document that produced them.
 -- This preserves the existing source -> passage traceability while making document
 -- provenance enforceable by the database, not just descriptive JSON metadata.
