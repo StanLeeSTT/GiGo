@@ -19,7 +19,7 @@ async function loadRelated(){
  api.request("/api/v1/research/sources?research_run_id="+encodeURIComponent(selected.id)),
  api.request("/api/v1/research/opportunities?research_run_id="+encodeURIComponent(selected.id))
  ]);
- document.querySelector("#source-list").innerHTML=(sources||[]).map(s=>'<div class="module-workbench"><strong>'+esc(s.title)+'</strong><p>'+esc(s.excerpt||"No excerpt saved.")+'</p><a href="'+esc(s.url)+'" target="_blank" rel="noopener noreferrer">Open source</a><small> · '+esc(s.evidence_status)+'</small></div>').join("")||'<p class="welcome-copy">No evidence sources saved yet.</p>';
+ document.querySelector("#source-list").innerHTML=(sources||[]).map(s=>'<article class="module-workbench"><strong>'+esc(s.title)+'</strong><p>'+esc(s.excerpt||"No excerpt saved.")+'</p><a href="'+esc(s.url)+'" target="_blank" rel="noopener noreferrer">Open source</a><p><small>Evidence status: '+esc(s.evidence_status)+'</small></p><div class="form-actions"><select aria-label="Evidence assessment" data-evidence-status="'+esc(s.id)+'"><option value="unreviewed" '+(s.evidence_status==="unreviewed"?"selected":"")+'>Unreviewed</option><option value="supports" '+(s.evidence_status==="supports"?"selected":"")+'>Supports</option><option value="contradicts" '+(s.evidence_status==="contradicts"?"selected":"")+'>Contradicts</option><option value="context" '+(s.evidence_status==="context"?"selected":"")+'>Context</option><option value="rejected" '+(s.evidence_status==="rejected"?"selected":"")+'>Rejected</option></select><button class="secondary-button" type="button" data-save-evidence="'+esc(s.id)+'">Save assessment</button></div></article>').join("")||'<p class="welcome-copy">No evidence sources saved yet.</p>';
  document.querySelector("#opportunity-list").innerHTML=(opportunities||[]).map(o=>'<div class="module-workbench"><strong>'+esc(o.title)+'</strong><p>'+esc(o.customer_problem)+'</p><small>'+esc(o.status)+'</small></div>').join("")||'<p class="welcome-copy">No opportunities recorded yet.</p>';
  }catch(error){showError(error);}
 }
@@ -32,6 +32,15 @@ document.querySelector("#source-form").addEventListener("submit",async event=>{
  event.preventDefault();if(!selected)return;const form=event.currentTarget;const data=formData(form);status.textContent="Saving evidence source…";
  try{await api.request("/api/v1/research/sources",{method:"POST",body:JSON.stringify({...data,research_run_id:selected.id,source_type:"web"})});form.reset();status.textContent="Evidence source saved.";await loadRelated();}
  catch(error){showError(error);}
+});
+
+document.querySelector("#source-list").addEventListener("click",async event=>{
+ const button=event.target.closest("[data-save-evidence]");if(!button||!selected)return;
+ const sourceId=button.dataset.saveEvidence,select=document.querySelector('[data-evidence-status="'+CSS.escape(sourceId)+'"]');
+ if(!select)return;button.disabled=true;
+ try{await api.request("/api/v1/research/sources?id="+encodeURIComponent(sourceId),{method:"PATCH",body:JSON.stringify({evidence_status:select.value})});status.textContent="Evidence assessment saved. This is your review label, not an automatic fact-check.";await loadRelated();}
+ catch(error){showError(error);}
+ finally{button.disabled=false;}
 });
 document.querySelector("#opportunity-form").addEventListener("submit",async event=>{
  event.preventDefault();if(!selected)return;const form=event.currentTarget;const data=formData(form);data.validation_steps=data.validation_steps.split("\n").map(v=>v.trim()).filter(Boolean);
