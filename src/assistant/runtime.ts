@@ -71,6 +71,11 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "learning_add_milestone", description: "Add an internal study milestone to a learning plan.", parameters: { type: "object", properties: { project_id: { type: "string", minLength: 36, maxLength: 36 }, title: { type: "string", minLength: 1, maxLength: 240 }, description: { type: ["string","null"], maxLength: 5000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] } }, required: ["project_id","title"], additionalProperties: false } } },
   { type: "function", function: { name: "learning_update_milestone", description: "Update the status of a learning milestone.", parameters: { type: "object", properties: { task_id: { type: "string", minLength: 36, maxLength: 36 }, status: { type: "string", enum: ["todo","in_progress","blocked","done","cancelled"] } }, required: ["task_id","status"], additionalProperties: false } } },
   { type: "function", function: { name: "analytics_snapshot", description: "Read counts and workflow status from the owner's saved business records. Does not infer revenue or profit.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_list_campaigns", description: "List the owner's outreach campaign drafts and approval status. Does not contact anyone.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_create_campaign", description: "Create an unapproved outreach campaign draft. Does not approve or send messages.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 180 }, objective: { type: "string", minLength: 1, maxLength: 3000 }, offer_summary: { type: ["string","null"], maxLength: 5000 }, audience_definition: { type: "object" } }, required: ["name","objective"], additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_add_recipient", description: "Add a recipient to a draft campaign. Contact eligibility remains unreviewed until the owner reviews evidence and provider registration in Outreach Studio. Never contact the recipient.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, email: { type: "string", minLength: 5, maxLength: 320 }, recipient_name: { type: ["string","null"], maxLength: 240 }, organisation: { type: ["string","null"], maxLength: 240 } }, required: ["campaign_id","email"], additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_add_template", description: "Save an unapproved outreach template for owner review. The database enforces final message rendering, signature and partnership terms. Does not send messages.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, sequence_number: { type: "integer", minimum: 0, maximum: 5 }, subject_template: { type: "string", minLength: 1, maxLength: 300 }, body_template: { type: "string", minLength: 1, maxLength: 20000 }, personalization_fields: { type: "array", items: { type: "string", enum: ["first_name","organisation","niche","specific_observation","offer_summary"] }, maxItems: 5 } }, required: ["campaign_id","sequence_number","subject_template","body_template"], additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_prepare_campaign", description: "Prepare database-rendered message drafts only for recipients already approved for contact and registered with the provider. Campaign must already be owner-approved. This never sends messages.", parameters: { type: "object", properties: { campaign_id: { type: "string" } }, required: ["campaign_id"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_list", description: "List the owner's durable GiGo job queue, including pending, processing and completed jobs.", parameters: { type: "object", properties: { status: { type: "string", enum: ["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"] } }, additionalProperties: false } } },
   { type: "function", function: { name: "jobs_create", description: "Queue an internal GiGo task for the background runner. The runner processes eligible jobs on scheduler cycles. Never use it to send messages, publish, contact people, spend money or make commitments.", parameters: { type: "object", properties: { job_type: { type: "string", enum: ["research_scan","business_review","daily_briefing","lead_review","custom"] }, task_prompt: { type: "string", minLength: 1, maxLength: 5000 } }, required: ["job_type","task_prompt"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_cancel", description: "Cancel one pending or paused GiGo job owned by the user. This cannot stop a task that is already executing.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } },
@@ -451,6 +456,66 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     }));
     const counts = Object.fromEntries(results);
     return { counts, count_limit_per_table: 1000, counts_may_be_truncated: true, financial_metrics: "not_available_without_transaction_data", money_movement_performed: false };
+  }
+  if (name === "outreach_list_campaigns") {
+    return { campaigns: await db(env, token, "/rest/v1/outreach_campaigns?select=id,name,objective,offer_summary,status,approval_status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "outreach_create_campaign") {
+    const nameValue = typeof args.name === "string" ? args.name.trim() : "";
+    const objective = typeof args.objective === "string" ? args.objective.trim() : "";
+    const offer = args.offer_summary ?? null;
+    const audience = args.audience_definition ?? {};
+    if (!nameValue || nameValue.length > 180 || !objective || objective.length > 3000) return { error: "Campaign name and objective are required within their limits." };
+    if (offer !== null && (typeof offer !== "string" || offer.length > 5000)) return { error: "offer_summary must be text up to 5,000 characters or null." };
+    if (!audience || typeof audience !== "object" || Array.isArray(audience)) return { error: "audience_definition must be an object." };
+    const rows = await db(env, token, "/rest/v1/outreach_campaigns?select=id,name,status,approval_status,created_at", "POST", { user_id: ownerId, name: nameValue, objective, offer_summary: offer, audience_definition: audience, status: "draft" }) as Row[];
+    return { campaign: rows?.[0] ?? null, approved: false, provider_send_performed: false };
+  }
+  if (name === "outreach_add_recipient") {
+    if (!validUuid(args.campaign_id)) return { error: "A valid campaign ID is required." };
+    const email = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) return { error: "A valid recipient email is required." };
+    for (const [key,max] of [["recipient_name",240],["organisation",240]] as const) if (args[key] !== undefined && args[key] !== null && (typeof args[key] !== "string" || String(args[key]).length > max)) return { error: key + " must be text within its allowed length." };
+    const campaign = await db(env, token, "/rest/v1/outreach_campaigns?select=id,status,approval_status&id=eq." + encodeURIComponent(args.campaign_id) + "&limit=1") as Row[];
+    if (!Array.isArray(campaign) || !campaign.length || campaign[0].status !== "draft" || campaign[0].approval_status !== "not_requested") return { error: "Recipients can only be added to your unapproved draft campaign." };
+    const suppressed = await db(env, token, "/rest/v1/outreach_suppressions?select=id&email=eq." + encodeURIComponent(email) + "&limit=1") as Row[];
+    if (Array.isArray(suppressed) && suppressed.length) return { error: "This address is on the do-not-contact list and cannot be added." };
+    const rows = await db(env, token, "/rest/v1/outreach_recipients?select=id,email,status,contact_authorization_status,marketing_contact_registered,created_at", "POST", { user_id: ownerId, campaign_id: args.campaign_id, email, recipient_name: args.recipient_name ?? null, organisation: args.organisation ?? null }) as Row[];
+    return { recipient: rows?.[0] ?? null, contact_eligibility: "unreviewed", contacted: false };
+  }
+  if (name === "outreach_add_template") {
+    if (!validUuid(args.campaign_id)) return { error: "A valid campaign ID is required." };
+    const sequence = args.sequence_number;
+    if (!Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5) return { error: "sequence_number must be between 0 and 5." };
+    const subject = typeof args.subject_template === "string" ? args.subject_template.trim() : "";
+    const body = typeof args.body_template === "string" ? args.body_template.trim() : "";
+    if (!subject || subject.length > 300 || !body || body.length > 20000) return { error: "A subject and body template are required within their limits." };
+    const allowedFields = ["first_name","organisation","niche","specific_observation","offer_summary"];
+    const fields = Array.isArray(args.personalization_fields) ? args.personalization_fields : [];
+    if (fields.length > 5 || fields.some((v: unknown) => typeof v !== "string" || !allowedFields.includes(v))) return { error: "Unsupported personalization field." };
+    const campaign = await db(env, token, "/rest/v1/outreach_campaigns?select=id,status,approval_status&id=eq." + encodeURIComponent(args.campaign_id) + "&limit=1") as Row[];
+    if (!Array.isArray(campaign) || !campaign.length || campaign[0].status !== "draft" || campaign[0].approval_status !== "not_requested") return { error: "Templates can only be added to your unapproved draft campaign." };
+    const placeholders = [...(subject + "\n" + body).matchAll(/\{\{([a-z_]+)\}\}/g)].map(m => m[1]);
+    if (placeholders.some(field => !allowedFields.includes(field) || !fields.includes(field))) return { error: "Every template placeholder must be listed in the supported personalization fields." };
+    const rows = await db(env, token, "/rest/v1/outreach_templates?select=id,campaign_id,sequence_number,approved_at,created_at", "POST", { user_id: ownerId, campaign_id: args.campaign_id, sequence_number: sequence, message_type: sequence === 0 ? "initial" : "follow_up", subject_template: subject, body_template: body, personalization_fields: fields }) as Row[];
+    return { template: rows?.[0] ?? null, approved: false, sent: false };
+  }
+  if (name === "outreach_prepare_campaign") {
+    if (!validUuid(args.campaign_id)) return { error: "A valid campaign ID is required." };
+    const campaign = await db(env, token, "/rest/v1/outreach_campaigns?select=id,status,approval_status&id=eq." + encodeURIComponent(args.campaign_id) + "&limit=1") as Row[];
+    if (!Array.isArray(campaign) || !campaign.length || campaign[0].status !== "active" || campaign[0].approval_status !== "approved") return { error: "Only an owner-approved active campaign can be prepared." };
+    const recipients = await db(env, token, "/rest/v1/outreach_recipients?select=id&campaign_id=eq." + encodeURIComponent(args.campaign_id) + "&status=in.(queued,ready)&contact_authorization_status=eq.approved&marketing_contact_registered=eq.true&order=created_at.asc&limit=25") as Row[];
+    const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey) return { error: "Secure outbox preparation is not configured." };
+    const headers: Record<string,string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json" };
+    if (!serviceKey.startsWith("sb_secret_")) headers.authorization = "Bearer " + serviceKey;
+    const prepared: Row[] = [], skipped: Row[] = [];
+    for (const recipient of recipients || []) {
+      const response = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers, body: JSON.stringify({ p_owner_id: ownerId, p_campaign_id: args.campaign_id, p_recipient_id: recipient.id }), signal: AbortSignal.timeout(15000) });
+      if (!response.ok) skipped.push({ recipient_id: recipient.id, reason: "database_rejected_preparation" });
+      else prepared.push({ recipient_id: recipient.id, result: await response.json() });
+    }
+    return { prepared_recipients: prepared.length, skipped_recipients: skipped.length, prepared, skipped, provider_send_performed: false };
   }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
