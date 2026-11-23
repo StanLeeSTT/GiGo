@@ -8,7 +8,7 @@ test("research evidence passages preserve exact excerpts and source locators", (
   assert.match(sql, /research_evidence_passages/);
   assert.match(sql, /passage_text text not null/);
   assert.match(sql, /locator_type.*page.*paragraph.*section.*timestamp.*row.*cell_range/s);
-  assert.match(sql, /content_sha256.*^[0-9a-f]{64}$/);
+  assert.match(sql, /content_sha256.*\\^\\[0-9a-f\\]\\{64\\}\\$/);
   assert.match(sql, /review_status text not null default 'unreviewed'/);
 });
 
