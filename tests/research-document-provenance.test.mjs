@@ -34,3 +34,7 @@ test("document provenance trigger rechecks document reassignment",()=>{
  assert.match(migration,/before insert or update of user_id, research_run_id, research_source_id, research_document_id/i);
  assert.match(migration,/execute function public\.gigo_check_research_evidence_ownership\(\)/i);
 });
+
+test("private document passage provenance cannot be detached from its internal source URL",()=>{
+ assert.match(migration,/source_url like 'gigo:\/\/research-document\/%'[\s\S]*new\.research_document_id is null[\s\S]*private document passages cannot be detached/i);
+});
