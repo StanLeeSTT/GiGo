@@ -16,7 +16,7 @@ if(signatureInput&&signatureButton&&signatureStatus){
   });
 }
 
-const autonomyStatus=document.querySelector("#autonomy-status"),initializeAutonomy=document.querySelector("#initialize-autonomy"),toggleAutonomyPause=document.querySelector("#toggle-autonomy-pause"),autonomyPolicies=document.querySelector("#autonomy-policies"),autonomyAudit=document.querySelector("#autonomy-audit");
+const autonomyStatus=document.querySelector("#autonomy-status"),initializeAutonomy=document.querySelector("#initialize-autonomy"),toggleAutonomyPause=document.querySelector("#toggle-autonomy-pause"),autonomyPolicies=document.querySelector("#autonomy-policies"),autonomyAudit=document.querySelector("#autonomy-audit"),autonomyApprovals=document.querySelector("#autonomy-approvals");
 if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
   let autonomyState=null;
   const scopeLabels={observe:"Observe workspace data",analyse:"Analyse and research",draft:"Create drafts",internal_execute:"Execute internal workspace actions"};
@@ -33,6 +33,16 @@ if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
           const events=Array.isArray(audit.events)?audit.events:[];
           autonomyAudit.innerHTML=events.length?events.map(event=>'<article class="data-card"><div><strong>'+api.esc(event.tool_name)+' · '+api.esc(event.decision)+'</strong><p>'+api.esc(event.reason_code)+' · '+api.esc(new Date(event.created_at).toLocaleString())+'</p><p>'+api.esc(event.result_summary||"")+'</p></div></article>').join(""):'<div class="empty-card">No autonomy events recorded yet.</div>';
         }catch(error){autonomyAudit.textContent="Audit history unavailable: "+error.message;}
+      }
+      if(autonomyApprovals){
+        try{
+          const approvalData=await api.request("/api/v1/autonomy/approvals");
+          const approvals=Array.isArray(approvalData.approvals)?approvalData.approvals:[];
+          autonomyApprovals.innerHTML=approvals.length?approvals.map(item=>{
+            const expiry=Date.parse(item.expires_at),active=!item.revoked_at&&Number.isFinite(expiry)&&expiry>Date.now()&&Number(item.used_actions)<Number(item.max_actions);
+            return '<article class="data-card"><div><strong>'+api.esc(item.tool_name)+' · '+api.esc(item.action_class)+'</strong><p>Target: '+api.esc(item.target_ref)+'</p><p>Parameters SHA-256: '+api.esc(String(item.parameters_sha256||"").slice(0,16))+'…</p><p>Uses: '+api.esc(item.used_actions)+' / '+api.esc(item.max_actions)+' · Expires: '+api.esc(Number.isFinite(expiry)?new Date(expiry).toLocaleString():"invalid")+'</p><p>'+(item.revoked_at?"Revoked":active?"Active approval record":"Expired or exhausted")+'</p></div>'+(active?'<button class="secondary-button" type="button" data-revoke-autonomy-approval="'+api.esc(item.id)+'">Revoke</button>':'')+'</article>';
+          }).join(""):'<div class="empty-card">No external approval records exist.</div>';
+        }catch(error){autonomyApprovals.textContent="Approval records unavailable: "+error.message;}
       }
       const rows=Array.isArray(autonomyState.policies)?autonomyState.policies:[];
       autonomyPolicies.innerHTML=Object.entries(scopeLabels).map(([scope,label])=>{
@@ -60,6 +70,13 @@ if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
     input.disabled=true;
     try{await api.request("/api/v1/autonomy/policies",{method:"POST",body:JSON.stringify({scope:input.dataset.autonomyScope,enabled:input.checked,require_approval:false,limits:{}})});await loadAutonomy();}
     catch(error){autonomyStatus.textContent=error.message;await loadAutonomy();}
+  });
+
+  if(autonomyApprovals) autonomyApprovals.addEventListener("click",async event=>{
+    const button=event.target.closest("[data-revoke-autonomy-approval]");if(!button)return;
+    button.disabled=true;
+    try{await api.request("/api/v1/autonomy/approvals/"+encodeURIComponent(button.dataset.revokeAutonomyApproval)+"/revoke",{method:"POST",body:JSON.stringify({})});await loadAutonomy();}
+    catch(error){autonomyStatus.textContent="Approval revocation failed: "+error.message;button.disabled=false;}
   });
   loadAutonomy();
 }
