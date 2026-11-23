@@ -103,7 +103,7 @@ test("Customer Success Assistant tools only create and update private support re
   assert.ok(runtime.includes('name: "customers_update_case"'));
   assert.ok(runtime.includes("customer_contacted: false"));
   assert.ok(runtime.includes("response_sent: false"));
-  assert.ok(registry.includes('id:"customers.support"'));
+  assert.ok(registry.includes('id:"customers.create_case"') && registry.includes('id:"customers.update_case"'));
   assert.ok(registry.includes('state:"available"'));
   assert.ok(!runtime.includes('name: "customers_send_response"'));
 });
