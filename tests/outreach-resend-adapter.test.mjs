@@ -6,6 +6,8 @@ import { createResendAdapter, outboundIdempotencyKey, OUTBOUND_PROVIDER_ADAPTERS
 const message={
  id:"11111111-1111-4111-8111-111111111111",
  recipientId:"22222222-2222-4222-8222-222222222222",
+ purpose:"transactional",
+ recipientIsRegisteredContact:false,
  to:"recipient@example.com",
  fromEmail:"hello@example.com",
  fromName:"GiGo",
@@ -85,4 +87,17 @@ test("Resend webhook verification checks Svix HMAC, timestamp and raw body",asyn
 
 test("adapter remains unregistered so external sending stays disabled",()=>{
  assert.deepEqual(OUTBOUND_PROVIDER_ADAPTERS,[]);
+});
+
+test("Resend refuses promotional outreach to contacts not registered with the provider",async()=>{
+ let calls=0;
+ const adapter=createResendAdapter({apiKey:"test-key",fetchImpl:async()=>{calls++;return new Response(JSON.stringify({id:"unexpected"}),{status:200});}});
+ const cold={...message,purpose:"relationship_outreach",recipientIsRegisteredContact:false};
+ const rejected=await adapter.send(cold,"marketing_campaign",outboundIdempotencyKey(message.id));
+ assert.equal(rejected.kind,"rejected_before_send");
+ assert.equal(calls,0);
+ const registered={...cold,recipientIsRegisteredContact:true};
+ const accepted=await adapter.send(registered,"marketing_campaign",outboundIdempotencyKey(message.id));
+ assert.equal(accepted.kind,"accepted");
+ assert.equal(calls,1);
 });
