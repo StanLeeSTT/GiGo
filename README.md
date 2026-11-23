@@ -1,49 +1,104 @@
 # GiGo
 
-**A personal AI assistant and intelligent business operating system.**
+**GiGo is a private, single-owner AI assistant and business operating system.**
 
-GiGo is designed to help its owner research opportunities, develop ideas, build products and services, discover customers and partners, manage communications, execute projects, organise personal and professional activities, and grow businesses.
+It is being built as a cloud-first, mobile-first personal workspace that can research opportunities, organise work, build products and offers, manage leads and partners, prepare compliant outreach, support customers, create marketing/creative briefs and report on saved business activity.
 
-Its long-term vision is to become a Jarvis-inspired AI companion with natural voice conversations, contextual understanding, proactive assistance, and coordinated execution across connected applications.
+The long-term direction is a Jarvis-like conversational assistant with persistent context, natural voice interaction and coordinated workflows. The current product is a guarded web application and API; it is not yet a fully autonomous production service.
 
 ## Product principles
 
-- Personal, single-user product first; consider SaaS only after it creates value.
-- Cloud-first and mobile-first; no dependency on a laptop staying online.
-- Zero-budget-first; no paid APIs or services without explicit approval.
-- One assistant with shared, persistent context across modules.
-- Suggestions and drafts are distinct from actions; sensitive actions require approval.
-- Never claim an action succeeded without confirmation from the connected provider.
-- Evidence-based research; never fabricate leads, facts, prices, delivery statuses, or results.
-- Secure credentials, durable jobs, checkpoints, retries, and audit logs.
+- Single owner and private workspace first.
+- Zero-budget-first: free/open-source tiers only unless the owner explicitly approves a cost.
+- Evidence before claims: preserve source URLs and provenance; never fabricate leads, facts, prices, delivery or earnings.
+- Separate drafts, internal actions, owner approvals and external side effects.
+- Durable jobs, checkpoints, retries and audit history for background work.
+- Never bypass platform access controls, authentication, CAPTCHAs, robots policies or provider terms.
+- Financial actions are permanently denied: no payments, transfers, purchases, subscriptions, investments, trades, withdrawals, deposits, payouts, charges or other money movement.
+- Never claim a task succeeded without confirmation from its authoritative system.
 
-## Initial architecture direction
+## Current modules
 
-- Frontend: responsive web application.
-- Backend: serverless API with short-lived request handlers.
-- Database and authentication: PostgreSQL with row-level security.
-- Storage: object storage, with optional connected cloud-drive integrations.
-- AI: replaceable provider adapters; free tiers only after current limits and terms are verified.
-- Background work: persistent jobs with resumable checkpoints and explicit approval states.
+- Personal workspace: overview, projects, tasks and AI Assistant.
+- Research Engine: research runs, sources, evidence review and opportunity assessments.
+- Product/Partner Studio: product ideas, partner candidates and proposals.
+- Leads & CRM: prospect records and evidence.
+- Offers: offer drafts and unit-economics notes.
+- Marketing and Creative Studio: campaign/creative briefs and saved draft assets.
+- Outreach Studio: draft campaigns, recipient eligibility review, approved templates, partnership 50/50 net-revenue terms and message queue preparation. **No live sender is connected; messages are not delivered.**
+- Customers: internal support cases and unsent response drafts.
+- Analytics: counts and workflow status from saved workspace records. It does not claim revenue, profit, conversion, cost or ROI without transaction data.
+- Learning: private learning plans and milestones.
+- Settings: AI provider pool, outbound signature and autonomy controls.
 
-The initial implementation will be a modular monolith. Avoid premature microservices.
+## Architecture
 
-## Planned capabilities
+- Frontend: responsive static web app in `public/`.
+- API/runtime: Cloudflare Worker in `src/index.ts`.
+- Database/auth: Supabase Postgres and Auth, with owner-scoped access and row-level security.
+- AI: provider router in `src/assistant/providers.ts`; credentials stay in Worker secrets.
+- Durable background work: Supabase job tables/RPCs and Worker scheduled trigger.
+- Collection engine: provider catalogue, actor schemas, provider planner, bounded runner and durable worker/store contracts. The adapter registry is intentionally empty until a provider passes verification and network-safety review. Social-platform collection is not live.
 
-1. Personal assistant, memory, planning, tasks, and briefings.
-2. Opportunity research and niche discovery.
-3. Lead discovery, qualification, CRM, and compliant outreach.
-4. Offer builder, pricing research, and proposals.
-5. Customer workspaces and project management.
-6. Creative studios for property, ads, short videos, eBooks, websites, and social content.
-7. Analytics, files, integrations, and settings.
+## Local development
 
-## Safety and outreach
+Requirements: Node.js 22+, npm, a Supabase project, and (for Worker preview) Wrangler.
 
-Publicly visible contact information is not automatically permission for bulk marketing. Outreach features must track source provenance, applicable legal basis or consent, suppression lists, unsubscribes, bounces, complaints, and provider policy restrictions. Campaign sending must require explicit user approval.
+```bash
+npm install
+npm run typecheck
+npm test
+find public -maxdepth 1 -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+```
 
-## Development status
+Create local Worker secrets in `.dev.vars` (do not commit this file):
 
-This repository is being initialized. Architecture and implementation decisions should be documented before adding external services or credentials.
+```ini
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+SUPABASE_SECRET_KEY=YOUR_SUPABASE_SECRET_KEY
+ALLOWED_ORIGINS=http://localhost:8787
+APP_ENV=development
+```
 
-Never commit secrets. Use .env.example for variable names and keep real credentials in secure server-side configuration.
+Then run:
+
+```bash
+npm run dev
+```
+
+For production, configure Worker variables/secrets using Cloudflare's dashboard or `wrangler secret put NAME`. Never put real API keys in Git, browser JavaScript, issue comments or chat. The AI router accepts a server-side `AI_PROVIDER_POOL` JSON secret; only explicitly enabled free-tier provider entries should be used. Do not rotate keys to bypass provider rate limits.
+
+## Database migrations
+
+Migrations live in `supabase/migrations/`. They must be reviewed and applied in order to the correct Supabase project. The repository contains migrations beyond the subset historically confirmed as applied. **Do not assume committed migrations are deployed.** Check the project migration history before applying anything; do not blindly replay migrations.
+
+Current development contains later schema work for collection, outreach, durable autonomy, message signature, marketing assets, customer support and creative briefs. The codebase has not been confirmed fully migrated against the production database.
+
+## Production readiness — important
+
+The source code and CI are not the same as a live deployment. Before calling GiGo production-ready:
+
+1. Confirm the exact Supabase project and migration history; apply/reconcile pending migrations deliberately.
+2. Configure and verify Cloudflare Worker secrets and allowed browser origins.
+3. Deploy the Worker and static assets, then verify health, authentication and every owner-scoped API.
+4. Initialize the owner autonomy state. It must start globally paused; test pause and fail-closed behavior.
+5. Save and verify the owner's outbound signature (`STANLEE`) after its migration is applied.
+6. Run end-to-end checks for Research, CRM, offers, projects, support cases, learning, analytics and assistant tool calls.
+7. Keep outbound sending disabled until provider policy, sender authentication, registered audience, lawful basis, signed inbound webhooks, suppression checks and explicit owner approvals are all implemented and tested.
+8. Keep Universal Collection Engine adapters disabled until each integration has verified permissions, quota accounting, DNS/IP and redirect protections, rate limits and provenance tests.
+9. Verify backups, recovery, monitoring, secrets rotation and a rollback plan.
+
+## Outreach terms and controls
+
+Partnership proposals must state a 50/50 split of net revenue attributable to the agreed partnership, after only direct costs both parties approve and document in advance. This is not a split of gross revenue or all company revenue. Attribution, eligible revenue, costs, responsibilities, payment records/timing, refunds, duration and exit terms must be defined before a binding agreement. GiGo cannot accept counteroffers, sign contracts, promise earnings or make financial commitments.
+
+Automatic outreach is not enabled. Campaign preparation does not send messages. Publicly visible contact details do not automatically create marketing permission.
+
+## CI
+
+GitHub Actions runs TypeScript typecheck, the Node test suite and browser JavaScript syntax checks on the feature branch. Check the latest workflow result rather than assuming every commit is green.
+
+## License and deployment
+
+No production deployment, third-party sender, or external social collector should be assumed from repository contents alone. Review each dependency's licence, current free-tier limits, privacy terms and acceptable-use policy before enabling it.
