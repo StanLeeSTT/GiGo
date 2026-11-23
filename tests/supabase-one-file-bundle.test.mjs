@@ -25,7 +25,7 @@ test('one-file Supabase bundle contains canonical migrations 0010-0045 exactly o
   assert.match(bundle, /BEGIN;\s*DO \$gigo_preflight\$/);
   assert.match(bundle, /DO \$gigo_postflight\$/);
   assert.match(bundle, /COMMIT;\s*$/);
-  assert.match(bundle, /must not be re-run/i);
+  assert.match(bundle, /not safe to re-run/i);
   assert.doesNotMatch(bundle, /CREATE EXTENSION/i);
 });
 
