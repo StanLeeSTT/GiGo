@@ -276,3 +276,16 @@ GiGo should progressively operate as an autonomous personal and business operati
 - src/assistant/registry.ts exposes the current policy summary in capability reporting.
 - tests/autonomy-policy.test.mjs covers default internal scopes, external approval gates, unknown-tool denial and the non-overridable financial hard deny.
 - This is the first code-level policy layer only. Durable owner-configurable scopes, approval records, audit events, pause/stop controls and UI are not yet implemented.
+
+
+## Durable autonomy governance (migration 0037)
+
+Migration `0037_durable_autonomy_governance.sql` adds the first persistent governance data layer:
+- `autonomy_control_state`: owner-scoped global pause state; absent state must be treated as paused/fail-closed by any future executor.
+- `autonomy_policies`: owner-configurable non-financial scopes only. SQL constraints reject unknown scopes and require approval for generic external execution. There is no configurable financial scope.
+- `autonomy_approvals`: exact tool, target reference, SHA-256 parameter binding, expiry and maximum action count; owner RPC supports creation and revocation.
+- `autonomy_audit_events`: owner-readable, service-written audit trail with idempotency key uniqueness.
+
+Owner policy/pause/approval changes use SECURITY DEFINER RPCs that derive ownership from `auth.uid()`; authenticated clients cannot directly forge policy, approval, pause or audit rows. Financial tool-name patterns are rejected again at approval creation as defense in depth; the TypeScript hard deny remains authoritative and must run before any persisted policy lookup.
+
+Migration 0037 is committed but NOT applied. Runtime reads, approval consumption, audit emission, API endpoints and UI are not yet wired. Until that integration is complete, the schema does not enable autonomous external actions. The initial pause state intentionally fails closed when no owner control row exists.
