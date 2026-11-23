@@ -20,6 +20,7 @@ export interface ResearchDocumentIngestionPlan {
   };
   passages: Array<ResearchPassageDraft & {
     research_run_id: string;
+    research_document_id: string;
     content_sha256: string;
     review_status: "unreviewed";
   }>;
@@ -57,6 +58,7 @@ export function buildResearchDocumentIngestionPlan(
   const passages = extraction.passages.map((passage) => ({
     ...passage,
     research_run_id: document.research_run_id,
+    research_document_id: document.id,
     content_sha256: document.content_sha256,
     review_status: "unreviewed" as const
   }));
