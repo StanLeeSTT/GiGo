@@ -72,9 +72,13 @@ For production, configure Worker variables/secrets using Cloudflare's dashboard 
 
 ## Database migrations
 
-Migrations live in `supabase/migrations/`. They must be reviewed and applied in order to the correct Supabase project. The repository contains migrations beyond the subset historically confirmed as applied. **Do not assume committed migrations are deployed.** Check the project migration history before applying anything; do not blindly replay migrations.
+The canonical, versioned source of truth remains `supabase/migrations/`. Keep every individual migration file; do not delete or replace that history with a generated bundle.
 
-Current development contains later schema work for collection, outreach, durable autonomy, message signature, marketing assets, customer support and creative briefs. The codebase has not been confirmed fully migrated against the production database.
+For the **existing GiGo Supabase project only**, a convenience one-file SQL bundle is available at `supabase/GIGO_ONE_FILE_SETUP.sql`. It concatenates canonical migrations `0010` through `0045` in order, inside one transaction with baseline preflight and postflight checks. It assumes the previously confirmed baseline (`0001`, `0004`–`0009`) is already installed and that `0010`–`0045` are still unapplied. The status of `0002`/`0003` remains uncertain and this bundle does not replay them.
+
+**Run the bundle once only, after checking the target project's migration history.** It is not a fresh-project bootstrap and must not be re-run after successful application. If any preflight check fails, stop and reconcile the database rather than removing the guard. Running SQL manually in the Supabase SQL Editor does not automatically record these versions in Supabase's migration ledger; before returning to Supabase CLI migrations, reconcile the ledger with the CLI migration-repair workflow after verifying the actual database state. Never blindly run `db push`.
+
+The bundle creates database objects only. It does not configure Cloudflare/R2, secrets, API providers, sender domains or deployments. External outreach remains disabled. The codebase has not been confirmed fully deployed or production-ready.
 
 ## Production readiness — important
 
