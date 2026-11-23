@@ -90,7 +90,7 @@ export interface ResendAdapterConfig {
 }
 
 function validEmail(value: string): boolean {
-  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value) && value.length <= 320;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 320;
 }
 
 function base64Bytes(value: string): Uint8Array {
@@ -140,8 +140,8 @@ export function createResendAdapter(config: ResendAdapterConfig): OutboundProvid
           !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.recipientId) ||
           !validEmail(input.to) || !validEmail(input.fromEmail) ||
           (input.replyTo !== undefined && !validEmail(input.replyTo)) ||
-          !input.fromName.trim() || /[\\r\\n]/.test(input.fromName) ||
-          !input.subject.trim() || input.subject.length > 80 || /[\\r\\n]/.test(input.subject) ||
+          !input.fromName.trim() || /[\r\n]/.test(input.fromName) ||
+          !input.subject.trim() || input.subject.length > 80 || /[\r\n]/.test(input.subject) ||
           !input.text.trim() || input.text.length > 500 ||
           !input.text.trimEnd().endsWith("— STANLEE") ||
           idempotencyKey !== outboundIdempotencyKey(input.id)) {
