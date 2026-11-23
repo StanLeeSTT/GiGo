@@ -43,5 +43,7 @@ test("audit events are owner-scoped and idempotency keys are unique per owner", 
 
 test("no global default-unpaused state is created; missing control row remains fail-closed by design", () => {
   assert.match(migration, /is_paused boolean not null default true/);
-  assert.doesNotMatch(migration, /insert into public\.autonomy_control_state/);
+  const schemaAndPolicySetup = migration.split("create or replace function public.gigo_set_autonomy_policy")[0];
+  assert.doesNotMatch(schemaAndPolicySetup, /insert into public\.autonomy_control_state/i);
+  assert.match(migration, /insert into public\.autonomy_control_state\(user_id,is_paused/);
 });
