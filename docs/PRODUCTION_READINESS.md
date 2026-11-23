@@ -152,3 +152,17 @@ GiGo can prepare budgets, estimates, invoices, payment instructions and reports.
 Migration `0043_research_evidence_traceability.sql` adds owner-scoped exact passages, source locators, optional content hashes, atomic claims and claim-to-passage support/contradiction/context links. Claims default to `unverified`. Database triggers require every linked claim, passage and source to belong to the same owner and research run, and RLS protects all new tables.
 
 This schema does not itself upload or extract PDF/HTML/CSV files, perform OCR, create embeddings, or verify claims automatically. Those remain future application/worker work. A saved passage is traceable evidence, not an automatic truth determination. Apply migration 0043 only after reconciling and applying all earlier migrations in order.
+
+
+## 11. Private research documents (migration 0044 + R2)
+
+Research uploads require both migration `0044_private_research_documents.sql` and a private Cloudflare R2 bucket. The Worker binding is declared as `RESEARCH_FILES` and points to bucket `gigo-research-private`.
+
+1. Create the R2 bucket named `gigo-research-private` in the intended Cloudflare account. Do not enable public access or a public custom domain.
+2. Confirm the Worker has the `RESEARCH_FILES` binding after deployment.
+3. Apply migration 0044 only after all prior migrations are reconciled and applied in numeric order.
+4. Verify authenticated owner upload, listing and download. Test with a second account and confirm it cannot see or retrieve the first owner's file.
+5. Upload limits: 5 MiB; accepted MIME types: TXT, HTML, CSV and PDF. SHA-256 is stored with private metadata. Objects use owner/run/document-scoped keys and are not public URLs.
+6. The upload endpoint stores the original document only. It does not parse PDF binary data or perform OCR. HTML/TXT/CSV extraction remains a separate bounded operation; uploaded content is untrusted and must not be executed or rendered as HTML.
+
+If the bucket or migration is missing, upload fails closed with a configuration/storage error. Do not treat a file upload as evidence extraction or claim verification.
