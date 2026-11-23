@@ -326,20 +326,22 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
 }
 
 
-type BusinessResource = "products" | "partner_candidates" | "leads" | "offers" | "marketing_assets";
+type BusinessResource = "products" | "partner_candidates" | "leads" | "offers" | "marketing_assets" | "customer_support_cases";
 const BUSINESS_FIELDS: Record<BusinessResource, string[]> = {
   products: ["research_run_id","name","summary","target_customer","customer_problem","proposed_solution","product_type","outline","price_amount","price_currency","status","validation_notes"],
   partner_candidates: ["name","platform","profile_url","niche","follower_count","average_views","business_email","has_competing_offer","score_components","total_score","recommendation","evidence","due_diligence","status"],
   leads: ["name","organisation","email","website","source","source_url","customer_problem","fit_score","stage","do_not_contact","notes","last_contacted_at"],
   offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"],
-  marketing_assets: ["title","asset_type","platform","campaign_name","objective","audience","content","status","metadata"]
+  marketing_assets: ["title","asset_type","platform","campaign_name","objective","audience","content","status","metadata"],
+  customer_support_cases: ["customer_name","customer_email","subject","issue_description","priority","status","response_draft","internal_notes","source","resolved_at"]
 };
 const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
   products: "id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at",
   partner_candidates: "id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at",
   leads: "id,name,organisation,email,website,source,source_url,customer_problem,fit_score,stage,do_not_contact,notes,last_contacted_at,created_at,updated_at",
   offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at",
-  marketing_assets: "id,title,asset_type,platform,campaign_name,objective,audience,content,status,metadata,created_at,updated_at"
+  marketing_assets: "id,title,asset_type,platform,campaign_name,objective,audience,content,status,metadata,created_at,updated_at",
+  customer_support_cases: "id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at,resolved_at"
 };
 async function handleBusinessResource(request: Request, env: Env, headers: Headers, resource: BusinessResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -387,6 +389,12 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (input.stage !== undefined && !["new","qualified","contacted","proposal","won","lost","do_not_contact"].includes(String(input.stage))) return json({ error: { code: "INVALID_STAGE", message: "Invalid lead stage." } }, 400, headers);
       if (input.fit_score !== undefined && input.fit_score !== null && (typeof input.fit_score !== "number" || input.fit_score < 0 || input.fit_score > 100)) return json({ error: { code: "INVALID_SCORE", message: "Lead fit score must be between 0 and 100." } }, 400, headers);
       if (input.do_not_contact !== undefined && typeof input.do_not_contact !== "boolean") return json({ error: { code: "INVALID_CONSENT", message: "do_not_contact must be true or false." } }, 400, headers);
+    } else if (resource === "customer_support_cases") {
+      if (method === "POST" && (!validText(input.customer_name, 200) || !validText(input.subject, 240) || !validText(input.issue_description, 10000))) return json({ error: { code: "INVALID_SUPPORT_CASE", message: "Customer name, subject and issue description are required." } }, 400, headers);
+      if (input.customer_email !== undefined && input.customer_email !== null && (typeof input.customer_email !== "string" || input.customer_email.length > 320 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(input.customer_email))) return json({ error: { code: "INVALID_CUSTOMER_EMAIL", message: "Customer email must be a valid email address." } }, 400, headers);
+      if (input.priority !== undefined && !["low","normal","high","urgent"].includes(String(input.priority))) return json({ error: { code: "INVALID_PRIORITY", message: "Invalid support priority." } }, 400, headers);
+      if (input.status !== undefined && !["open","investigating","waiting_on_customer","resolved","closed"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid support case status." } }, 400, headers);
+      for (const [key,max] of [["response_draft",10000],["internal_notes",10000],["source",100]] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "string" || input[key].length > max)) return json({ error: { code: "INVALID_SUPPORT_FIELD", message: key + " exceeds its allowed length." } }, 400, headers);
     } else if (resource === "marketing_assets") {
       const assetTypes = ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"];
       if (method === "POST" && (!validText(input.title, 200) || !validText(input.content, 30000) || typeof input.asset_type !== "string" || !assetTypes.includes(input.asset_type))) return json({ error: { code: "INVALID_BODY", message: "A title, supported asset type and content are required for the marketing draft." } }, 400, headers);
@@ -439,6 +447,8 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (resource === "leads" && body.stage === undefined) body.stage = "new";
       if (resource === "offers" && body.status === undefined) body.status = "draft";
       if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";
+      if (resource === "customer_support_cases" && body.status === undefined) body.status = "open";
+      if (resource === "customer_support_cases" && body.priority === undefined) body.priority = "normal";
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
   }
@@ -1755,7 +1765,7 @@ export default {
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
     };
-    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers", "/api/v1/marketing/assets": "marketing_assets" };
+    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers", "/api/v1/marketing/assets": "marketing_assets", "/api/v1/customers/cases": "customer_support_cases" };
     const businessResource = businessRoutes[url.pathname];
     if (businessResource) return handleBusinessResource(request, env, headers, businessResource);
 
