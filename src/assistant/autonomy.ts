@@ -37,6 +37,8 @@ const TOOL_ACTIONS: Readonly<Record<string, ToolActionClass>> = {
   leads_create: "draft",
   offers_list: "observe",
   offers_create: "draft",
+  marketing_list_assets: "observe",
+  marketing_create_asset: "draft",
   jobs_list: "observe",
   jobs_create: "draft",
   jobs_cancel: "internal_execute",
