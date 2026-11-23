@@ -17,7 +17,7 @@ This checklist separates committed source code from a working deployment. Comple
 
 ## 2. Reconcile the Supabase migration history
 
-There are 42 ordered migration files, from `0001_initial_schema.sql` through `0042_creative_briefs.sql`. The repository files are source-of-truth proposals, not proof of database state.
+There are 44 ordered migration files, from `0001_initial_schema.sql` through `0044_private_research_documents.sql`. The repository files are source-of-truth proposals, not proof of database state.
 
 1. Open the intended GiGo Supabase project and inspect its migration history.
 2. If using Supabase CLI history, inspect `supabase_migrations.schema_migrations` (if present) and compare each version against the filenames in `supabase/migrations/`.
@@ -32,7 +32,7 @@ Later migration groups include:
 - 0010–0021: Universal Collection Engine, worker leases, persistence, intelligence and lead evidence.
 - 0022–0036: Outreach campaigns, approvals, recipient eligibility, templates, queue preparation, inbound safety and final send guards.
 - 0037–0039: Durable autonomy governance, owner initialization, exact approval consumption and outbound signature/partnership rules.
-- 0040–0042: Marketing assets, Customer Support cases and Creative Studio briefs.
+- 0040–0042: Marketing assets, Customer Support cases and Creative Studio briefs.\n- 0043–0044: Research evidence traceability, private research document metadata and owner/run constraints.
 
 Do not disable RLS to make an API request work. Fix the owner-scoped policy or RPC boundary.
 
