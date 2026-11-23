@@ -320,3 +320,9 @@ The following implementation supersedes the earlier checkpoint above:
 - Automated CI run 45108697698 on commit 41963442f36ba2e68b0b2e28a089b0d0404f3b58 passed typecheck and the full collection-engine test workflow. Later approval/audit commits are still undergoing their own CI verification at the time of this update.
 - All migrations 0037–0039 remain committed but unapplied; no Worker deployment has occurred. No message has been sent. Do not treat these settings or runtime controls as live until migrations are applied and the Worker is deployed/configured.
 - Financial execution remains permanently hard-denied and is not part of any configurable policy. Zero-budget/free-tier constraints remain in force.
+## Outreach Studio implementation update — 2026-11-23
+
+- The owner-facing Outreach Studio now connects campaign creation/listing, general/partnership campaign kind, recipient management, contact-eligibility review, template authoring, bounded campaign-policy approval and message-queue preparation to the authenticated API routes.
+- Queue preparation only writes messages through the trusted database renderer. The UI explicitly states that it does not send messages. Subject templates are limited to 80 characters and body templates to 340 characters before placeholder expansion, signature and partnership clause; the database enforces final rendered message limits.
+- The owner must attest to the documented contact basis and provider marketing-audience registration and provide HTTPS evidence. This is not an automated verification of legal compliance or provider-side registration.
+- No outbound provider adapter, signed webhook, send worker or live delivery is connected. Do not describe outreach as sending-capable until provider compliance, sender authentication, immediate pre-send suppression rechecks, webhook validation, pause/audit/approval integration and owner authorization are complete.
