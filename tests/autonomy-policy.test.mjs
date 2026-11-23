@@ -137,5 +137,5 @@ test("Outreach Assistant tools only prepare owner-approved message drafts and ne
   assert.ok(runtime.includes("subject.length > 80"));
   assert.ok(runtime.includes("body.length > 340"));
   assert.ok(!runtime.includes('name: "outreach_send_message"'));
-  assert.ok(registry.includes('id:"outreach.prepare_campaigns"'));
+  assert.ok(registry.includes('id:"outreach.prepare_campaign"'));
 });
