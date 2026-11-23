@@ -202,7 +202,9 @@ export function createResendAdapter(config: ResendAdapterConfig): OutboundProvid
           ["sign"]
         );
         const signedPayload = new TextEncoder().encode(messageId + "." + timestampText + "." + rawBody);
-        const signature = base64Text(new Uint8Array(await crypto.subtle.sign("HMAC", key, signedPayload)));
+        const payloadBuffer = new ArrayBuffer(signedPayload.byteLength);
+        new Uint8Array(payloadBuffer).set(signedPayload);
+        const signature = base64Text(new Uint8Array(await crypto.subtle.sign("HMAC", key, payloadBuffer)));
         return signatureHeader.split(" ").some(candidate => candidate.startsWith("v1,") && constantTimeTextEqual(candidate.slice(3), signature));
       } catch {
         return false;
