@@ -331,3 +331,36 @@ Research checked 2026-11-22:
 7. Never say a migration was applied, a worker deployed, an email sent, or an integration connected unless directly verified.
 
 This file is the durable project handover, but it is not a substitute for checking live GitHub state, CI, Cloudflare or Supabase before making operational claims.
+
+
+---
+
+## 13. Product direction update — broad GiGo autonomy, human retains monetary authority (2026-11-23)
+
+The user is considering giving GiGo broad capabilities across the personal-assistant and business-operating-system vision, with the monetary part remaining under the user's personal control. Treat this as a core product direction for future architecture.
+
+### Design interpretation
+- GiGo should be designed as a capable operating agent, not merely a chatbot or a dashboard of manual tools.
+- It should be able to research, reason, plan, create and maintain work, coordinate workflows, monitor progress, manage internal records, prepare business operations, and report outcomes across the approved modules.
+- The user retains control of money and financial commitments. GiGo must not independently initiate or approve money movement, purchases, paid subscriptions, paid API/service upgrades, investments/trades, loans, payouts, transfers, or other actions that create a financial obligation.
+- GiGo may prepare financial information (budgets, forecasts, comparisons, cost estimates, invoices, payment instructions and decision briefs) for the user, but preparation is not authorization to pay or commit funds.
+- Do not give GiGo bank/payment credentials or payment execution capability as part of the default architecture. Any future read-only financial-data connection would require a separate explicit decision and least-privilege design.
+- Preserve an auditable approval boundary for all external side effects. The user has expressed a broad autonomy goal, but has not yet explicitly defined which non-financial external actions GiGo may execute without per-action approval. Until a configurable permission model is implemented and approved, keep existing approval gates for sending, publishing, contacting people, changing external accounts and other consequential external actions.
+- Implement autonomy as explicit capability scopes and policies: observe/read, analyse, draft/prepare, execute, and spend. Spending/financial execution remains disabled and human-controlled.
+- Record each delegated action, policy basis, result, timestamps and any approval. Provide pause/stop controls and a clear activity log.
+
+### Architecture implications
+- Add a central autonomy/permission policy layer rather than scattering ad hoc confirmation checks across modules.
+- Separate financial data preparation from payment execution; no money-moving tool should be exposed to the general agent tool registry.
+- Add a hard-deny financial action category that cannot be overridden by ordinary task instructions or a general autonomy toggle.
+- Add configurable per-module scopes for non-financial actions, with least privilege, bounded limits, revocation, audit logging and safe failure.
+- Future agent planning must identify actions that incur cost or financial liability before attempting them. Free-tier quota exhaustion must stop safely rather than silently falling back to paid services.
+
+### Status
+This is a product/architecture decision recorded from the user's stated direction; no new autonomy code, financial integration, payment permission or external-action authorization has been implemented by this note.
+
+### Next implementation sequence
+1. Finish the current outreach security audit (Task A below); do not activate any sender.
+2. Design and implement the central autonomy policy and action classification layer, including the non-overridable financial hard-deny.
+3. Add tests proving that financial actions are blocked even when a task requests broad autonomy, while safe internal/read/draft operations can be policy-scoped.
+4. Then continue provider-neutral inbox/webhook work and dry-run adapters.
