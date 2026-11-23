@@ -24,3 +24,8 @@ test("document passage upserts have stable unique locators for safe retries",()=
  assert.doesNotMatch(migration,/\\\\n/);
  assert.match(ingestion,/research_document_id: document\.id/);
 });
+
+test("document lifecycle update grant is restricted to ingestion status",()=>{
+ assert.match(migration,/grant update \(ingestion_status\) on public\.research_documents to authenticated/i);
+ assert.doesNotMatch(migration,/grant update on public\.research_documents/i);
+});
