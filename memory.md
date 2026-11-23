@@ -5,7 +5,7 @@
 **Last updated:** 2026-11-23  
 **Repository:** `StanLeeSTT/GiGo`  
 **Active branch:** `feat/universal-collection-engine`  
-**Last verified branch HEAD at this update:** `8bf7cee2678bceb5218e941c1aaaff4b25ba3875`  
+**Latest governance-schema commit:** `3b39983655f5bf880adfb8ba919d7ae07897f74b`  
 **Main branch:** do not merge into it unless explicitly requested.
 
 ---
@@ -497,3 +497,51 @@ User clarified outbound messaging behavior:
 - Financial execution remains permanently hard-denied.
 
 Implementation status: requirement recorded in project handover and product blueprint; not yet implemented in the message-rendering code. The next outreach implementation must make the signature deterministic and test that every rendered message ends with the configured owner signature, including partnership templates and short-message length enforcement. No database migration was applied and no deployment or live sending occurred.
+
+
+## 17. Task A3 — durable autonomy governance schema (2026-11-23)
+
+### Committed
+- `supabase/migrations/0037_durable_autonomy_governance.sql`
+- `docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md`
+
+### Database structures
+- `autonomy_control_state`: one owner-scoped global pause state. A missing row must be interpreted as paused/fail-closed by the runtime integration.
+- `autonomy_policies`: owner-scoped non-financial scopes only: observe, analyse, draft, internal_execute, external_execute. Financial is absent from the SQL allowlist. Generic external execution must always require approval.
+- `autonomy_approvals`: expiring approval bound to exact tool name, target reference, SHA-256 canonical-parameter hash and max action count; includes owner revocation RPC.
+- `autonomy_audit_events`: owner-readable, service-written audit log with a per-owner idempotency-key unique index.
+
+### Security
+- RLS enabled on all four tables.
+- Authenticated owners have read-only table access. Policy/pause/approval changes use SECURITY DEFINER RPCs deriving the owner from `auth.uid()`.
+- Authenticated clients cannot directly write pause, policy, approval or audit rows.
+- Audit events are not updateable/deletable by authenticated users; service role receives only SELECT/INSERT.
+- SQL rejects financial scope configuration and rejects financial-looking tool names when creating an approval. This is defense in depth; the TypeScript financial hard deny must remain first and non-overridable.
+- No generic message_send scope was added. The user's automatic short-message permission must remain tied to separately approved outreach campaigns, exact eligible recipients/templates and provider checks—not a broad external-execution toggle.
+
+### Commits
+- `184ed3537f232abb261472089054bf8762f6ddfa` — initial migration 0037.
+- `3b39983655f5bf880adfb8ba919d7ae07897f74b` — harden audit grants, add approval revocation and tighten financial tool-name boundary.
+- Blueprint documentation commit is the immediately preceding commit in this branch sequence; fetch branch HEAD to obtain its SHA before future edits.
+
+### Verification and status
+- Migration is committed only; it has NOT been applied to Supabase.
+- No runtime policy lookup, pause enforcement, approval consumption, audit event emission, API endpoints or UI are wired yet.
+- No deployment or live test.
+- This schema milestone is not permission to send messages. Outreach still has no provider adapter or live sender.
+- Automated CI for the latest commits has not yet been checked in this task.
+
+### Sender signature requirement (pending owner display-name confirmation)
+- Every outbound message must end with the owner's name on a separate final line, particularly partnership messages.
+- Signature must be appended by trusted rendering code and included within the 500-character body limit.
+- Do not hardcode a guessed account/profile name. Store the owner's confirmed signature/display name in owner-controlled profile settings. Until configured, external message rendering/sending must fail closed rather than omit or invent the signature.
+- Short message defaults remain subject <=80 characters and plain-text body <=500 characters including signature.
+- No message has been sent.
+
+### Next implementation slice
+1. Add owner signature/display-name setting with a safe update path and test validation.
+2. Wire policy and pause reads into runtime; fail closed on missing/unavailable policy storage.
+3. Add service-only approval consumption and audit RPCs with atomic quota/idempotency enforcement.
+4. Add owner API endpoints for policy, pause, approval and audit reads.
+5. Add integration tests for owner isolation, forged rows, pause, expiry, revocation, quotas, fail-closed DB outage and immutable financial hard deny.
+6. Keep the message_send grant campaign-bound and do not enable any sender until provider/webhook/pre-send suppression controls are implemented.
