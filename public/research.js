@@ -10,7 +10,7 @@ async function loadRuns(){
  catch(error){showError(error);}
 }
 async function selectRun(row){
- selected=row;detail.hidden=false;document.querySelector("#selected-title").textContent=row.title;document.querySelector("#selected-question").textContent=row.research_question;
+ selected=row;detail.hidden=false;const exportButton=document.querySelector("#export-research-report");if(exportButton)exportButton.disabled=false;document.querySelector("#selected-title").textContent=row.title;document.querySelector("#selected-question").textContent=row.research_question;
  await loadRelated();
 }
 async function loadRelated(){
