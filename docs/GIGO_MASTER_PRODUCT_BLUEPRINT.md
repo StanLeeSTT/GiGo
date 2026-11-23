@@ -305,3 +305,18 @@ Message and deal safeguards:
 - The 50/50 partnership offer does not override contact eligibility, marketing-provider registration, consent/lawful-basis review, suppression, opt-out, rate limits, approved-template, campaign or pause controls.
 
 This is the default proposal structure for partnership messages, not a universal legal or tax conclusion. The parties must agree on the exact commercial definitions before launch.
+
+## Durable autonomy implementation update — 2026-11-23
+
+The following implementation supersedes the earlier checkpoint above:
+
+- Migration 0037_durable_autonomy_governance.sql now has valid SQL function quoting and real line breaks. It defines owner-scoped pause, policy, approval and audit tables/RPCs.
+- Migration 0039_autonomy_initialization_and_approval_consumption.sql adds an owner-authenticated initializer. First initialization creates a global pause and enables only the four internal scopes by default; external execution remains disabled and approval-required. It also adds a service-role-only atomic approval consumption RPC bound to owner, tool name, exact target, SHA-256 parameter hash, expiry, revocation and remaining action quota.
+- src/assistant/runtime.ts now classifies financial and unknown tools before database access, reads the owner pause row and exact scope policy before every model-requested tool execution, and fails closed if either is missing or unavailable. It writes a service-role audit decision before execution; if the audit cannot be persisted, the tool does not run. It appends a completion/failure event afterward.
+- External execution remains denied in runtime because no external tool adapter is yet wired to consume a matching approval and perform the required immediate pre-side-effect rechecks. Creating an approval record alone does not enable an external action.
+- src/index.ts exposes owner-authenticated endpoints for reading autonomy state, initializing defaults, setting global pause, setting individual scope policy, listing approvals/audit events, creating exact-bound approvals and revoking approvals.
+- public/settings.html / public/settings.js now expose owner signature settings, initialization, global pause/resume, internal-scope toggles and recent audit history. The signature UI uses the owner-confirmed STANLEE value and reports database state accurately.
+- Campaign-kind API: POST /api/v1/outreach/campaigns/{campaign_id}/kind sets general or partnership through the owner-authenticated RPC. Partnership campaign messages receive the enforced 50/50 net-attributable-revenue wording and mandatory signature at the database layer.
+- Automated CI run 45108697698 on commit 41963442f36ba2e68b0b2e28a089b0d0404f3b58 passed typecheck and the full collection-engine test workflow. Later approval/audit commits are still undergoing their own CI verification at the time of this update.
+- All migrations 0037–0039 remain committed but unapplied; no Worker deployment has occurred. No message has been sent. Do not treat these settings or runtime controls as live until migrations are applied and the Worker is deployed/configured.
+- Financial execution remains permanently hard-denied and is not part of any configurable policy. Zero-budget/free-tier constraints remain in force.
