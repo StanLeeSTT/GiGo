@@ -4,7 +4,9 @@ import { callAIModel, providerPoolStatus } from "./providers";
 
 export interface AssistantRuntimeEnv {
   SUPABASE_URL?: string;
-  SUPABASE_ANON_KEY?: string;\n  SUPABASE_SECRET_KEY?: string;\n  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_ANON_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   AI_PROVIDER_POOL?: string;
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
