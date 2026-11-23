@@ -107,3 +107,17 @@ test("Customer Success Assistant tools only create and update private support re
   assert.ok(registry.includes('state:"available"'));
   assert.ok(!runtime.includes('name: "customers_send_response"'));
 });
+
+
+test("Creative Studio Assistant tools save private briefs and track outputs without generating media", () => {
+  for (const name of ["creative_list_briefs","creative_create_brief","creative_update_brief"]) assert.equal(authorizeToolAction(name).allowed, true, name);
+  const runtime = readFileSync(new URL("../src/assistant/runtime.ts", import.meta.url), "utf8");
+  const registry = readFileSync(new URL("../src/assistant/registry.ts", import.meta.url), "utf8");
+  assert.ok(runtime.includes('name: "creative_list_briefs"'));
+  assert.ok(runtime.includes('name: "creative_create_brief"'));
+  assert.ok(runtime.includes('name: "creative_update_brief"'));
+  assert.ok(runtime.includes("media_generated: false, published: false"));
+  assert.ok(runtime.includes("media_published: false"));
+  assert.ok(registry.includes('id:"creative.generate_assets"'));
+  assert.ok(registry.includes('state:"available"'));
+});
