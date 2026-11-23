@@ -121,3 +121,19 @@ test("Creative Studio Assistant tools save private briefs and track outputs with
   assert.ok(registry.includes('id:"creative.generate_assets"'));
   assert.ok(registry.includes('state:"available"'));
 });
+
+
+test("Outreach Assistant tools only prepare owner-approved message drafts and never send", () => {
+  for (const name of ["outreach_list_campaigns","outreach_create_campaign","outreach_add_recipient","outreach_add_template"]) assert.equal(authorizeToolAction(name).allowed, true, name);
+  assert.equal(authorizeToolAction("outreach_prepare_campaign").allowed, true);
+  assert.equal(authorizeToolAction("outreach.send").allowed, false);
+  const runtime = readFileSync(new URL("../src/assistant/runtime.ts", import.meta.url), "utf8");
+  const registry = readFileSync(new URL("../src/assistant/registry.ts", import.meta.url), "utf8");
+  assert.ok(runtime.includes('name: "outreach_prepare_campaign"'));
+  assert.ok(runtime.includes('campaign[0].approval_status !== "approved"'));
+  assert.ok(runtime.includes('contact_authorization_status=eq.approved'));
+  assert.ok(runtime.includes('marketing_contact_registered=eq.true'));
+  assert.ok(runtime.includes("provider_send_performed: false"));
+  assert.ok(!runtime.includes('name: "outreach_send_message"'));
+  assert.ok(registry.includes('id:"outreach.prepare_campaigns"'));
+});
