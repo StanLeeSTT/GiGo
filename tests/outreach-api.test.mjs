@@ -142,3 +142,17 @@ test("API calls the outbox preparation RPC with server credentials only after ve
   assert.ok(route.includes('if (!serviceKey.startsWith("sb_secret_")) serviceHeaders.authorization = "Bearer " + serviceKey'));
   assert.ok(route.includes("provider_send_performed: false"));
 });
+
+
+test("inbound provider webhook deduplication is atomic and scoped to provider account", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0035_outreach_inbound_event_idempotency.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("provider_account_id"));
+  assert.ok(sql.includes("create unique index if not exists outreach_events_provider_delivery_unique"));
+  assert.ok(sql.includes("on conflict (provider,provider_account_id,provider_event_id)"));
+  assert.ok(sql.includes("returning id into event_row_id"));
+  assert.ok(sql.includes("if event_row_id is null"));
+  assert.ok(sql.includes("coalesce(auth.role(), '') <> 'service_role'"));
+  assert.ok(sql.includes("grant execute on function public.gigo_record_outreach_recipient_event(uuid,text,text,text,text,text,text) to service_role"));
+  assert.ok(sql.includes("update public.outreach_recipients"));
+  assert.ok(sql.includes("outreach_suppressions"));
+});
