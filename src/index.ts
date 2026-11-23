@@ -1398,6 +1398,54 @@ export default {
       }
     }
 
+    const autonomyApprovalRevokeMatch = url.pathname.match(/^\/api\/v1\/autonomy\/approvals\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/revoke$/i);
+    if (url.pathname === "/api/v1/autonomy/audit" || url.pathname === "/api/v1/autonomy/approvals" || autonomyApprovalRevokeMatch) {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view autonomy records." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+        if (request.method === "GET" && url.pathname === "/api/v1/autonomy/audit") {
+          const requested = Number(url.searchParams.get("limit") || 30);
+          const limit = Number.isInteger(requested) ? Math.max(1, Math.min(100, requested)) : 30;
+          const query = new URLSearchParams({ select: "id,tool_name,action_class,decision,reason_code,policy_version,approval_id,target_ref,result_summary,created_at", user_id: "eq." + userId, order: "created_at.desc", limit: String(limit) });
+          const result = await fetch(new URL("/rest/v1/autonomy_audit_events?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!result.ok) return json({ error: { code: "AUTONOMY_AUDIT_READ_FAILED", message: "Could not read the audit history. Confirm migration 0037 is applied." } }, 502, headers);
+          return json({ data: { events: await result.json() } }, 200, headers);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/autonomy/approvals") {
+          const query = new URLSearchParams({ select: "id,tool_name,action_class,target_ref,parameters_sha256,max_actions,used_actions,expires_at,approved_at,revoked_at", user_id: "eq." + userId, order: "created_at.desc", limit: "100" });
+          const result = await fetch(new URL("/rest/v1/autonomy_approvals?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!result.ok) return json({ error: { code: "AUTONOMY_APPROVAL_READ_FAILED", message: "Could not read approvals. Confirm migration 0037 is applied." } }, 502, headers);
+          return json({ data: { approvals: await result.json() } }, 200, headers);
+        }
+        if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST as appropriate." } }, 405, headers);
+        if (autonomyApprovalRevokeMatch) {
+          const body = await readJson(request);
+          if (!body || Object.keys(body).length) return json({ error: { code: "INVALID_BODY", message: "Revocation accepts an empty JSON body only." } }, 400, headers);
+          const result = await fetch(new URL("/rest/v1/rpc/gigo_revoke_autonomy_approval", env.SUPABASE_URL!), { method: "POST", headers: dbHeaders, body: JSON.stringify({ p_approval_id: autonomyApprovalRevokeMatch[1] }), signal: AbortSignal.timeout(10000) });
+          if (!result.ok) return json({ error: { code: "AUTONOMY_APPROVAL_REVOKE_FAILED", message: "Could not revoke this approval. Confirm migration 0037 is applied and it belongs to you." } }, 409, headers);
+          return json({ data: { revoked: await result.json() } }, 200, headers);
+        }
+        const body = await readJson(request);
+        const toolName = typeof body?.tool_name === "string" ? body.tool_name.trim() : "";
+        const targetRef = typeof body?.target_ref === "string" ? body.target_ref.trim() : "";
+        const parametersHash = typeof body?.parameters_sha256 === "string" ? body.parameters_sha256 : "";
+        const maxActions = body?.max_actions;
+        const expiresAt = typeof body?.expires_at === "string" ? Date.parse(body.expires_at) : NaN;
+        if (!body || Object.keys(body).some(key => !["tool_name","target_ref","parameters_sha256","max_actions","expires_at"].includes(key)) || !/^[a-z][a-z0-9_.-]{0,119}$/.test(toolName) || !targetRef || targetRef.length > 500 || !/^[0-9a-f]{64}$/.test(parametersHash) || !Number.isInteger(maxActions) || Number(maxActions) < 1 || Number(maxActions) > 1000 || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + 30 * 86400000) {
+          return json({ error: { code: "INVALID_AUTONOMY_APPROVAL", message: "Provide a tool, exact target, SHA-256 parameter hash, action limit and expiry within 30 days." } }, 400, headers);
+        }
+        const result = await fetch(new URL("/rest/v1/rpc/gigo_create_autonomy_approval", env.SUPABASE_URL!), { method: "POST", headers: dbHeaders, body: JSON.stringify({ p_tool_name: toolName, p_target_ref: targetRef, p_parameters_sha256: parametersHash, p_max_actions: maxActions, p_expires_at: new Date(expiresAt).toISOString() }), signal: AbortSignal.timeout(10000) });
+        if (!result.ok) return json({ error: { code: "AUTONOMY_APPROVAL_CREATE_FAILED", message: "Could not create this approval. Financial actions cannot be approved." } }, 409, headers);
+        return json({ data: { approval: await result.json() } }, 201, headers);
+      } catch {
+        return json({ error: { code: "AUTONOMY_RECORDS_UNAVAILABLE", message: "Could not complete the autonomy records request." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/settings/message-signature") {
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
       const token = bearerToken(request);
