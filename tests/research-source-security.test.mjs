@@ -11,6 +11,7 @@ test("research source creation and edits reject unsafe non-HTTPS URLs", () => {
   assert.ok(source.includes("parsed.username || parsed.password"));
   assert.ok(source.includes("INVALID_SOURCE_URL"));
   assert.ok(client.includes('name="url" type="url"'));
+  assert.ok(client.includes('safeHttps(s.url)||"#"'));
 });
 
 test("evidence review remains a human assessment rather than automatic fact verification", () => {
