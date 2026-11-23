@@ -53,7 +53,7 @@ export function buildResearchDocumentIngestionPlan(
     contentType,
     filename: document.original_filename
   });
-  const title = document.original_filename.replace(/[\\/\\u0000-\\u001f]/g, " ").trim().slice(0, 500) || "Uploaded research document";
+  const title = document.original_filename.replace(/[\/\\\u0000-\u001f]/g, " ").trim().slice(0, 500) || "Uploaded research document";
   const passages = extraction.passages.map((passage) => ({
     ...passage,
     research_run_id: document.research_run_id,
