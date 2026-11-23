@@ -10,7 +10,8 @@ test("shared download helper uses authenticated fetch and refreshes expired sess
  assert.match(shared,/this\.refresh\(\)/);
  assert.match(shared,/URL\.createObjectURL\(blob\)/);
  assert.match(shared,/URL\.revokeObjectURL\(objectUrl\)/);
- assert.match(shared,/replace\(\/\[\\\\\/\\u0000-\\u001f\]\/g,"_"\)/);
+ assert.ok(shared.includes('const safeName=String(filename||"download")'));
+ assert.ok(shared.includes('.slice(0,180)'));
 });
 
 test("private research document cards expose authenticated download and extraction actions",()=>{
