@@ -1395,66 +1395,49 @@ export default {
           const requestedRecipientId = body?.recipient_id;
           const validUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
           if (body && requestedRecipientId !== undefined && !validUuid(requestedRecipientId)) return json({ error: { code: "INVALID_RECIPIENT", message: "recipient_id must be a valid ID." } }, 400, headers);
+          if (body && Object.keys(body).some(key => key !== "recipient_id")) return json({ error: { code: "INVALID_BODY", message: "Only recipient_id may be supplied. GiGo renders approved content from trusted database records." } }, 400, headers);
+
           const campaignId = outreachPrepareMatch[1];
-          const campaignQuery = new URLSearchParams({ select: "id,offer_summary,status,approval_status,approved_at,initial_send_enabled,followups_enabled,followup_delays_days,max_messages_per_recipient", id: "eq." + campaignId, limit: "1" });
-          const campaignResponse = await fetch(new URL("/rest/v1/outreach_campaigns?" + campaignQuery.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
-          if (!campaignResponse.ok) return json({ error: { code: "CAMPAIGN_READ_FAILED", message: "Could not verify campaign approval." } }, 502, headers);
-          const campaigns = await campaignResponse.json() as Array<JsonRecord>;
-          const campaign = campaigns[0];
-          if (!campaign || campaign.status !== "active" || campaign.approval_status !== "approved" || campaign.initial_send_enabled !== true || !campaign.approved_at) return json({ error: { code: "CAMPAIGN_NOT_APPROVED", message: "Only an approved, active campaign can prepare outreach messages." } }, 409, headers);
-          const templateQuery = new URLSearchParams({ select: "id,sequence_number,message_type,subject_template,body_template,personalization_fields,approved_at", campaign_id: "eq." + campaignId, order: "sequence_number.asc", limit: "6" });
-          const templateResponse = await fetch(new URL("/rest/v1/outreach_templates?" + templateQuery.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
-          if (!templateResponse.ok) return json({ error: { code: "TEMPLATE_READ_FAILED", message: "Could not load approved campaign templates." } }, 502, headers);
-          const templates = await templateResponse.json() as Array<JsonRecord>;
-          if (!templates.length || templates.some((t, i) => t.approved_at == null || t.sequence_number !== i || (i === 0 ? t.message_type !== "initial" : t.message_type !== "follow_up"))) return json({ error: { code: "TEMPLATE_SEQUENCE_INVALID", message: "The approved template sequence is incomplete or inconsistent." } }, 409, headers);
-          if (templates.length > 1 && campaign.followups_enabled !== true) return json({ error: { code: "FOLLOWUPS_DISABLED", message: "The template sequence includes follow-ups but the campaign policy disables them." } }, 409, headers);
-          const recipientParams = new URLSearchParams({ select: "id,lead_id,email,recipient_name,organisation,status,contact_authorization_status,marketing_contact_registered", campaign_id: "eq." + campaignId, status: "in.(queued,ready)", contact_authorization_status: "eq.approved", marketing_contact_registered: "eq.true", order: "created_at.asc", limit: "25" });
+          const recipientParams = new URLSearchParams({
+            select: "id",
+            campaign_id: "eq." + campaignId,
+            status: "in.(queued,ready)",
+            contact_authorization_status: "eq.approved",
+            marketing_contact_registered: "eq.true",
+            order: "created_at.asc",
+            limit: "25"
+          });
           if (requestedRecipientId) recipientParams.set("id", "eq." + String(requestedRecipientId));
-          const recipientResponse = await fetch(new URL("/rest/v1/outreach_recipients?" + recipientParams.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
-          if (!recipientResponse.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load eligible campaign recipients." } }, 502, headers);
+          const recipientResponse = await fetch(new URL("/rest/v1/outreach_recipients?" + recipientParams.toString(), env.SUPABASE_URL!), {
+            headers: dbHeaders, signal: AbortSignal.timeout(10000)
+          });
+          if (!recipientResponse.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load campaign recipients." } }, 502, headers);
           const recipients = await recipientResponse.json() as Array<JsonRecord>;
-          const clean = (value: unknown, max: number) => typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "";
+          const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+          if (!serviceKey) return json({ error: { code: "SERVICE_DATABASE_NOT_CONFIGURED", message: "Secure outbox preparation is not configured." } }, 503, headers);
+          const serviceHeaders: Record<string, string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json" };
+          if (!serviceKey.startsWith("sb_secret_")) serviceHeaders.authorization = "Bearer " + serviceKey;
+
           const prepared: Array<JsonRecord> = [];
           const skipped: Array<JsonRecord> = [];
           for (const recipient of recipients) {
-            const values: Record<string, string> = { first_name: clean(recipient.recipient_name, 240).split(" ")[0] ?? "", organisation: clean(recipient.organisation, 240), niche: "", specific_observation: "", offer_summary: clean(campaign.offer_summary, 5000) };
-            const evidenceRefs: Array<JsonRecord> = [];
-            if (recipient.lead_id) {
-              const profileQuery = new URLSearchParams({ select: "niche,profile_url,display_name,updated_at", lead_id: "eq." + String(recipient.lead_id), order: "updated_at.desc", limit: "10" });
-              const profileResponse = await fetch(new URL("/rest/v1/lead_social_profiles?" + profileQuery.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
-              if (profileResponse.ok) {
-                const profiles = await profileResponse.json() as Array<JsonRecord>;
-                const profile = profiles.find(p => clean(p.niche, 240));
-                if (profile) { values.niche = clean(profile.niche, 240); evidenceRefs.push({ field: "niche", source_url: profile.profile_url, source_title: profile.display_name ?? null }); }
-              }
-              const evidenceQuery = new URLSearchParams({ select: "evidence_type,source_url,source_title,excerpt,observed_at,confidence", lead_id: "eq." + String(recipient.lead_id), order: "observed_at.desc", limit: "20" });
-              const evidenceResponse = await fetch(new URL("/rest/v1/lead_evidence?" + evidenceQuery.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
-              if (evidenceResponse.ok) {
-                const evidenceRows = await evidenceResponse.json() as Array<JsonRecord>;
-                const observation = evidenceRows.find(e => ["audience_fit","credibility","customer_problem","buying_intent","other"].includes(String(e.evidence_type)) && clean(e.excerpt, 5000));
-                if (observation) { values.specific_observation = clean(observation.excerpt, 1000); evidenceRefs.push({ field: "specific_observation", evidence_type: observation.evidence_type, source_url: observation.source_url, source_title: observation.source_title ?? null, observed_at: observation.observed_at, confidence: observation.confidence ?? null }); }
-              }
+            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), {
+              method: "POST",
+              headers: serviceHeaders,
+              body: JSON.stringify({ p_owner_id: userId, p_campaign_id: campaignId, p_recipient_id: recipient.id }),
+              signal: AbortSignal.timeout(15000)
+            });
+            if (!rpcResponse.ok) {
+              skipped.push({ recipient_id: recipient.id, reason: "database_rejected_preparation" });
+              continue;
             }
-            const messages: Array<JsonRecord> = [];
-            const missing = new Set<string>();
-            for (let i = 0; i < templates.length; i++) {
-              const template = templates[i];
-              const sourceText = String(template.subject_template ?? "") + "\n" + String(template.body_template ?? "");
-              const placeholders = Array.from(sourceText.matchAll(/\{\{([a-z_]+)\}\}/g), match => match[1]);
-              for (const field of placeholders) if (!values[field]) missing.add(field);
-              const render = (input: unknown) => clean(String(input ?? "").replace(/\{\{([a-z_]+)\}\}/g, (_match, field: string) => values[field] ?? ""), 20000);
-              messages.push({ template_id: template.id, sequence_number: i, message_type: template.message_type, to_email: String(recipient.email).trim().toLowerCase(), subject: render(template.subject_template).slice(0, 300), body_text: render(template.body_template), personalization_evidence: evidenceRefs.filter(e => placeholders.includes(String(e.field))) });
-            }
-            if (missing.size) { skipped.push({ recipient_id: recipient.id, reason: "missing_verified_personalization", missing_fields: Array.from(missing) }); continue; }
-            const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
-            if (!serviceKey) return json({ error: { code: "SERVICE_DATABASE_NOT_CONFIGURED", message: "Secure outbox preparation is not configured." } }, 503, headers);
-            const serviceHeaders: Record<string, string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json" };
-            if (!serviceKey.startsWith("sb_secret_")) serviceHeaders.authorization = "Bearer " + serviceKey;
-            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers: serviceHeaders, body: JSON.stringify({ p_owner_id: userId, p_campaign_id: campaignId, p_recipient_id: recipient.id, p_messages: messages }), signal: AbortSignal.timeout(15000) });
-            if (!rpcResponse.ok) { skipped.push({ recipient_id: recipient.id, reason: "sequence_persistence_rejected" }); continue; }
             prepared.push({ recipient_id: recipient.id, result: await rpcResponse.json() });
           }
-          return json({ data: { campaign_id: campaignId, prepared, skipped, prepared_recipients: prepared.length, skipped_recipients: skipped.length, provider_send_performed: false } }, 200, headers);
+          return json({ data: {
+            campaign_id: campaignId, prepared, skipped,
+            prepared_recipients: prepared.length, skipped_recipients: skipped.length,
+            provider_send_performed: false, content_rendered_by_database: true
+          } }, 200, headers);
         }
         if (outreachCampaignApprovalMatch) {
           if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
