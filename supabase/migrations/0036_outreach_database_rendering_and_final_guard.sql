@@ -133,7 +133,7 @@ begin
     for placeholder in
       select distinct match[1]
       from regexp_matches(template_row.subject_template || E'\n' || template_row.body_template,
-        '\\{\\{([^{}]+)\\}\\}', 'g') as match
+        '\{\{([^{}]+)\}\}', 'g') as match
     loop
       if not (placeholder = any(allowed_fields))
         or not (template_row.personalization_fields ? placeholder)
@@ -142,10 +142,10 @@ begin
       end if;
     end loop;
 
-    if (template_row.subject_template || template_row.body_template) ~ '\\{\\{[^{}]*\\}\\}' then
+    if (template_row.subject_template || template_row.body_template) ~ '\{\{[^{}]*\}\}' then
       -- Every well-formed token is checked above; this catches empty/malformed leftovers.
       if regexp_replace(template_row.subject_template || template_row.body_template,
-        '\\{\\{[a-z_]+\\}\\}', '', 'g') ~ '\\{\\{|\\}\\}' then
+        '\{\{[a-z_]+\}\}', '', 'g') ~ '\{\{|\}\}' then
         raise exception 'template contains malformed personalization syntax' using errcode = '22023';
       end if;
     end if;
@@ -159,7 +159,7 @@ begin
     subject_value := left(trim(regexp_replace(subject_value, '[[:cntrl:]]', ' ', 'g')), 300);
     body_value := left(trim(regexp_replace(body_value, '[[:cntrl:]]', ' ', 'g')), 20000);
     if char_length(subject_value) < 1 or char_length(body_value) < 1
-      or subject_value ~ '\\{\\{|\\}\\}' or body_value ~ '\\{\\{|\\}\\}' then
+      or subject_value ~ '\{\{|\}\}' or body_value ~ '\{\{|\}\}' then
       raise exception 'rendered message is empty or contains unresolved placeholders' using errcode = '22023';
     end if;
 
@@ -221,15 +221,19 @@ as $$
 declare
   recipient_row public.outreach_recipients%rowtype;
   campaign_row public.outreach_campaigns%rowtype;
+  recipient_found boolean := false;
+  campaign_found boolean := false;
 begin
   if new.status <> 'sending' or old.status = 'sending' then return new; end if;
 
   select * into recipient_row from public.outreach_recipients r
   where r.id = new.recipient_id and r.user_id = new.user_id for update;
+  recipient_found := found;
   select * into campaign_row from public.outreach_campaigns c
   where c.id = new.campaign_id and c.user_id = new.user_id for update;
+  campaign_found := found;
 
-  if not found or campaign_row.status <> 'active'
+  if not recipient_found or not campaign_found or campaign_row.status <> 'active'
     or campaign_row.approval_status <> 'approved' or campaign_row.approved_at is null
     or campaign_row.approval_revoked_at is not null or campaign_row.initial_send_enabled is not true
     or recipient_row.contact_authorization_status <> 'approved'
