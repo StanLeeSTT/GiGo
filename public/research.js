@@ -32,6 +32,8 @@ async function loadRelated(){
  document.querySelector("#link-claim").innerHTML=(claims||[]).map(c=>'<option value="'+esc(c.id)+'">'+esc(c.claim_text.slice(0,120))+'</option>').join("");
  document.querySelector("#link-passage").innerHTML=(passages||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.passage_text.slice(0,120))+'</option>').join("");
  document.querySelector("#claim-evidence-list").innerHTML=(links||[]).map(link=>'<p class="welcome-copy">'+esc(link.relationship)+' · claim '+esc(link.claim_id)+' ↔ passage '+esc(link.passage_id)+'</p>').join("")||'<p class="welcome-copy">No claim/evidence links yet.</p>';
+ const docs=await api.request("/api/v1/research/documents?research_run_id="+encodeURIComponent(selected.id));
+ document.querySelector("#research-document-list").innerHTML=(docs||[]).map(doc=>'<article class="module-workbench"><strong>'+esc(doc.original_filename)+'</strong><p>'+esc(doc.content_type)+' · '+esc(Math.ceil(doc.byte_size/1024))+' KB · '+esc(doc.ingestion_status)+'</p><small>SHA-256: '+esc(doc.content_sha256)+'</small></article>').join("")||'<p class="welcome-copy">No private documents uploaded yet.</p>';
  }catch(error){showError(error);}
 }
 
@@ -106,6 +108,18 @@ document.querySelector("#claim-list").addEventListener("click",async event=>{
 loadRuns();if(result?.[0])await selectRun(result[0]);}
  catch(error){showError(error);}
 });
+
+document.querySelector("#research-document-form").addEventListener("submit",async event=>{
+ event.preventDefault();if(!selected)return;
+ const form=event.currentTarget,file=form.querySelector('input[type="file"]').files[0];
+ if(!file)return;
+ const data=new FormData();data.append("research_run_id",selected.id);data.append("file",file);
+ const button=form.querySelector("button");button.disabled=true;status.textContent="Uploading private research document…";
+ try{await api.request("/api/v1/research/documents",{method:"POST",body:data});form.reset();status.textContent="Private document uploaded and hashed. Extraction is a separate step.";await loadRelated();}
+ catch(error){showError(error);}
+ finally{button.disabled=false;}
+});
+
 document.querySelector("#source-form").addEventListener("submit",async event=>{
  event.preventDefault();if(!selected)return;const form=event.currentTarget;const data=formData(form);status.textContent="Saving evidence source…";
  try{await api.request("/api/v1/research/sources",{method:"POST",body:JSON.stringify({...data,research_run_id:selected.id,source_type:"web"})});form.reset();status.textContent="Evidence source saved.";await loadRelated();}
