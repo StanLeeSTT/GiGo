@@ -402,6 +402,17 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       for (const [key,max] of [["platform",80],["campaign_name",200],["objective",2000],["audience",1000]] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "string" || input[key].length > max)) return json({ error: { code: "INVALID_MARKETING_FIELD", message: key + " must be text within its allowed length." } }, 400, headers);
       if (input.metadata !== undefined && (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata))) return json({ error: { code: "INVALID_METADATA", message: "Marketing metadata must be an object." } }, 400, headers);
       if (input.status !== undefined && !["draft","review","approved","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid marketing asset status." } }, 400, headers);
+    } else if (resource === "customer_feedback") {
+      const sources = ["email","review","social","survey","call","other"];
+      const sentiments = ["positive","neutral","negative","unclassified"];
+      if (method === "POST" && (!validText(input.feedback, 10000) || typeof input.source !== "string" || !sources.includes(input.source))) return json({ error: { code: "INVALID_FEEDBACK", message: "Feedback text and a supported source are required." } }, 400, headers);
+      if (input.source !== undefined && (typeof input.source !== "string" || !sources.includes(input.source))) return json({ error: { code: "INVALID_FEEDBACK_SOURCE", message: "Invalid feedback source." } }, 400, headers);
+      if (input.rating !== undefined && input.rating !== null && (!Number.isInteger(input.rating) || Number(input.rating) < 1 || Number(input.rating) > 5)) return json({ error: { code: "INVALID_RATING", message: "Rating must be a whole number from 1 to 5." } }, 400, headers);
+      if (input.sentiment !== undefined && (typeof input.sentiment !== "string" || !sentiments.includes(input.sentiment))) return json({ error: { code: "INVALID_SENTIMENT", message: "Invalid sentiment." } }, 400, headers);
+      if (input.status !== undefined && !["new","reviewing","actioned","closed"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid feedback status." } }, 400, headers);
+      for (const [key,max] of [["customer_name",200],["contact_email",320],["topic",200],["response_draft",5000],["internal_notes",5000]] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "string" || input[key].length > max)) return json({ error: { code: "INVALID_FEEDBACK_FIELD", message: key + " must be text within its allowed length." } }, 400, headers);
+      if (input.contact_email !== undefined && input.contact_email !== null && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(input.contact_email))) return json({ error: { code: "INVALID_EMAIL", message: "Contact email must be valid." } }, 400, headers);
+      if (input.evidence_url !== undefined && input.evidence_url !== null) { try { const parsed = new URL(String(input.evidence_url)); if (parsed.protocol !== "https:") throw new Error(); } catch { return json({ error: { code: "INVALID_EVIDENCE_URL", message: "Evidence URL must use HTTPS." } }, 400, headers); } }
     } else if (resource === "offers") {
       if (method === "POST" && !validText(input.name, 200)) return json({ error: { code: "INVALID_BODY", message: "Offer name is required." } }, 400, headers);
       if (input.status !== undefined && !["draft","validating","ready","active","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid offer status." } }, 400, headers);
@@ -446,7 +457,7 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (resource === "partner_candidates" && body.status === undefined) body.status = "new";
       if (resource === "leads" && body.stage === undefined) body.stage = "new";
       if (resource === "offers" && body.status === undefined) body.status = "draft";
-      if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";
+      if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";\n      if (resource === "customer_feedback") { if (body.status === undefined) body.status = "new"; if (body.sentiment === undefined) body.sentiment = "unclassified"; }
       if (resource === "customer_support_cases" && body.status === undefined) body.status = "open";
       if (resource === "customer_support_cases" && body.priority === undefined) body.priority = "normal";
     }
