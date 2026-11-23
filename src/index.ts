@@ -1800,6 +1800,9 @@ export default {
       "/api/v1/research/runs": "research_runs",
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
+      "/api/v1/research/evidence-passages": "research_evidence_passages",
+      "/api/v1/research/claims": "research_claims",
+      "/api/v1/research/claim-evidence": "research_claim_evidence",
     };
     const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers", "/api/v1/marketing/assets": "marketing_assets", "/api/v1/customers/cases": "customer_support_cases", "/api/v1/creative/briefs": "creative_briefs" };
     const businessResource = businessRoutes[url.pathname];
