@@ -134,6 +134,8 @@ test("Outreach Assistant tools only prepare owner-approved message drafts and ne
   assert.ok(runtime.includes('contact_authorization_status=eq.approved'));
   assert.ok(runtime.includes('marketing_contact_registered=eq.true'));
   assert.ok(runtime.includes("provider_send_performed: false"));
+  assert.ok(runtime.includes("subject.length > 80"));
+  assert.ok(runtime.includes("body.length > 340"));
   assert.ok(!runtime.includes('name: "outreach_send_message"'));
   assert.ok(registry.includes('id:"outreach.prepare_campaigns"'));
 });
