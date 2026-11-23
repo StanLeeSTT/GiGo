@@ -5,7 +5,7 @@
 **Last updated:** 2026-11-23  
 **Repository:** `StanLeeSTT/GiGo`  
 **Active branch:** `feat/universal-collection-engine`  
-**Last verified branch HEAD at this update:** `029c4f656a6f18913600d016df0261a1e528a94b`  
+**Last verified branch HEAD at this update:** `8bf7cee2678bceb5218e941c1aaaff4b25ba3875`  
 **Main branch:** do not merge into it unless explicitly requested.
 
 ---
@@ -45,13 +45,13 @@ The current priority is to build a zero-budget foundation that can help discover
 
 ### Latest verified commit at this update
 
-`029c4f656a6f18913600d016df0261a1e528a94b` — final SQL rendering/guard clarification for outreach migration 0036.
+`8bf7cee2678bceb5218e941c1aaaff4b25ba3875` — initial GiGo autonomy policy enforcement and financial hard-deny.
 
 Latest verified Actions run on that commit:
 - Typecheck: PASS
 - Collection engine tests: PASS
-- Run ID: `45103534399`
-- The test suite reported 68 tests, 68 passed, 0 failed.
+- Run ID: `45103961661`
+- The test suite reported 75 tests, 75 passed, 0 failed.
 
 Earlier verification:
 - Commit `9138f95dff150942066be0491368618b25445bb5`: typecheck and collection engine tests PASS.
@@ -277,12 +277,21 @@ Research checked 2026-11-22:
 - No provider adapter, webhook endpoint, send worker, sender credential or live send is enabled.
 - Remaining send-specific gap: future worker must call a separate service-only just-in-time authorization/suppression check immediately before the provider network request, since a new suppression can arrive after claim but before send.
 
-### Task A2 — central GiGo autonomy and permission engine — NEXT
-- Implement action classification and permission scopes centrally: observe/read, analyse, draft/prepare, execute and spend.
-- Enforce non-overridable hard-deny for money movement, purchases, paid subscriptions/upgrades, investments/trades, loans, payouts and financial commitments. GiGo can prepare financial information but cannot execute or approve payments.
-- Keep consequential external side effects behind explicit approval until module-specific bounded permissions are designed and approved.
-- Add audit log, pause/stop controls, least-privilege scopes, revocation, quotas and safe failure.
-- Ensure the general agent tool registry does not expose money-moving capabilities.
+### Task A2 — central GiGo autonomy and permission engine — INITIAL V1 COMPLETED IN CODE
+- Added src/assistant/autonomy.ts with action classification, default observe/analyse/draft/internal_execute scopes, approval-gated external execution, unknown-tool fail-closed behavior and a non-overridable financial hard deny.
+- Integrated authorizeToolAction into src/assistant/runtime.ts before every model-requested tool execution.
+- Exposed current policy summary through src/assistant/registry.ts capability reporting.
+- Added tests/autonomy-policy.test.mjs for internal scopes, external approval, financial hard deny, unknown tools and runtime enforcement.
+- Updated docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md.
+- CI PASS on commit 8bf7cee2678bceb5218e941c1aaaff4b25ba3875: typecheck PASS; 75/75 tests PASS; Actions run 45103961661.
+- Limitations: policy scopes are currently code-defaults, not yet stored as owner-configurable settings. External approval is represented by a policy evaluator input but no durable approval workflow is wired to it. No action audit table, pause/stop UI, or financial-data connections exist.
+
+### Task A3 — durable owner-configurable autonomy policies and action audit — NEXT
+- Add owner-scoped policy records and audit events with migration(s), RLS and service/API access.
+- Preserve non-overridable financial hard deny in code and SQL; never make financial execution a configurable scope.
+- Persist explicit approval records with bounded action, target, schedule, expiry, limits and revocation.
+- Add pause/stop controls and audit every decision/result; unknown tools remain denied.
+- No money-moving integration or external action activation.
 
 ### Task B — provider-neutral inbox correlation
 - Map provider account, provider message ID, GiGo message ID, recipient and campaign.
@@ -320,6 +329,7 @@ Research checked 2026-11-22:
 | 2026-11-23 | Outbox privilege hardening | migration 0034; `src/index.ts`; `tests/outreach-api.test.mjs`; `docs/UNIVERSAL_COLLECTION_ENGINE.md` | Commit chain culminated in 9138f95; typecheck/tests PASS |
 | 2026-11-23 | Atomic inbound webhook deduplication | migration 0035; tests; docs | Commit 9f91d26; typecheck/tests PASS |
 | 2026-11-23 | Outreach security audit and database-side rendering | migration 0036; src/index.ts; tests/outreach-api.test.mjs; docs/UNIVERSAL_COLLECTION_ENGINE.md | Commits 4c6fecb, 51d7881, 3563e31, 1ec5b2e, c5c34bc, 2b4caf7, 5ebe257, 802ec66, fb863f0, 029c4f6; final CI PASS run 45103534399; migration unapplied |
+| 2026-11-23 | Central autonomy policy V1 | src/assistant/autonomy.ts; src/assistant/runtime.ts; src/assistant/registry.ts; tests/autonomy-policy.test.mjs; docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md | Commits 01c4c75, 5a1b170, 0b92f49, 36d47b9, dc218be, 16b5c33, 8bf7cee; typecheck PASS and 75/75 tests PASS; Actions run 45103961661 |
 | 2026-11-23 | Create living project memory | `memory.md` | Commit `0524db569ad0e90d23b919360f5930aa5cd3af3d`; documentation-only commit; no new Actions run was triggered. Earlier code verification on `9f91d26` remains PASS. |
 
 **Important:** this ledger records code committed to the feature branch. Migrations 0030–0035 are not applied to Supabase, and none of the email provider/webhook/send functionality is live.
@@ -373,9 +383,9 @@ The user is considering giving GiGo broad capabilities across the personal-assis
 This is a product/architecture decision recorded from the user's stated direction; no new autonomy code, financial integration, payment permission or external-action authorization has been implemented by this note.
 
 ### Next implementation sequence
-1. Finish the current outreach security audit (Task A below); do not activate any sender.
-2. Design and implement the central autonomy policy and action classification layer, including the non-overridable financial hard-deny.
-3. Add tests proving that financial actions are blocked even when a task requests broad autonomy, while safe internal/read/draft operations can be policy-scoped.
+1. Outreach security audit is complete in code (Task A); do not activate any sender or apply migration 0036 without separate approval.
+2. Initial central autonomy policy V1 is implemented and tested (Task A2), including the non-overridable financial hard-deny.
+3. Next build durable owner-configurable scopes, approval records, audit events and pause/stop controls (Task A3).
 4. Then continue provider-neutral inbox/webhook work and dry-run adapters.
 
 
@@ -416,4 +426,39 @@ This is a product/architecture decision recorded from the user's stated directio
 - Future sender still requires a service-only just-in-time eligibility/suppression recheck immediately before network send to close the in-flight suppression race.
 
 ### Next task
-Implement Task A2 — central GiGo autonomy and permission engine as defined above. Preserve the human financial-control boundary and keep consequential external actions gated until bounded permissions are explicitly designed.
+Implement Task A3 — durable owner-configurable autonomy policies and action audit. Preserve the non-overridable financial hard deny and keep consequential external actions gated until bounded permissions are explicitly designed.
+
+
+---
+
+## 15. Central GiGo autonomy policy V1 (2026-11-23)
+
+### Implemented files
+- src/assistant/autonomy.ts — central action classification, default scopes, policy evaluation and financial hard deny.
+- src/assistant/runtime.ts — every model-requested tool call is authorized before executeTool is called.
+- src/assistant/registry.ts — current autonomy policy summary is exposed in capability reporting.
+- tests/autonomy-policy.test.mjs — policy and runtime enforcement tests.
+- docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md — architecture and owner financial-control boundary.
+
+### Current V1 rules
+- Default allowed scopes: observe, analyse, draft and internal_execute.
+- External execution is disabled by default. Even if the external scope is enabled, explicit approval is required by the default policy.
+- Financial execution is a hard deny and is not an available policy scope. It cannot be overridden by an ordinary approval boolean or broader non-financial scope list.
+- Unknown tool names fail closed.
+- Current registered internal tools are explicitly classified; any new tool must be classified before it can run.
+
+### Verification
+- Commit 8bf7cee2678bceb5218e941c1aaaff4b25ba3875.
+- GitHub Actions run 45103961661: TypeScript typecheck PASS; 75 tests PASS; 0 failures.
+- Current feature branch head at the time of this memory update is being advanced by documentation-only commits; the latest code-verified commit remains 8bf7cee.
+- No deployment or database migration was performed.
+
+### Not yet implemented
+- Durable owner-configurable permission settings.
+- Persisted approval records and bounded approval scopes.
+- Owner-scoped autonomy audit event table and API.
+- Global pause/stop controls or UI.
+- Any payment, bank, wallet or money-moving integration.
+
+### Next task
+Task A3: implement durable owner-configurable autonomy policies and action audit, preserving the hard financial deny in both runtime and database policy design.
