@@ -263,6 +263,51 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 
 
 
+
+async function handleResearchReport(request: Request, env: Env, headers: Headers): Promise<Response> {
+  if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET." } }, 405, headers);
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to export research." } }, 401, headers);
+  const runId = new URL(request.url).searchParams.get("research_run_id") || "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) {
+    return json({ error: { code: "INVALID_RESEARCH_RUN_ID", message: "A valid research run ID is required." } }, 400, headers);
+  }
+  try {
+    const ownerId = await verifiedUserId(token, env);
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+    const queries: Array<[string,string]> = [
+      ["run", "research_runs?select=id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at&id=eq."+runId+"&limit=1"],
+      ["sources", "research_sources?select=id,title,url,publisher,published_at,excerpt,evidence_status,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["opportunities", "research_opportunities?select=id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["passages", "research_evidence_passages?select=id,research_source_id,passage_text,locator_type,locator_value,extraction_method,review_status,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["claims", "research_claims?select=id,claim_text,claim_type,verification_status,confidence,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["links", "research_claim_evidence?select=id,claim_id,passage_id,relationship,reviewer_note&research_run_id=eq."+runId+"&order=created_at.asc&limit=500"]
+    ];
+    const entries = await Promise.all(queries.map(async ([key,path]) => {
+      const response = await fetch(new URL("/rest/v1/"+path, env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(12000) });
+      if (!response.ok) throw new Error("RESEARCH_REPORT_QUERY_FAILED:"+key);
+      return [key, await response.json()] as const;
+    }));
+    const data = Object.fromEntries(entries) as Record<string, unknown>;
+    const runs = data.run as JsonRecord[];
+    if (!Array.isArray(runs) || runs.length !== 1) return json({ error: { code: "RESEARCH_RUN_NOT_FOUND", message: "Research brief not found in your workspace." } }, 404, headers);
+    return json({ data: {
+      generated_at: new Date().toISOString(),
+      verification_notice: "Claim statuses are owner review labels, not independent proof. Unverified claims must not be presented as established facts.",
+      run: runs[0],
+      sources: data.sources,
+      opportunities: data.opportunities,
+      passages: data.passages,
+      claims: data.claims,
+      claim_evidence: data.links
+    } }, 200, headers);
+  } catch {
+    return json({ error: { code: "RESEARCH_REPORT_UNAVAILABLE", message: "Could not assemble the evidence-backed report. Confirm migrations 0005 and 0043 are applied." } }, 502, headers);
+  }
+}
+
 type ResearchResource = "research_runs" | "research_sources" | "research_opportunities" | "research_evidence_passages" | "research_claims" | "research_claim_evidence";
 const RESEARCH_FIELDS: Record<ResearchResource, string[]> = {
   research_runs: ["title","research_question","market_scope","status","summary","findings","methodology","completed_at"],
@@ -1795,6 +1840,8 @@ export default {
     };
     const resource = resourceRoutes[url.pathname];
     if (resource) return handleResource(request, env, headers, resource);
+
+    if (url.pathname === "/api/v1/research/report") return handleResearchReport(request, env, headers);
 
     const researchRoutes: Record<string, ResearchResource> = {
       "/api/v1/research/runs": "research_runs",
