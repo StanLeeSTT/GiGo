@@ -308,7 +308,13 @@ async function handleResearchDocuments(request: Request, env: Env, headers: Head
     if (file.size<1 || file.size>5*1024*1024) return json({ error: { code: "FILE_TOO_LARGE", message: "Research files must be between 1 byte and 5 MiB." } },413,headers);
     const allowedTypes = ["text/plain","text/html","text/csv","application/pdf"];
     const type = file.type.toLowerCase().split(";")[0].trim();
-    if (!allowedTypes.includes(type)) return json({ error: { code: "UNSUPPORTED_FILE_TYPE", message: "Only TXT, HTML, CSV and PDF files are accepted." } },415,headers);
+    const extension = file.name.toLowerCase().split(".").pop() || "";
+    const expectedExtensions: Record<string,string[]> = { "text/plain":["txt"], "text/html":["html","htm"], "text/csv":["csv"], "application/pdf":["pdf"] };
+    if (!allowedTypes.includes(type) || !expectedExtensions[type]?.includes(extension)) return json({ error: { code: "UNSUPPORTED_FILE_TYPE", message: "File extension and MIME type must match. Only TXT, HTML, CSV and PDF files are accepted." } },415,headers);
+    if (type === "application/pdf") {
+      const signature = new Uint8Array(await file.slice(0,5).arrayBuffer());
+      if (new TextDecoder().decode(signature) !== "%PDF-") return json({ error: { code: "INVALID_FILE_SIGNATURE", message: "The PDF file signature is invalid." } },415,headers);
+    }
     const runResponse = await fetch(new URL("/rest/v1/research_runs?select=id&id=eq."+runId+"&limit=1",env.SUPABASE_URL!),{headers:dbHeaders,signal:AbortSignal.timeout(10000)});
     if (!runResponse.ok) return json({ error: { code: "RESEARCH_RUN_CHECK_FAILED", message: "Could not verify research brief ownership." } },502,headers);
     const runs = await runResponse.json() as Array<JsonRecord>;
