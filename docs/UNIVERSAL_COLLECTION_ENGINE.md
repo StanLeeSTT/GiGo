@@ -443,3 +443,17 @@ Migration 0034 is committed but unapplied. No email provider is connected and no
 Migration `0035_outreach_inbound_event_idempotency.sql` adds provider account identity to stored inbound events and a unique database constraint on `(provider, provider_account_id, provider_event_id)`. The service-only event RPC now reserves that unique event identity before applying reply, bounce, unsubscribe or complaint effects. Concurrent duplicate webhook deliveries therefore cannot both cancel sequences or create duplicate suppressions/events. Provider account and event identifiers are stored in dedicated columns rather than relying on JSON-only duplicate checks.
 
 The RPC requires the trusted service role and a provider account ID. This does not itself authenticate a webhook: a future provider adapter must verify the raw-body signature, confirm the expected provider account, map the provider message ID to a GiGo message/recipient, and only then call the RPC. No webhook endpoint or provider adapter is active.
+
+
+## Database-bound outreach rendering and approval hardening (migration 0036)
+
+Migration `0036_outreach_database_rendering_and_final_guard.sql` supersedes the earlier API-rendering limitation:
+
+- The prepare endpoint accepts only an optional `recipient_id`; callers cannot submit message subject, body, template ID, or personalization evidence.
+- The trusted API verifies the caller session and owner-scoped recipient list, then calls a service-role-only RPC with owner, campaign and recipient IDs.
+- Postgres loads the immutable approved templates and renders the copy itself from the recipient record, campaign offer summary, owner-scoped social profile and lead-evidence records. Only the five declared personalization fields are allowed. Missing or undeclared placeholder values reject preparation; provenance for niche/observation placeholders is recorded from the exact selected evidence rows.
+- Direct `outreach_messages` privileges are reset to read-only for authenticated users, including revoking inherited PUBLIC grants. The service-only preparation RPC is the sole queue-insertion path.
+- Direct authenticated updates to campaign rows are revoked. Campaign creation is restricted to draft/unapproved values; the owner approval RPC is now SECURITY DEFINER with an explicit `auth.uid()` owner check and is the only authenticated approval mutation path.
+- The final queued-to-sending trigger rechecks campaign approval/revocation, recipient authorization, provider registration, suppression, template identity, sequence state, schedule and quiet hours.
+
+The current endpoint still only prepares messages. No provider send, webhook, provider credential or live sender has been enabled. Migration 0036 is committed but **not applied**. The eventual sender must perform a separate immediate pre-network-send eligibility/suppression recheck to close the race between claiming a message and contacting a provider; there is no sender yet.
