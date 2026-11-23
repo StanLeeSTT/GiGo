@@ -17,3 +17,10 @@ test("ingestion attaches document provenance and keeps evidence unreviewed",()=>
  assert.match(ingestion,/review_status: "unreviewed"/);
  assert.match(ingestion,/claim_verification: "not_performed"/);
 });
+
+test("document passage upserts have stable unique locators for safe retries",()=>{
+ assert.match(migration,/create unique index if not exists research_passages_document_locator_uidx/i);
+ assert.match(migration,/research_document_id, locator_type, locator_value/i);
+ assert.doesNotMatch(migration,/\\\\n/);
+ assert.match(ingestion,/research_document_id: document\.id/);
+});
