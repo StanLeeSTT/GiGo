@@ -398,3 +398,9 @@ The following implementation supersedes the earlier checkpoint above:
 - Customer Success Assistant tools can list/create/update internal support cases and response drafts, without contacting customers. Creative Studio Assistant tools can manage briefs and output references without generating or publishing media. Marketing Assistant tools save drafts only.
 - These Assistant module capabilities passed the full test suite on commit ad7989c5985c96972a3ae86850e5f275399b977c. The count-cap disclosure refinement is pending CI.
 - External execution remains disabled; financial execution remains permanently denied.
+
+## Assistant Outreach preparation integration — 2026-11-23
+
+- The Assistant can list campaigns, create unapproved campaign drafts, add recipients in an unreviewed state, save unapproved templates and prepare database-rendered messages only for campaigns that the owner has already approved and activated.
+- Preparation is limited to 25 recipients per invocation and requires approved contact eligibility plus provider marketing-contact registration. The database performs final template rendering and signature/partnership checks. The tool does not send.
+- The Assistant cannot approve campaigns, attest to contact eligibility, send messages, accept commercial counteroffers or sign agreements. Owner review and campaign-level approval remain mandatory; no provider sender or signed webhook is live.
