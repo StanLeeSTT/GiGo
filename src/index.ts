@@ -415,6 +415,10 @@ async function handleResearchDocumentExtraction(request: Request, env: Env, head
         signal: AbortSignal.timeout(15000)
       });
       if (!passagesResponse.ok) return json({ error: { code: "DOCUMENT_PASSAGE_SAVE_FAILED", message: "The source was saved, but its passages could not be stored. Confirm migration 0045 is applied and retry extraction." } }, 502, headers);
+      const savedPassages = await passagesResponse.json() as Array<JsonRecord>;
+      if (!Array.isArray(savedPassages) || savedPassages.length !== passageRows.length) {
+        return json({ error: { code: "DOCUMENT_PASSAGE_COUNT_MISMATCH", message: "The evidence service did not confirm every extracted passage. Retry extraction safely." } }, 502, headers);
+      }
     }
     const statusResponse = await fetch(new URL("/rest/v1/research_documents?id=eq." + documentId, env.SUPABASE_URL!), {
       method: "PATCH", headers: { ...dbHeaders, prefer: "return=representation" },
