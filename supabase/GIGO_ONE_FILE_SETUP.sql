@@ -4686,7 +4686,7 @@ comment on function public.gigo_create_collection_run(text,integer,jsonb,text,te
 -- BEGIN CANONICAL MIGRATION 0046_decodo_web_data_api.sql
 -- ============================================================================
 -- Decodo Web Data API provider support. Credentials remain in DECODO_API_KEY in the trusted worker environment.
-create or replace function public.gigo_create_collection_run(p_actor_key text,p_actor_version integer,p_input jsonb,p_provider_key text,p_dataset_name text default 'Collected data') returns jsonb language plpgsql security invoker set search_path = '' as $
+create or replace function public.gigo_create_collection_run(p_actor_key text,p_actor_version integer,p_input jsonb,p_provider_key text,p_dataset_name text default 'Collected data') returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare new_job_id uuid; new_run_id uuid; new_dataset_id uuid; safe_actor_key text; safe_provider_key text; safe_dataset_name text; selected_provider_id uuid; selected_capabilities jsonb;
 begin
 if auth.uid() is null then raise exception 'authentication required' using errcode='42501'; end if;
