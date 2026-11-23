@@ -8,6 +8,7 @@ import { listCollectionActors, getCollectionActor } from "./collection/actors";
 import { planCollectionProviders, type ConnectedCollectionProvider } from "./collection/planner";
 import { listRegisteredCollectionAdapters } from "./collection/adapters";
 import { buildSafeHttpProviderRegistration, isSafeHttpProviderRegistrationRequest } from "./collection/onboarding";
+import { buildResearchDocumentIngestionPlan } from "./research/ingest";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -339,6 +340,98 @@ async function handleResearchDocuments(request: Request, env: Env, headers: Head
   }
 }
 
+
+async function handleResearchDocumentExtraction(request: Request, env: Env, headers: Headers): Promise<Response> {
+  if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST to extract a private research document." } }, 405, headers);
+  if (!configured(env) || !env.RESEARCH_FILES) return json({ error: { code: "PRIVATE_STORAGE_NOT_CONFIGURED", message: "Research database and private R2 storage must be configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to extract research documents." } }, 401, headers);
+  const body = await readJson(request);
+  const documentId = typeof body?.document_id === "string" ? body.document_id : "";
+  if (!body || Object.keys(body).some(key => key !== "document_id") || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId)) {
+    return json({ error: { code: "INVALID_DOCUMENT_ID", message: "Provide one valid document_id." } }, 400, headers);
+  }
+  try {
+    const ownerId = await verifiedUserId(token, env);
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+    const lookup = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,object_key,ingestion_status&id=eq." + documentId + "&limit=1", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+    if (!lookup.ok) return json({ error: { code: "DOCUMENT_LOOKUP_FAILED", message: "Could not load the private document. Confirm migrations 0044 and 0045 are applied." } }, 502, headers);
+    const documents = await lookup.json() as Array<JsonRecord>;
+    const document = documents[0];
+    if (!document) return json({ error: { code: "DOCUMENT_NOT_FOUND", message: "Document not found in your workspace." } }, 404, headers);
+    const contentType = String(document.content_type);
+    if (!["text/plain","text/html","text/csv"].includes(contentType)) return json({ error: { code: "DOCUMENT_FORMAT_NOT_EXTRACTABLE", message: "PDF files are stored privately but binary PDF text extraction is not available yet. TXT, HTML and CSV are supported." } }, 415, headers);
+    const object = await env.RESEARCH_FILES.get(String(document.object_key));
+    if (!object) return json({ error: { code: "DOCUMENT_OBJECT_MISSING", message: "The private document object is missing." } }, 404, headers);
+    const bytes = await object.arrayBuffer();
+    if (bytes.byteLength < 1 || bytes.byteLength > 5 * 1024 * 1024) return json({ error: { code: "DOCUMENT_SIZE_INVALID", message: "The stored document size is outside the accepted limit." } }, 413, headers);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const actualHash = Array.from(new Uint8Array(digest)).map(value => value.toString(16).padStart(2,"0")).join("");
+    if (actualHash !== document.content_sha256 || bytes.byteLength !== Number(document.byte_size)) return json({ error: { code: "DOCUMENT_INTEGRITY_FAILED", message: "The stored document no longer matches its verified upload metadata." } }, 409, headers);
+    let decodedText: string;
+    try { decodedText = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+    catch { return json({ error: { code: "DOCUMENT_ENCODING_INVALID", message: "Only valid UTF-8 text documents can be extracted." } }, 415, headers); }
+    let plan;
+    try {
+      plan = buildResearchDocumentIngestionPlan({
+        id: String(document.id),
+        research_run_id: String(document.research_run_id),
+        original_filename: String(document.original_filename),
+        content_type: contentType,
+        content_sha256: actualHash
+      }, decodedText);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "DOCUMENT_EXTRACTION_FAILED";
+      return json({ error: { code: message.includes("TOO_LARGE") ? "DOCUMENT_TEXT_TOO_LARGE" : "DOCUMENT_EXTRACTION_REJECTED", message: message.slice(0,240) } }, 422, headers);
+    }
+    const sourceResponse = await fetch(new URL("/rest/v1/research_sources?on_conflict=research_run_id,url&select=id", env.SUPABASE_URL!), {
+      method: "POST",
+      headers: { ...dbHeaders, prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: ownerId, ...plan.source, evidence_status: "unreviewed" }),
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!sourceResponse.ok) return json({ error: { code: "DOCUMENT_SOURCE_SAVE_FAILED", message: "Could not create the private document's research source record." } }, 502, headers);
+    const sourceRows = await sourceResponse.json() as Array<JsonRecord>;
+    const sourceId = typeof sourceRows?.[0]?.id === "string" ? String(sourceRows[0].id) : "";
+    if (!sourceId) return json({ error: { code: "DOCUMENT_SOURCE_ID_MISSING", message: "The research source was saved but its ID was not returned." } }, 502, headers);
+    const passageRows = plan.passages.map(passage => ({
+      user_id: ownerId,
+      research_run_id: String(document.research_run_id),
+      research_source_id: sourceId,
+      research_document_id: documentId,
+      passage_text: passage.passage_text,
+      locator_type: passage.locator_type,
+      locator_value: passage.locator_value,
+      content_sha256: actualHash,
+      extraction_method: passage.extraction_method,
+      review_status: "unreviewed"
+    }));
+    if (passageRows.length) {
+      const passagesResponse = await fetch(new URL("/rest/v1/research_evidence_passages?on_conflict=research_document_id,locator_type,locator_value&select=id", env.SUPABASE_URL!), {
+        method: "POST",
+        headers: { ...dbHeaders, prefer: "resolution=merge-duplicates,return=representation" },
+        body: JSON.stringify(passageRows),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!passagesResponse.ok) return json({ error: { code: "DOCUMENT_PASSAGE_SAVE_FAILED", message: "The source was saved, but its passages could not be stored. Confirm migration 0045 is applied and retry extraction." } }, 502, headers);
+    }
+    const statusResponse = await fetch(new URL("/rest/v1/research_documents?id=eq." + documentId, env.SUPABASE_URL!), {
+      method: "PATCH", headers: { ...dbHeaders, prefer: "return=representation" },
+      body: JSON.stringify({ ingestion_status: "extracted" }), signal: AbortSignal.timeout(10000)
+    });
+    if (!statusResponse.ok) return json({ error: { code: "DOCUMENT_STATUS_UPDATE_FAILED", message: "Passages were stored, but the document status could not be updated. Retry extraction safely." } }, 502, headers);
+    return json({ data: {
+      document_id: documentId, research_run_id: document.research_run_id, source_id: sourceId,
+      passages_saved: passageRows.length, extraction_method: plan.extraction_method,
+      truncated: plan.truncated, review_status: "unreviewed",
+      claim_verification: "not_performed", idempotent: true
+    } }, 200, headers);
+  } catch {
+    return json({ error: { code: "DOCUMENT_EXTRACTION_FAILED", message: "Could not extract the private research document. No claim verification was performed." } }, 502, headers);
+  }
+}
+
 async function handleResearchReport(request: Request, env: Env, headers: Headers): Promise<Response> {
   if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET." } }, 405, headers);
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -388,7 +481,7 @@ const RESEARCH_FIELDS: Record<ResearchResource, string[]> = {
   research_runs: ["title","research_question","market_scope","status","summary","findings","methodology","completed_at"],
   research_sources: ["research_run_id","source_type","title","url","publisher","published_at","excerpt","relevance_score","evidence_status","metadata"],
   research_opportunities: ["research_run_id","title","customer_problem","target_customer","proposed_solution","revenue_model","validation_score","risks","validation_steps","status"],
-  research_evidence_passages: ["research_run_id","research_source_id","passage_text","locator_type","locator_value","content_sha256","extraction_method","review_status","reviewer_note"],
+  research_evidence_passages: ["research_run_id","research_source_id","research_document_id","passage_text","locator_type","locator_value","content_sha256","extraction_method","review_status","reviewer_note"],
   research_claims: ["research_run_id","claim_text","claim_type","verification_status","confidence","reviewer_note"],
   research_claim_evidence: ["research_run_id","claim_id","passage_id","relationship","reviewer_note"]
 };
@@ -396,7 +489,7 @@ const RESEARCH_COLUMNS: Record<ResearchResource, string> = {
   research_runs: "id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at",
   research_sources: "id,research_run_id,source_type,title,url,publisher,published_at,retrieved_at,excerpt,relevance_score,evidence_status,metadata,created_at",
   research_opportunities: "id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status,created_at,updated_at",
-  research_evidence_passages: "id,research_run_id,research_source_id,passage_text,locator_type,locator_value,content_sha256,extraction_method,review_status,reviewer_note,created_at,updated_at",
+  research_evidence_passages: "id,research_run_id,research_source_id,research_document_id,passage_text,locator_type,locator_value,content_sha256,extraction_method,review_status,reviewer_note,created_at,updated_at",
   research_claims: "id,research_run_id,claim_text,claim_type,verification_status,confidence,reviewer_note,created_at,updated_at",
   research_claim_evidence: "id,research_run_id,claim_id,passage_id,relationship,reviewer_note,created_at"
 };
@@ -438,6 +531,7 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
       try { const parsed = new URL(String(input.url)); if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) throw new Error(); }
       catch { return json({ error: { code: "INVALID_SOURCE_URL", message: "Research source URLs must be valid HTTPS links without embedded credentials." } }, 400, headers); }
     }
+    if (resource === "research_evidence_passages" && input.research_document_id !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(input.research_document_id))) return json({ error: { code: "INVALID_DOCUMENT_ID", message: "A valid research_document_id is required." } }, 400, headers);
     if (resource === "research_evidence_passages" && input.passage_text !== undefined && (typeof input.passage_text !== "string" || input.passage_text.length < 1 || input.passage_text.length > 12000)) return json({ error: { code: "INVALID_PASSAGE", message: "Passages must contain 1–12,000 characters." } }, 400, headers);
     if (resource === "research_evidence_passages" && input.locator_type !== undefined && !["page","paragraph","section","timestamp","row","cell_range","unspecified"].includes(String(input.locator_type))) return json({ error: { code: "INVALID_LOCATOR", message: "Invalid evidence locator type." } }, 400, headers);
     if (resource === "research_evidence_passages" && input.review_status !== undefined && !["unreviewed","relevant","irrelevant","disputed"].includes(String(input.review_status))) return json({ error: { code: "INVALID_REVIEW_STATUS", message: "Invalid passage review status." } }, 400, headers);
@@ -1917,6 +2011,7 @@ export default {
     if (resource) return handleResource(request, env, headers, resource);
 
     if (url.pathname === "/api/v1/research/report") return handleResearchReport(request, env, headers);
+    if (url.pathname === "/api/v1/research/documents/extract") return handleResearchDocumentExtraction(request, env, headers);
     if (url.pathname === "/api/v1/research/documents") return handleResearchDocuments(request, env, headers);
 
     const researchRoutes: Record<string, ResearchResource> = {
