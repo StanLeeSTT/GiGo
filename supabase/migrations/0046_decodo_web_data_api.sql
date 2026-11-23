@@ -19,4 +19,3 @@ end; $$;
 revoke all on function public.gigo_create_collection_run(text,integer,jsonb,text,text) from public,anon;
 grant execute on function public.gigo_create_collection_run(text,integer,jsonb,text,text) to authenticated;
 comment on function public.gigo_create_collection_run(text,integer,jsonb,text,text) is 'Creates a queued public-page metadata run bound to an owner-configured healthy provider. Decodo credentials remain in worker secrets.';
--- END CANONICAL MIGRATION 0046_decodo_web_data_api.sql
