@@ -34,6 +34,46 @@ async function loadRelated(){
  document.querySelector("#claim-evidence-list").innerHTML=(links||[]).map(link=>'<p class="welcome-copy">'+esc(link.relationship)+' · claim '+esc(link.claim_id)+' ↔ passage '+esc(link.passage_id)+'</p>').join("")||'<p class="welcome-copy">No claim/evidence links yet.</p>';
  }catch(error){showError(error);}
 }
+
+const exportReportButton=document.querySelector("#export-research-report");
+if(exportReportButton) exportReportButton.addEventListener("click",async()=>{
+ if(!selected)return;
+ exportReportButton.disabled=true;status.textContent="Assembling evidence-backed report…";
+ try{
+  const response=await api.request("/api/v1/research/report?research_run_id="+encodeURIComponent(selected.id));
+  const report=response?.data;
+  if(!report?.run)throw new Error("Research report was empty.");
+  const lines=["# "+report.run.title,"","**Generated:** "+report.generated_at,"","## Research question",report.run.research_question||"Not recorded","","## Scope",report.run.market_scope||"Not specified","","## Summary",report.run.summary||"Not recorded","","## Findings",report.run.findings||"Not recorded","","## Methodology",report.run.methodology||"Not recorded","","## Claims"];
+  (report.claims||[]).forEach((claim,index)=>{
+   lines.push("",(index+1)+". **"+claim.verification_status.toUpperCase()+"** — "+claim.claim_text);
+   lines.push("   - Type: "+claim.claim_type+" | Confidence: "+(claim.confidence??"not assessed"));
+   if(claim.reviewer_note)lines.push("   - Reviewer note: "+claim.reviewer_note);
+   const related=(report.claim_evidence||[]).filter(link=>link.claim_id===claim.id);
+   related.forEach(link=>{
+    const passage=(report.passages||[]).find(item=>item.id===link.passage_id);
+    const source=passage&&(report.sources||[]).find(item=>item.id===passage.research_source_id);
+    lines.push("   - "+link.relationship.toUpperCase()+": "+(source?.title||"Unknown source")+" — "+(passage?.locator_type||"unspecified")+" "+(passage?.locator_value||""));
+   });
+  });
+  lines.push("","## Sources");
+  (report.sources||[]).forEach((source,index)=>lines.push("",(index+1)+". ["+source.title+"]("+source.url+") — "+(source.publisher||"Publisher not recorded")+" | review: "+source.evidence_status));
+  lines.push("","## Exact evidence passages");
+  (report.passages||[]).forEach((passage,index)=>{
+   const source=(report.sources||[]).find(item=>item.id===passage.research_source_id);
+   lines.push("",(index+1)+". **"+(source?.title||"Unknown source")+"** ("+passage.locator_type+" "+(passage.locator_value||"")+")","> "+passage.passage_text.replace(/\n/g,"\n> "));
+   lines.push("Review: "+passage.review_status+" | Extraction: "+passage.extraction_method);
+  });
+  lines.push("","## Opportunities");
+  (report.opportunities||[]).forEach((opportunity,index)=>lines.push("",(index+1)+". **"+opportunity.title+"**",opportunity.customer_problem,"Target: "+(opportunity.target_customer||"Not specified"),"Solution: "+(opportunity.proposed_solution||"Not specified"),"Revenue model: "+(opportunity.revenue_model||"Not specified"),"Validation: "+(Array.isArray(opportunity.validation_steps)?opportunity.validation_steps.join("; "):"Not recorded"),"Status: "+opportunity.status));
+  lines.push("","---",report.verification_notice,"");
+  const blob=new Blob([lines.join("\n")],{type:"text/markdown;charset=utf-8"});
+  const objectUrl=URL.createObjectURL(blob),link=document.createElement("a");
+  link.href=objectUrl;link.download="gigo-research-"+selected.id+".md";link.click();URL.revokeObjectURL(objectUrl);
+  status.textContent="Evidence report exported. Check claim statuses before relying on conclusions.";
+ }catch(error){showError(error);}
+ finally{exportReportButton.disabled=false;}
+});
+
 document.querySelector("#research-form").addEventListener("submit",async event=>{
  event.preventDefault();const form=event.currentTarget;const data=formData(form);status.textContent="Saving research brief…";
  try{const result=await api.request("/api/v1/research/runs",{method:"POST",body:JSON.stringify(data)});form.reset();status.textContent="Research brief saved.";await 
