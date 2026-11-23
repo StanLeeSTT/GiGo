@@ -390,3 +390,11 @@ The following implementation supersedes the earlier checkpoint above:
 - Research source URLs are now restricted to valid HTTPS links without embedded credentials, and unsafe legacy source links are not made clickable. This reduces unsafe link handling; it is not a claim that source content has been independently verified.
 - The Assistant can list, create and update internal Customer Success cases and response drafts. These tools do not contact customers, issue refunds or change external accounts. Owner approval and any external action remain separate and currently unavailable.
 - Durable approval consumption is hardened at the database layer to refuse financial action names, global pause, missing/disabled external policy and mismatched/expired/revoked/quota-exhausted approvals. Runtime external execution remains blocked pending sender-specific implementation and final pre-side-effect checks.
+
+## Assistant module coverage — 2026-11-23
+
+- The Assistant can now list/create Learning plans and manage study milestones through owner-scoped Projects/Tasks records. Course enrollment and automatic reminders remain unavailable.
+- The Assistant can read an Analytics snapshot across owner-scoped business modules. It reports record counts/status only; each table query is capped at 1,000 rows and may be truncated. It does not invent revenue, profit, ROI or conversion metrics without transaction data.
+- Customer Success Assistant tools can list/create/update internal support cases and response drafts, without contacting customers. Creative Studio Assistant tools can manage briefs and output references without generating or publishing media. Marketing Assistant tools save drafts only.
+- These Assistant module capabilities passed the full test suite on commit ad7989c5985c96972a3ae86850e5f275399b977c. The count-cap disclosure refinement is pending CI.
+- External execution remains disabled; financial execution remains permanently denied.
