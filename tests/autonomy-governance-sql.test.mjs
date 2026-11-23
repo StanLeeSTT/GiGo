@@ -54,3 +54,18 @@ test("governance migration tail uses valid SQL function quoting and real line br
   assert.match(migration, /create or replace function public\\.gigo_revoke_autonomy_approval[\\s\\S]*as \\$\\$[\\s\\S]*end;\\s*\\$\\$;/);
   assert.match(migration, /grant execute on function public\\.gigo_revoke_autonomy_approval\\(uuid\\) to authenticated/);
 });
+
+
+test("autonomy initialization starts paused and atomically consumes exact approvals", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0039_autonomy_initialization_and_approval_consumption.sql", import.meta.url), "utf8");
+  assert.match(sql, /gigo_initialize_autonomy_defaults/);
+  assert.match(sql, /values\(owner_id,true,'Initial safety pause'/);
+  assert.match(sql, /'external_execute',false,true/);
+  assert.match(sql, /gigo_consume_autonomy_approval/);
+  assert.match(sql, /caller_role <> 'service_role'/);
+  assert.match(sql, /tool_name = p_tool_name/);
+  assert.match(sql, /target_ref = p_target_ref/);
+  assert.match(sql, /parameters_sha256 = p_parameters_sha256/);
+  assert.match(sql, /used_actions < max_actions/);
+  assert.match(sql, /grant execute on function public\.gigo_consume_autonomy_approval\(uuid,uuid,text,text,text\) to service_role/);
+});
