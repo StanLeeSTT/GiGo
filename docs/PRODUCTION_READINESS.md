@@ -145,3 +145,10 @@ GiGo cannot negotiate binding counteroffers, sign agreements, promise earnings o
 ## 10. Owner action boundary
 
 GiGo can prepare budgets, estimates, invoices, payment instructions and reports. The owner alone performs all payments, purchases, subscriptions, transfers, investments, trading, payouts, charges, deposits and withdrawals. No future approval or policy setting may override this permanent financial deny.
+
+
+## Research evidence traceability (migration 0043)
+
+Migration `0043_research_evidence_traceability.sql` adds owner-scoped exact passages, source locators, optional content hashes, atomic claims and claim-to-passage support/contradiction/context links. Claims default to `unverified`. Database triggers require every linked claim, passage and source to belong to the same owner and research run, and RLS protects all new tables.
+
+This schema does not itself upload or extract PDF/HTML/CSV files, perform OCR, create embeddings, or verify claims automatically. Those remain future application/worker work. A saved passage is traceable evidence, not an automatic truth determination. Apply migration 0043 only after reconciling and applying all earlier migrations in order.
