@@ -79,6 +79,17 @@ test("outreach message client access is read-only and message status transitions
   assert.ok(sql.includes("previous.status = 'sent'"));
 });
 
+test("campaign approval cannot be forged by direct authenticated table updates", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0036_outreach_database_rendering_and_final_guard.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("revoke all on public.outreach_campaigns from public, anon, authenticated"));
+  assert.ok(sql.includes("grant select, insert, delete on public.outreach_campaigns to authenticated"));
+  assert.ok(sql.includes("create policy outreach_campaigns_owner_select"));
+  assert.ok(sql.includes("create policy outreach_campaigns_owner_insert"));
+  assert.ok(sql.includes("security definer\nset search_path = ''"));
+  assert.ok(sql.includes("owner_id uuid := auth.uid()"));
+  assert.ok(sql.includes("grant execute on function public.gigo_approve_outreach_campaign"));
+});
+
 test("inbound outreach events stop queued follow-ups and suppress negative responses", () => {
   const sql = readFileSync(new URL("../supabase/migrations/0031_outreach_inbound_event_safety.sql", import.meta.url), "utf8");
   assert.ok(sql.includes("gigo_record_outreach_recipient_event"));
