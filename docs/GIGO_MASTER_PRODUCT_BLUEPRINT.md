@@ -385,3 +385,8 @@ The following implementation supersedes the earlier checkpoint above:
 
 - The AI Assistant can list private creative briefs, save new briefs and generation prompts with HTTPS reference links, and update production status, output URL and notes.
 - These tools organise and track creative work only. They do not generate media, publish assets or purchase creative services.
+## Safety and Assistant workflow updates — 2026-11-23
+
+- Research source URLs are now restricted to valid HTTPS links without embedded credentials, and unsafe legacy source links are not made clickable. This reduces unsafe link handling; it is not a claim that source content has been independently verified.
+- The Assistant can list, create and update internal Customer Success cases and response drafts. These tools do not contact customers, issue refunds or change external accounts. Owner approval and any external action remain separate and currently unavailable.
+- Durable approval consumption is hardened at the database layer to refuse financial action names, global pause, missing/disabled external policy and mismatched/expired/revoked/quota-exhausted approvals. Runtime external execution remains blocked pending sender-specific implementation and final pre-side-effect checks.
