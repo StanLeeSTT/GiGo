@@ -59,6 +59,9 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "offers_create", description: "Create an offer draft and calculate indicative net-before-tax economics from price, delivery cost, payment fee and partner share assumptions. This is an estimate, not a guarantee.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, product_id: { type: ["string","null"] }, target_customer: { type: ["string","null"], maxLength: 2000 }, promised_outcome: { type: ["string","null"], maxLength: 5000 }, deliverables: { type: "array", items: { type: "string" } }, exclusions: { type: ["string","null"], maxLength: 5000 }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, delivery_cost: { type: ["number","null"], minimum: 0 }, payment_fee_percent: { type: ["number","null"], minimum: 0, maximum: 100 }, partner_share_percent: { type: ["number","null"], minimum: 0, maximum: 100 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "marketing_list_assets", description: "List the owner's saved marketing drafts and internal review status. This does not publish or send anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "marketing_create_asset", description: "Save a marketing draft for owner review. Never publish, send email, buy ads or claim that a post was published.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, asset_type: { type: "string", enum: ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"] }, platform: { type: ["string","null"], maxLength: 80 }, campaign_name: { type: ["string","null"], maxLength: 200 }, objective: { type: ["string","null"], maxLength: 2000 }, audience: { type: ["string","null"], maxLength: 1000 }, content: { type: "string", minLength: 1, maxLength: 30000 } }, required: ["title","asset_type","content"], additionalProperties: false } } },
+  { type: "function", function: { name: "creative_list_briefs", description: "List the owner's private creative briefs and production status. Does not generate or publish media.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "creative_create_brief", description: "Save a creative brief and generation prompt for owner review. This tool does not itself generate media or publish assets.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, asset_type: { type: "string", enum: ["image","video","audio","brand_identity","presentation","other"] }, brief: { type: "string", minLength: 1, maxLength: 10000 }, generation_prompt: { type: ["string","null"], maxLength: 10000 }, target_platform: { type: ["string","null"], maxLength: 100 }, aspect_ratio: { type: ["string","null"], maxLength: 40 }, reference_urls: { type: "array", items: { type: "string", maxLength: 2048 }, maxItems: 20 }, notes: { type: ["string","null"], maxLength: 5000 } }, required: ["title","asset_type","brief"], additionalProperties: false } } },
+  { type: "function", function: { name: "creative_update_brief", description: "Update creative brief production status, output URL or notes. Does not generate or publish media.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: ["string","null"], enum: ["draft","ready","in_progress","complete","archived",null] }, output_url: { type: ["string","null"], maxLength: 2048 }, notes: { type: ["string","null"], maxLength: 5000 } }, required: ["id"], additionalProperties: false } } },
   { type: "function", function: { name: "customers_list_cases", description: "List the owner's private customer support cases and response drafts. Does not contact customers.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "customers_create_case", description: "Save a customer support case for internal tracking. Never send a message, issue a refund or change an account.", parameters: { type: "object", properties: { customer_name: { type: "string", minLength: 1, maxLength: 200 }, customer_email: { type: ["string","null"], maxLength: 320 }, subject: { type: "string", minLength: 1, maxLength: 240 }, issue_description: { type: "string", minLength: 1, maxLength: 10000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] }, source: { type: ["string","null"], maxLength: 100 } }, required: ["customer_name","subject","issue_description"], additionalProperties: false } } },
   { type: "function", function: { name: "customers_update_case", description: "Update an internal support case status, response draft or notes. The response remains a draft and is never sent.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: ["string","null"], enum: ["open","investigating","waiting_on_customer","resolved","closed",null] }, response_draft: { type: ["string","null"], maxLength: 10000 }, internal_notes: { type: ["string","null"], maxLength: 10000 } }, required: ["id"], additionalProperties: false } } },
@@ -321,6 +324,44 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       objective: args.objective ?? null, audience: args.audience ?? null, status: "draft", metadata: { created_by: "assistant" }
     }) as Row[];
     return { saved_draft: rows?.[0] ?? null, published: false, sent: false };
+  }
+  if (name === "creative_list_briefs") {
+    return { briefs: await db(env, token, "/rest/v1/creative_briefs?select=id,title,asset_type,brief,generation_prompt,target_platform,aspect_ratio,reference_urls,status,output_url,notes,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "creative_create_brief") {
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const brief = typeof args.brief === "string" ? args.brief.trim() : "";
+    const assetType = typeof args.asset_type === "string" ? args.asset_type : "";
+    const allowed = ["image","video","audio","brand_identity","presentation","other"];
+    if (!title || title.length > 200 || !brief || brief.length > 10000 || !allowed.includes(assetType)) return { error: "Title, supported asset type and brief are required." };
+    for (const [key,max] of [["generation_prompt",10000],["target_platform",100],["aspect_ratio",40],["notes",5000]] as const) if (args[key] !== undefined && args[key] !== null && (typeof args[key] !== "string" || String(args[key]).length > max)) return { error: key + " must be text within its allowed length." };
+    const refs = Array.isArray(args.reference_urls) ? args.reference_urls : [];
+    if (refs.length > 20 || refs.some((value: unknown) => typeof value !== "string" || value.length > 2048 || !/^https:\/\/[^\s]+$/i.test(value))) return { error: "Reference URLs must be up to 20 HTTPS links." };
+    const rows = await db(env, token, "/rest/v1/creative_briefs?select=id,title,asset_type,status,created_at", "POST", {
+      user_id: ownerId, title, asset_type: assetType, brief, generation_prompt: args.generation_prompt ?? null,
+      target_platform: args.target_platform ?? null, aspect_ratio: args.aspect_ratio ?? null,
+      reference_urls: refs, notes: args.notes ?? null, status: "draft"
+    }) as Row[];
+    return { saved_brief: rows?.[0] ?? null, media_generated: false, published: false };
+  }
+  if (name === "creative_update_brief") {
+    if (!validUuid(args.id)) return { error: "A valid creative brief ID is required." };
+    const patch: Row = {};
+    if (args.status !== undefined && args.status !== null) {
+      if (!["draft","ready","in_progress","complete","archived"].includes(String(args.status))) return { error: "Invalid creative production status." };
+      patch.status = args.status;
+    }
+    if (args.output_url !== undefined) {
+      if (args.output_url !== null) { try { const parsed = new URL(String(args.output_url)); if (parsed.protocol !== "https:") throw new Error(); } catch { return { error: "Output URL must use HTTPS." }; } }
+      patch.output_url = args.output_url;
+    }
+    if (args.notes !== undefined) {
+      if (args.notes !== null && (typeof args.notes !== "string" || args.notes.length > 5000)) return { error: "Notes must be text up to 5,000 characters or null." };
+      patch.notes = args.notes;
+    }
+    if (!Object.keys(patch).length) return { error: "Provide a production status, output URL or notes update." };
+    const rows = await db(env, token, "/rest/v1/creative_briefs?select=id,status,output_url,notes&id=eq." + encodeURIComponent(args.id), "PATCH", patch) as Row[];
+    return { updated_brief: rows?.[0] ?? null, media_published: false };
   }
   if (name === "customers_list_cases") {
     return { cases: await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
