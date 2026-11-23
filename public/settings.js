@@ -15,3 +15,44 @@ if(signatureInput&&signatureButton&&signatureStatus){
     finally{signatureButton.disabled=false;}
   });
 }
+
+const autonomyStatus=document.querySelector("#autonomy-status"),initializeAutonomy=document.querySelector("#initialize-autonomy"),toggleAutonomyPause=document.querySelector("#toggle-autonomy-pause"),autonomyPolicies=document.querySelector("#autonomy-policies");
+if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
+  let autonomyState=null;
+  const scopeLabels={observe:"Observe workspace data",analyse:"Analyse and research",draft:"Create drafts",internal_execute:"Execute internal workspace actions"};
+  async function loadAutonomy(){
+    try{
+      autonomyState=await api.request("/api/v1/autonomy");
+      initializeAutonomy.hidden=autonomyState.initialized===true;
+      toggleAutonomyPause.disabled=!autonomyState.initialized;
+      toggleAutonomyPause.textContent=autonomyState.is_paused?"Resume internal tools":"Pause all tools";
+      autonomyStatus.textContent=autonomyState.initialized?(autonomyState.is_paused?"GiGo is PAUSED. "+(autonomyState.pause_reason||""):"GiGo is UNPAUSED. Only enabled, audited internal scopes can run."):"No durable autonomy state exists. GiGo remains paused until initialized.";
+      const rows=Array.isArray(autonomyState.policies)?autonomyState.policies:[];
+      autonomyPolicies.innerHTML=Object.entries(scopeLabels).map(([scope,label])=>{
+        const row=rows.find(item=>item.scope===scope);
+        const checked=row?.enabled===true;
+        return '<label class="data-card" style="display:flex;align-items:center;gap:12px"><input type="checkbox" data-autonomy-scope="'+scope+'" '+(checked?"checked":"")+' '+(!autonomyState.initialized?"disabled":"")+'><span>'+api.esc(label)+'</span></label>';
+      }).join("")+'<article class="data-card"><div><strong>External execution</strong><p>Disabled — campaign-bound approval and provider controls are not yet connected.</p></div><span class="status-pill">Blocked</span></article>';
+    }catch(error){autonomyStatus.textContent="Autonomy settings unavailable: "+error.message+" GiGo tools remain fail-closed.";toggleAutonomyPause.disabled=true;initializeAutonomy.disabled=false;}
+  }
+  initializeAutonomy.addEventListener("click",async()=>{
+    initializeAutonomy.disabled=true;autonomyStatus.textContent="Initializing with global pause enabled…";
+    try{await api.request("/api/v1/autonomy/initialize",{method:"POST",body:JSON.stringify({})});await loadAutonomy();}
+    catch(error){autonomyStatus.textContent=error.message;}
+    finally{initializeAutonomy.disabled=false;}
+  });
+  toggleAutonomyPause.addEventListener("click",async()=>{
+    if(!autonomyState)return;
+    toggleAutonomyPause.disabled=true;
+    try{await api.request("/api/v1/autonomy/pause",{method:"POST",body:JSON.stringify({is_paused:!autonomyState.is_paused,reason:!autonomyState.is_paused?"Paused by owner from settings":null})});await loadAutonomy();}
+    catch(error){autonomyStatus.textContent=error.message;}
+    finally{toggleAutonomyPause.disabled=false;}
+  });
+  autonomyPolicies.addEventListener("change",async event=>{
+    const input=event.target.closest("[data-autonomy-scope]");if(!input||!autonomyState)return;
+    input.disabled=true;
+    try{await api.request("/api/v1/autonomy/policies",{method:"POST",body:JSON.stringify({scope:input.dataset.autonomyScope,enabled:input.checked,require_approval:false,limits:{}})});await loadAutonomy();}
+    catch(error){autonomyStatus.textContent=error.message;await loadAutonomy();}
+  });
+  loadAutonomy();
+}
