@@ -263,16 +263,22 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 
 
 
-type ResearchResource = "research_runs" | "research_sources" | "research_opportunities";
+type ResearchResource = "research_runs" | "research_sources" | "research_opportunities" | "research_evidence_passages" | "research_claims" | "research_claim_evidence";
 const RESEARCH_FIELDS: Record<ResearchResource, string[]> = {
   research_runs: ["title","research_question","market_scope","status","summary","findings","methodology","completed_at"],
   research_sources: ["research_run_id","source_type","title","url","publisher","published_at","excerpt","relevance_score","evidence_status","metadata"],
-  research_opportunities: ["research_run_id","title","customer_problem","target_customer","proposed_solution","revenue_model","validation_score","risks","validation_steps","status"]
+  research_opportunities: ["research_run_id","title","customer_problem","target_customer","proposed_solution","revenue_model","validation_score","risks","validation_steps","status"],
+  research_evidence_passages: ["research_run_id","research_source_id","passage_text","locator_type","locator_value","content_sha256","extraction_method","review_status","reviewer_note"],
+  research_claims: ["research_run_id","claim_text","claim_type","verification_status","confidence","reviewer_note"],
+  research_claim_evidence: ["research_run_id","claim_id","passage_id","relationship","reviewer_note"]
 };
 const RESEARCH_COLUMNS: Record<ResearchResource, string> = {
   research_runs: "id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at",
   research_sources: "id,research_run_id,source_type,title,url,publisher,published_at,retrieved_at,excerpt,relevance_score,evidence_status,metadata,created_at",
-  research_opportunities: "id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status,created_at,updated_at"
+  research_opportunities: "id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status,created_at,updated_at",
+  research_evidence_passages: "id,research_run_id,research_source_id,passage_text,locator_type,locator_value,content_sha256,extraction_method,review_status,reviewer_note,created_at,updated_at",
+  research_claims: "id,research_run_id,claim_text,claim_type,verification_status,confidence,reviewer_note,created_at,updated_at",
+  research_claim_evidence: "id,research_run_id,claim_id,passage_id,relationship,reviewer_note,created_at"
 };
 async function handleResearchResource(request: Request, env: Env, headers: Headers, resource: ResearchResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -292,7 +298,7 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
   }
   const fields = RESEARCH_FIELDS[resource];
   let endpoint = "/rest/v1/" + resource + "?select=" + RESEARCH_COLUMNS[resource];
-  const params = new URLSearchParams({ order: resource === "research_sources" ? "created_at.desc" : "updated_at.desc", limit: "100" });
+  const params = new URLSearchParams({ order: resource === "research_sources" || resource === "research_claim_evidence" ? "created_at.desc" : "updated_at.desc", limit: "100" });
   if (resource !== "research_runs" && runId) params.set("research_run_id", "eq." + runId);
   if (method === "GET") endpoint += "&" + params.toString();
   let body: JsonRecord | undefined;
@@ -300,16 +306,31 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
     const input = await readJson(request);
     if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
     for (const key of Object.keys(input)) if (!fields.includes(key)) return json({ error: { code: "INVALID_BODY", message: "Unsupported research field: " + key } }, 400, headers);
-    const required = resource === "research_runs" ? ["title","research_question"] : resource === "research_sources" ? ["research_run_id","title","url"] : ["research_run_id","title","customer_problem"];
+    const required = resource === "research_runs" ? ["title","research_question"]
+      : resource === "research_sources" ? ["research_run_id","title","url"]
+      : resource === "research_opportunities" ? ["research_run_id","title","customer_problem"]
+      : resource === "research_evidence_passages" ? ["research_run_id","research_source_id","passage_text"]
+      : resource === "research_claims" ? ["research_run_id","claim_text"]
+      : ["research_run_id","claim_id","passage_id","relationship"];
     if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" ? 5000 : key === "url" ? 2048 : key === "customer_problem" ? 5000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
     if (resource === "research_sources" && input.url !== undefined) {
       try { const parsed = new URL(String(input.url)); if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) throw new Error(); }
       catch { return json({ error: { code: "INVALID_SOURCE_URL", message: "Research source URLs must be valid HTTPS links without embedded credentials." } }, 400, headers); }
     }
+    if (resource === "research_evidence_passages" && input.passage_text !== undefined && (typeof input.passage_text !== "string" || input.passage_text.length < 1 || input.passage_text.length > 12000)) return json({ error: { code: "INVALID_PASSAGE", message: "Passages must contain 1–12,000 characters." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.locator_type !== undefined && !["page","paragraph","section","timestamp","row","cell_range","unspecified"].includes(String(input.locator_type))) return json({ error: { code: "INVALID_LOCATOR", message: "Invalid evidence locator type." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.review_status !== undefined && !["unreviewed","relevant","irrelevant","disputed"].includes(String(input.review_status))) return json({ error: { code: "INVALID_REVIEW_STATUS", message: "Invalid passage review status." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.extraction_method !== undefined && !["manual","pdf_text","html_text","csv_text","transcript","other"].includes(String(input.extraction_method))) return json({ error: { code: "INVALID_EXTRACTION_METHOD", message: "Invalid extraction method." } }, 400, headers);
+    if (resource === "research_claims" && input.claim_text !== undefined && (typeof input.claim_text !== "string" || input.claim_text.length < 1 || input.claim_text.length > 3000)) return json({ error: { code: "INVALID_CLAIM", message: "Claims must contain 1–3,000 characters." } }, 400, headers);
+    if (resource === "research_claims" && input.claim_type !== undefined && !["finding","interpretation","hypothesis","recommendation"].includes(String(input.claim_type))) return json({ error: { code: "INVALID_CLAIM_TYPE", message: "Invalid claim type." } }, 400, headers);
+    if (resource === "research_claims" && input.verification_status !== undefined && !["unverified","supported","mixed","contradicted","insufficient_evidence"].includes(String(input.verification_status))) return json({ error: { code: "INVALID_VERIFICATION_STATUS", message: "Invalid claim verification status." } }, 400, headers);
+    if (resource === "research_claims" && input.confidence !== undefined && (typeof input.confidence !== "number" || input.confidence < 0 || input.confidence > 100)) return json({ error: { code: "INVALID_CONFIDENCE", message: "Confidence must be between 0 and 100." } }, 400, headers);
+    if (resource === "research_claim_evidence" && input.relationship !== undefined && !["supports","contradicts","context"].includes(String(input.relationship))) return json({ error: { code: "INVALID_RELATIONSHIP", message: "Invalid claim/evidence relationship." } }, 400, headers);
     if (resource === "research_runs" && input.status !== undefined && !["draft","queued","running","completed","failed","cancelled"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid research status." } }, 400, headers);
     if (resource === "research_sources" && input.evidence_status !== undefined && !["unreviewed","supports","contradicts","context","rejected"].includes(String(input.evidence_status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid evidence status." } }, 400, headers);
     if (resource === "research_opportunities" && input.status !== undefined && !["discovered","investigating","validated","rejected","pursuing"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid opportunity status." } }, 400, headers);
+    for (const key of ["research_source_id","claim_id","passage_id"]) if (input[key] !== undefined && !/^[0-9a-f-]{36}$/i.test(String(input[key]))) return json({ error: { code: "INVALID_ID", message: "A valid " + key + " is required." } }, 400, headers);
     if (resource !== "research_runs" && input.research_run_id !== undefined && !/^[0-9a-f-]{36}$/i.test(String(input.research_run_id))) return json({ error: { code: "INVALID_ID", message: "A valid research_run_id is required." } }, 400, headers);
     body = { ...input };
     if (method === "POST") body.user_id = ownerId;
