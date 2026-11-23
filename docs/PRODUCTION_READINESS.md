@@ -116,11 +116,11 @@ This adapter collects only metadata from explicitly supplied public HTTPS URLs. 
 
 ## 8. Outreach and external communications
 
-Outreach currently supports campaign drafting, partner 50/50 net-revenue terms, contact eligibility review, approved templates and DB-side queue preparation. Queue preparation is not delivery.
+Outreach currently supports campaign drafting, partner 50/50 net-revenue terms, contact eligibility review, approved templates and DB-side queue preparation. Queue preparation is not delivery. A guarded Resend adapter now exists as code only: it validates message limits/signature/idempotency, keeps promotional outreach on the marketing channel for registered contacts, and can verify Svix webhook signatures. It remains deliberately unregistered; no sender worker or inbound webhook route invokes it, and no sender credentials are configured.
 
 Do not enable live sending until all of the following exist and pass end-to-end tests:
 
-- Provider-specific sender adapter and authenticated sender identity.
+- Register and integrate the code-only provider adapter into a durable send worker, with authenticated sender identity and exact pre-send campaign/recipient checks. The adapter itself is not an activation gate.
 - Current provider terms and lawful marketing basis confirmed for the target audience and region.
 - Provider marketing contact registration verified.
 - Approved campaign/template and final recipient eligibility recheck immediately before the network call.
