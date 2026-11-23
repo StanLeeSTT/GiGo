@@ -326,18 +326,20 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
 }
 
 
-type BusinessResource = "products" | "partner_candidates" | "leads" | "offers";
+type BusinessResource = "products" | "partner_candidates" | "leads" | "offers" | "marketing_assets";
 const BUSINESS_FIELDS: Record<BusinessResource, string[]> = {
   products: ["research_run_id","name","summary","target_customer","customer_problem","proposed_solution","product_type","outline","price_amount","price_currency","status","validation_notes"],
   partner_candidates: ["name","platform","profile_url","niche","follower_count","average_views","business_email","has_competing_offer","score_components","total_score","recommendation","evidence","due_diligence","status"],
   leads: ["name","organisation","email","website","source","source_url","customer_problem","fit_score","stage","do_not_contact","notes","last_contacted_at"],
-  offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"]
+  offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"],
+  marketing_assets: ["title","asset_type","platform","campaign_name","objective","audience","content","status","metadata"]
 };
 const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
   products: "id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at",
   partner_candidates: "id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at",
   leads: "id,name,organisation,email,website,source,source_url,customer_problem,fit_score,stage,do_not_contact,notes,last_contacted_at,created_at,updated_at",
-  offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at"
+  offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at",
+  marketing_assets: "id,title,asset_type,platform,campaign_name,objective,audience,content,status,metadata,created_at,updated_at"
 };
 async function handleBusinessResource(request: Request, env: Env, headers: Headers, resource: BusinessResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -385,6 +387,10 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (input.stage !== undefined && !["new","qualified","contacted","proposal","won","lost","do_not_contact"].includes(String(input.stage))) return json({ error: { code: "INVALID_STAGE", message: "Invalid lead stage." } }, 400, headers);
       if (input.fit_score !== undefined && input.fit_score !== null && (typeof input.fit_score !== "number" || input.fit_score < 0 || input.fit_score > 100)) return json({ error: { code: "INVALID_SCORE", message: "Lead fit score must be between 0 and 100." } }, 400, headers);
       if (input.do_not_contact !== undefined && typeof input.do_not_contact !== "boolean") return json({ error: { code: "INVALID_CONSENT", message: "do_not_contact must be true or false." } }, 400, headers);
+    } else if (resource === "marketing_assets") {
+      if (method === "POST" && (!validText(input.title, 200) || !validText(input.content, 30000))) return json({ error: { code: "INVALID_BODY", message: "A title and content are required for the marketing draft." } }, 400, headers);
+      if (input.asset_type !== undefined && !["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"].includes(String(input.asset_type))) return json({ error: { code: "INVALID_ASSET_TYPE", message: "Invalid marketing asset type." } }, 400, headers);
+      if (input.status !== undefined && !["draft","review","approved","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid marketing asset status." } }, 400, headers);
     } else if (resource === "offers") {
       if (method === "POST" && !validText(input.name, 200)) return json({ error: { code: "INVALID_BODY", message: "Offer name is required." } }, 400, headers);
       if (input.status !== undefined && !["draft","validating","ready","active","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid offer status." } }, 400, headers);
@@ -429,6 +435,7 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (resource === "partner_candidates" && body.status === undefined) body.status = "new";
       if (resource === "leads" && body.stage === undefined) body.stage = "new";
       if (resource === "offers" && body.status === undefined) body.status = "draft";
+      if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
   }
@@ -1745,7 +1752,7 @@ export default {
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
     };
-    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers" };
+    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers", "/api/v1/marketing/assets": "marketing_assets" };
     const businessResource = businessRoutes[url.pathname];
     if (businessResource) return handleBusinessResource(request, env, headers, businessResource);
 
