@@ -166,3 +166,8 @@ Research uploads require both migration `0044_private_research_documents.sql` an
 6. The upload endpoint stores the original document privately. Use the authenticated `POST /api/v1/research/documents/extract` endpoint or the Research workspace's **Extract evidence** action for TXT, HTML and CSV files. Extraction rechecks the stored SHA-256, decodes UTF-8 strictly, uses bounded parsing (500,000 characters and at most 50 passages), creates a provenance-linked research source and exact passages, and leaves every passage unreviewed. Repeated extraction upserts by document/locator and is safe to retry. HTML is stripped to text; scripts and markup are never executed. PDF files are stored and signature-checked but binary PDF extraction/OCR is not implemented.
 
 If the bucket or migration is missing, upload fails closed with a configuration/storage error. Do not treat a file upload as evidence extraction or claim verification.
+
+
+## Outbound provider adapter readiness
+
+A guarded Resend adapter is implemented but remains unregistered and cannot be selected by the send path. It includes strict pre-send message checks, provider idempotency, a registered-contact restriction for the marketing channel, conservative handling of uncertain provider outcomes, and Svix HMAC verification. This is not permission to send: the durable worker, owner authorization, campaign eligibility and suppression rechecks, signed webhook route with replay/event deduplication, sender authentication and audit controls remain activation gates. Follow [OUTBOUND_PROVIDER_ADAPTER_READINESS.md](OUTBOUND_PROVIDER_ADAPTER_READINESS.md) before any future activation.
