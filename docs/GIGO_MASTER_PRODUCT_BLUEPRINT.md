@@ -361,3 +361,10 @@ The following implementation supersedes the earlier checkpoint above:
 
 - Creative Studio now stores owner-private briefs for image, video, audio, brand identity, presentation and other creative asset types. It records the creative brief, generation prompt, target platform, format/aspect ratio, HTTPS reference links, production status, output URL and notes.
 - Owners can track draft, ready, in-progress, complete and archived states. This is brief and output-reference management only; it does not itself generate media, publish content or purchase paid creative services.
+## Learning Planner and Commerce Planning — 2026-11-23
+
+- Learning & Accountability now creates learning plans using owner-scoped Projects and Tasks records, generates a standard study path, supports custom milestones and tracks task status. It does not automatically enroll in courses or send reminders. Tests passed in CI run 45109516981.
+- Commerce Planning now reads saved products/offers and presents their entered price/cost assumptions and indicative net-before-tax estimates. It is not a payment system. The permanent financial hard deny remains absolute: GiGo cannot initiate or execute payments, refunds, transfers, purchases, subscriptions, investments or other financial commitments. Owner performs monetary actions manually.
+- Creative Studio brief storage/API/UI is implemented, including output links and notes; it does not generate or publish media. Migration 0042 remains unapplied.
+- Customer Success support-case tracking is implemented using migration 0041; its latest code correction removed the discarded feedback branch and retained only the support-case schema. Verify the latest CI run before considering this slice green.
+- Migrations 0040–0042 are committed only, not applied. No deployment or external actions occurred.
