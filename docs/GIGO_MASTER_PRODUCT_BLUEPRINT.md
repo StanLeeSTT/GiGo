@@ -230,6 +230,20 @@ Never present a scaffold, mock, catalogue record, scheduled routine or successfu
 - Next engineering milestone: finish the dedicated durable collection execution boundary—transactional run/job creation, Supabase persistence hooks for datasets/items/checkpoints, worker dispatch isolation, retry/recovery semantics, active cancellation, and integration tests—before exposing run creation or enabling any provider.
 
 
+
+### Concise automatic messaging policy
+
+The owner permits GiGo to automatically send messages only within a narrow, approved messaging scope. This is not blanket permission for all external execution.
+
+- Messages must be short, structured, plain-text and direct. Initial defaults: subject maximum 80 characters and body maximum 500 characters.
+- Preferred structure: brief greeting where appropriate; one evidence-backed reason for contact; one concise value proposition/useful point; at most one clear next step.
+- No attachments, long introductions, multiple unrelated topics, invented personalization, unsupported claims or pressure tactics.
+- Auto-send is allowed only for a specifically approved campaign using approved immutable templates and bounded recipients, schedule, follow-up count and sender identity.
+- Every send must recheck contact authorization, registered-contact status where required, suppression/opt-out, reply/bounce/complaint state, campaign approval/revocation, quiet hours, rate limits, idempotency and provider/platform rules.
+- Replies, opt-outs, complaints, hard bounces, campaign revocation and global pause stop subsequent sends.
+- This does not authorize arbitrary cold messaging, bulk unsolicited messages, social DMs or bypassing platform restrictions. Other external actions remain separately gated.
+- Financial execution remains permanently hard-denied.
+
 ## Autonomy and financial-control architecture
 
 GiGo should progressively operate as an autonomous personal and business operating system, while the owner retains exclusive control over money and financial commitments.
