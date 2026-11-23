@@ -362,36 +362,6 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     return { updated_case: rows?.[0] ?? null, response_sent: false };
   }
 
-  if (name === "customers_list_cases") {
-    return { cases: await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at,resolved_at&order=updated_at.desc&limit=100") as Row[], external_contact_performed: false };
-  }
-  if (name === "customers_create_case") {
-    const customerName = typeof args.customer_name === "string" ? args.customer_name.trim() : "";
-    const subject = typeof args.subject === "string" ? args.subject.trim() : "";
-    const issue = typeof args.issue_description === "string" ? args.issue_description.trim() : "";
-    const email = args.customer_email === null || args.customer_email === undefined ? null : String(args.customer_email).trim();
-    const priority = args.priority === undefined ? "normal" : String(args.priority);
-    const source = args.source === null || args.source === undefined ? null : String(args.source);
-    if (!customerName || customerName.length > 200 || !subject || subject.length > 240 || !issue || issue.length > 10000 || !["low","normal","high","urgent"].includes(priority) || (email !== null && (email.length > 320 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))) || (source !== null && source.length > 100)) return { error: "Customer name, subject, issue, and valid optional contact details are required." };
-    const rows = await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,subject,status,priority,created_at", "POST", { user_id: ownerId, customer_name: customerName, customer_email: email, subject, issue_description: issue, priority, source, status: "open" }) as Row[];
-    return { saved_case: rows?.[0] ?? null, customer_contacted: false };
-  }
-  if (name === "customers_update_case") {
-    const caseId = typeof args.case_id === "string" ? args.case_id : "";
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(caseId)) return { error: "A valid support case ID is required." };
-    const update: Row = {};
-    if (args.status !== undefined) {
-      if (!["open","investigating","waiting_on_customer","resolved","closed"].includes(String(args.status))) return { error: "Invalid support case status." };
-      update.status = args.status;
-    }
-    for (const key of ["response_draft","internal_notes"] as const) if (args[key] !== undefined) {
-      if (args[key] !== null && (typeof args[key] !== "string" || args[key].length > 10000)) return { error: key + " must be text within 10,000 characters." };
-      update[key] = args[key];
-    }
-    if (!Object.keys(update).length) return { error: "Provide a status, response draft or internal note update." };
-    const rows = await db(env, token, "/rest/v1/customer_support_cases?id=eq." + encodeURIComponent(caseId) + "&user_id=eq." + encodeURIComponent(ownerId) + "&select=id,status,updated_at", "PATCH", update) as Row[];
-    return { updated_case: rows?.[0] ?? null, response_sent: false };
-  }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
     if (args.status !== undefined) {
