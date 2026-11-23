@@ -436,3 +436,10 @@ Migration `0034_outreach_outbox_privilege_hardening.sql` closes a direct-write g
 This hardens who can write to the outbox. It does not yet make SQL independently re-render the approved template: correctness of rendered text still depends on the trusted API implementation and its owner-scoped source reads. That remains a review item before any sending worker is enabled.
 
 Migration 0034 is committed but unapplied. No email provider is connected and no message is sent.
+
+
+## Inbound webhook idempotency hardening (migration 0035)
+
+Migration `0035_outreach_inbound_event_idempotency.sql` adds provider account identity to stored inbound events and a unique database constraint on `(provider, provider_account_id, provider_event_id)`. The service-only event RPC now reserves that unique event identity before applying reply, bounce, unsubscribe or complaint effects. Concurrent duplicate webhook deliveries therefore cannot both cancel sequences or create duplicate suppressions/events. Provider account and event identifiers are stored in dedicated columns rather than relying on JSON-only duplicate checks.
+
+The RPC requires the trusted service role and a provider account ID. This does not itself authenticate a webhook: a future provider adapter must verify the raw-body signature, confirm the expected provider account, map the provider message ID to a GiGo message/recipient, and only then call the RPC. No webhook endpoint or provider adapter is active.
