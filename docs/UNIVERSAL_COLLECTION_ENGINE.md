@@ -421,3 +421,18 @@ Approval requires:
 The endpoint records the review timestamp. The preparation endpoint only selects approved and registered recipients. A database trigger independently blocks any outbox message from entering `sending` unless the recipient has approved contact authorization, evidence and provider-audience registration. This is an operational gate, not legal advice or a declaration that a selected basis is lawful. The owner must assess the applicable jurisdiction, provider acceptable-use terms and evidence for each contact. Public availability of an email address alone is not treated as permission.
 
 Existing recipient records remain unreviewed after migration until individually reviewed. No provider is connected and no messages are being sent.
+
+
+## Outbox privilege hardening (migration 0034)
+
+Migration `0034_outreach_outbox_privilege_hardening.sql` closes a direct-write gap in the message queue:
+
+- Authenticated owners retain read-only access to their own `outreach_messages`; direct insert, update and delete privileges are revoked.
+- The earlier authenticated preparation RPC is removed. Its replacement accepts an explicit owner ID but can execute only under the trusted Supabase `service_role`.
+- The trusted API verifies the caller's Supabase session, then reads campaign, templates, recipients and lead evidence with the user's bearer token and RLS. Only after those owner-scoped checks does it call the preparation RPC with the server-only secret key and the verified user ID.
+- The SQL function independently checks campaign ownership, approval state, recipient eligibility, provider audience registration, suppressions, approved template sequence and idempotency.
+- A new `sb_secret_...` key is sent only in the `apikey` header; legacy JWT-style `service_role` keys also receive the bearer header. The secret key remains server-side and is never returned to the client.
+
+This hardens who can write to the outbox. It does not yet make SQL independently re-render the approved template: correctness of rendered text still depends on the trusted API implementation and its owner-scoped source reads. That remains a review item before any sending worker is enabled.
+
+Migration 0034 is committed but unapplied. No email provider is connected and no message is sent.
