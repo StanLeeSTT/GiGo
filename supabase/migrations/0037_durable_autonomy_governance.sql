@@ -185,7 +185,7 @@ begin
     raise exception 'invalid bounded approval request' using errcode = '22023';
   end if;
   -- A hard deny here is defense in depth; runtime classification remains authoritative.
-  if p_tool_name ~* '(pay|purchase|checkout|charge|refund|transfer|withdraw|deposit|payout|subscription|billing|bank|wallet|invest|trade|loan|borrow|lend|donate|spend)' then
+  if p_tool_name ~* '(^|[._-])(pay|payments?|purchase|buy|checkout|charge|refund|transfer|withdraw|deposit|payout|subscription|subscribe|billing|bank|wallet_send|invest|investment|trade|trading|loan|borrow|lend|donate|spend)([._-]|$)' then
     raise exception 'financial actions cannot be approved for GiGo execution' using errcode = '42501';
   end if;
   insert into public.autonomy_approvals(user_id,tool_name,action_class,target_ref,parameters_sha256,max_actions,expires_at)
@@ -195,7 +195,7 @@ begin
 end;
 $$;
 
-revoke all on function public.gigo_set_autonomy_policy(text,boolean,boolean,jsonb) from public, anon;
+revoke all on public.autonomy_audit_events from public, anon, authenticated, service_role;\ngrant select, insert on public.autonomy_audit_events to service_role;\n\ncreate or replace function public.gigo_revoke_autonomy_approval(p_approval_id uuid)\nreturns boolean\nlanguage plpgsql\nsecurity definer\nset search_path = ''\nas $\ndeclare owner_id uuid := auth.uid();\nbegin\n  if owner_id is null then raise exception 'authentication required' using errcode = '42501'; end if;\n  update public.autonomy_approvals set revoked_at = now()\n    where id = p_approval_id and user_id = owner_id and revoked_at is null;\n  return found;\nend;\n$;\n\nrevoke all on function public.gigo_revoke_autonomy_approval(uuid) from public, anon;\ngrant execute on function public.gigo_revoke_autonomy_approval(uuid) to authenticated;\n\nrevoke all on function public.gigo_set_autonomy_policy(text,boolean,boolean,jsonb) from public, anon;
 revoke all on function public.gigo_set_autonomy_pause(boolean,text) from public, anon;
 revoke all on function public.gigo_create_autonomy_approval(text,text,text,integer,timestamptz) from public, anon;
 grant execute on function public.gigo_set_autonomy_policy(text,boolean,boolean,jsonb) to authenticated;
