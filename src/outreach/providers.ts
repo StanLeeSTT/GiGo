@@ -12,6 +12,8 @@ export type ProviderOutcome =
 export interface OutboundMessage {
   id: string;
   recipientId: string;
+  purpose: OutboundPurpose;
+  recipientIsRegisteredContact: boolean;
   to: string;
   fromEmail: string;
   fromName: string;
@@ -126,6 +128,13 @@ export function createResendAdapter(config: ResendAdapterConfig): OutboundProvid
     async send(input, channel, idempotencyKey): Promise<ProviderOutcome> {
       if (!descriptor.channels.includes(channel)) {
         return { kind: "rejected_before_send", code: "PROVIDER_CHANNEL_NOT_SUPPORTED", message: "Resend does not support this channel.", retryable: false };
+      }
+      try {
+        if (selectOutboundChannel(descriptor, input.purpose, input.recipientIsRegisteredContact) !== channel) {
+          return { kind: "rejected_before_send", code: "OUTBOUND_CHANNEL_PURPOSE_MISMATCH", message: "The selected provider channel does not match the message purpose and recipient registration status.", retryable: false };
+        }
+      } catch {
+        return { kind: "rejected_before_send", code: "OUTBOUND_CONTACT_POLICY_FAILED", message: "Promotional and relationship outreach requires a registered contact on this provider.", retryable: false };
       }
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id) ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.recipientId) ||
