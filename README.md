@@ -20,7 +20,7 @@ The long-term direction is a Jarvis-like conversational assistant with persisten
 ## Current modules
 
 - Personal workspace: overview, projects, tasks and AI Assistant.
-- Research Engine: research runs, sources, evidence review and opportunity assessments.
+- Research Engine: research runs, source discovery, exact evidence passages, owner-reviewed claims, claim/evidence links, private R2-backed document uploads and Markdown evidence report export. PDF OCR/binary extraction is not yet available.
 - Product/Partner Studio: product ideas, partner candidates and proposals.
 - Leads & CRM: prospect records and evidence.
 - Offers: offer drafts and unit-economics notes.
