@@ -191,9 +191,12 @@ export function createResendAdapter(config: ResendAdapterConfig): OutboundProvid
       if (!messageId || messageId.length > 200 || !Number.isInteger(timestamp) || !signatureHeader || signatureHeader.length > 2000) return false;
       if (Math.abs(Date.now() / 1000 - timestamp) > 300) return false;
       try {
+        const secretBytes = base64Bytes(webhookSecret.slice("whsec_".length));
+        const secretBuffer = new ArrayBuffer(secretBytes.byteLength);
+        new Uint8Array(secretBuffer).set(secretBytes);
         const key = await crypto.subtle.importKey(
           "raw",
-          base64Bytes(webhookSecret.slice("whsec_".length)),
+          secretBuffer,
           { name: "HMAC", hash: "SHA-256" },
           false,
           ["sign"]
