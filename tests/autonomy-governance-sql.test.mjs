@@ -73,6 +73,9 @@ test("autonomy initialization starts paused and atomically consumes exact approv
   assert.ok(sql.includes("scope = 'external_execute'"));
   assert.ok(sql.includes("enabled = true and require_approval = true"));
   assert.ok(sql.includes("p_tool_name ~*"));
+  assert.ok(sql.includes("buy|checkout|charge"));
+  assert.ok(sql.includes("wallet_send|invest|investment|trade"));
+  assert.equal((sql.match(/create or replace function public\\.gigo_consume_autonomy_approval/g)||[]).length,1);
   assert.ok(sql.includes("coalesce(pause_value,true)"));
   assert.match(sql, /grant execute on function public\.gigo_consume_autonomy_approval\(uuid,uuid,text,text,text\) to service_role/);
 });
