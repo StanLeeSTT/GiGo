@@ -90,3 +90,20 @@ test("Marketing Assistant tools can only read or save owner-private drafts", () 
   assert.ok(registry.includes('state:"available"'));
   assert.ok(!runtime.includes('name: "marketing_publish"'));
 });
+
+
+test("Customer Success Assistant tools only create and update private support records", () => {
+  assert.equal(authorizeToolAction("customers_list_cases").allowed, true);
+  assert.equal(authorizeToolAction("customers_create_case").allowed, true);
+  assert.equal(authorizeToolAction("customers_update_case").allowed, true);
+  const runtime = readFileSync(new URL("../src/assistant/runtime.ts", import.meta.url), "utf8");
+  const registry = readFileSync(new URL("../src/assistant/registry.ts", import.meta.url), "utf8");
+  assert.ok(runtime.includes('name: "customers_list_cases"'));
+  assert.ok(runtime.includes('name: "customers_create_case"'));
+  assert.ok(runtime.includes('name: "customers_update_case"'));
+  assert.ok(runtime.includes("customer_contacted: false"));
+  assert.ok(runtime.includes("response_sent: false"));
+  assert.ok(registry.includes('id:"customers.support"'));
+  assert.ok(registry.includes('state:"available"'));
+  assert.ok(!runtime.includes('name: "customers_send_response"'));
+});
