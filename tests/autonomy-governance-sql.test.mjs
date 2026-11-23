@@ -69,5 +69,10 @@ test("autonomy initialization starts paused and atomically consumes exact approv
   assert.match(sql, /target_ref = p_target_ref/);
   assert.match(sql, /parameters_sha256 = p_parameters_sha256/);
   assert.match(sql, /used_actions < max_actions/);
+  assert.ok(sql.includes("is_paused = false"));
+  assert.ok(sql.includes("scope = 'external_execute'"));
+  assert.ok(sql.includes("enabled = true and require_approval = true"));
+  assert.ok(sql.includes("p_tool_name ~*"));
+  assert.ok(sql.includes("coalesce(pause_value,true)"));
   assert.match(sql, /grant execute on function public\.gigo_consume_autonomy_approval\(uuid,uuid,text,text,text\) to service_role/);
 });
