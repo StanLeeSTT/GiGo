@@ -164,11 +164,11 @@ begin
     end if;
 
     evidence_json := '[]'::jsonb;
-    if position('{{niche}}' in template_row.subject_template || template_row.body_template) > 0 then
+    if position('{{niche}}' in (template_row.subject_template || template_row.body_template)) > 0 then
       evidence_json := evidence_json || jsonb_build_array(jsonb_build_object(
         'field','niche','source_url',profile_row.profile_url,'source_title',profile_row.display_name));
     end if;
-    if position('{{specific_observation}}' in template_row.subject_template || template_row.body_template) > 0 then
+    if position('{{specific_observation}}' in (template_row.subject_template || template_row.body_template)) > 0 then
       evidence_json := evidence_json || jsonb_build_array(jsonb_build_object(
         'field','specific_observation','evidence_type',evidence_row.evidence_type,
         'source_url',evidence_row.source_url,'source_title',evidence_row.source_title,
