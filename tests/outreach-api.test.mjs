@@ -224,3 +224,19 @@ test("owner can set general or partnership campaign kind only through authentica
   assert.ok(route.includes('campaignKind !== "general" && campaignKind !== "partnership"'));
   assert.ok(route.includes("INVALID_CAMPAIGN_KIND"));
 });
+
+
+test("Outreach Studio exposes the secured campaign workflow without claiming live delivery", () => {
+  const html = readFileSync(new URL("../public/outreach.html", import.meta.url), "utf8");
+  const client = readFileSync(new URL("../public/outreach.js", import.meta.url), "utf8");
+  for (const id of ["campaign-form","campaign-kind","recipient-form","template-form","approval-form","prepare-campaign","recipient-list","template-list"]) assert.ok(html.includes('id="'+id+'"'));
+  assert.ok(html.includes("Preparation only"));
+  assert.ok(client.includes("/api/v1/outreach/campaigns"));
+  assert.ok(client.includes("/kind"));
+  assert.ok(client.includes("/eligibility"));
+  assert.ok(client.includes("/templates"));
+  assert.ok(client.includes("/approve"));
+  assert.ok(client.includes("/prepare"));
+  assert.ok(client.includes("provider send performed: no"));
+  assert.ok(client.includes("marketing_contact_registered:true"));
+});
