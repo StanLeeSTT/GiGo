@@ -373,3 +373,7 @@ The following implementation supersedes the earlier checkpoint above:
 
 - The service-role approval-consumption RPC now independently checks that the owner is globally unpaused, the external-execution policy exists and remains enabled/approval-required, and the requested tool name does not match permanent financial-action deny patterns. It also bounds tool and target lengths before atomic quota consumption.
 - Re-initialization reports the actual stored pause state and does not silently re-pause or unpause the owner. External execution remains unavailable until a dedicated sender path is implemented and verified.
+## Assistant Marketing Studio integration — 2026-11-23
+
+- The AI Assistant can now list the owner's saved marketing drafts and create new owner-private marketing copy drafts through the registered, policy-classified tool runtime.
+- These tools only observe or save drafts. They cannot publish posts, send email, buy advertisements or perform other external actions.
