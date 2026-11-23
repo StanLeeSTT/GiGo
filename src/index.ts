@@ -28,6 +28,7 @@ export interface Env {
   MAXUN_BASE_URL?: string;
   MAXUN_API_KEY?: string;
   ASSETS?: Fetcher;
+  RESEARCH_FILES?: R2Bucket;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -263,6 +264,74 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 
 
 
+
+
+async function handleResearchDocuments(request: Request, env: Env, headers: Headers): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  if (!env.RESEARCH_FILES) return json({ error: { code: "PRIVATE_STORAGE_NOT_CONFIGURED", message: "Create and bind the private GiGo research R2 bucket before uploading files." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage research documents." } }, 401, headers);
+  try {
+    const ownerId = await verifiedUserId(token, env);
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const url = new URL(request.url);
+    const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+    if (request.method === "GET") {
+      const id = url.searchParams.get("id");
+      if (id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return json({ error: { code: "INVALID_ID", message: "Invalid document ID." } }, 400, headers);
+      const runId = url.searchParams.get("research_run_id");
+      if (!id && (!runId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId))) return json({ error: { code: "INVALID_RESEARCH_RUN_ID", message: "A valid research run ID is required." } }, 400, headers);
+      const filter = id ? "id=eq."+id : "research_run_id=eq."+runId;
+      const result = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,ingestion_status,created_at,object_key&"+filter+"&limit=100", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+      if (!result.ok) return json({ error: { code: "DOCUMENT_READ_FAILED", message: "Could not read document metadata. Confirm migration 0044 is applied." } }, 502, headers);
+      const rows = await result.json() as Array<JsonRecord>;
+      if (id) {
+        if (!rows.length) return json({ error: { code: "DOCUMENT_NOT_FOUND", message: "Document not found." } }, 404, headers);
+        const object = await env.RESEARCH_FILES.get(String(rows[0].object_key));
+        if (!object) return json({ error: { code: "DOCUMENT_OBJECT_MISSING", message: "The private document object is missing." } }, 404, headers);
+        const safeName = String(rows[0].original_filename).replace(/[\r\n"\\]/g,"_");
+        const responseHeaders = new Headers(headers);
+        responseHeaders.set("content-type", String(rows[0].content_type));
+        responseHeaders.set("content-length", String(rows[0].byte_size));
+        responseHeaders.set("content-disposition", "attachment; filename=\""+safeName+"\"");
+        responseHeaders.set("x-content-type-options","nosniff");
+        responseHeaders.set("cache-control","private, no-store");
+        return new Response(object.body,{status:200,headers:responseHeaders});
+      }
+      return json({ data: rows.map(({object_key: _privateKey,...row})=>row) },200,headers);
+    }
+    if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST." } },405,headers);
+    const form = await request.formData();
+    const runId = String(form.get("research_run_id")||"");
+    const file = form.get("file");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(runId) || !(file instanceof File)) return json({ error: { code: "INVALID_UPLOAD", message: "Provide a research_run_id and one file." } },400,headers);
+    if (file.size<1 || file.size>5*1024*1024) return json({ error: { code: "FILE_TOO_LARGE", message: "Research files must be between 1 byte and 5 MiB." } },413,headers);
+    const allowedTypes = ["text/plain","text/html","text/csv","application/pdf"];
+    const type = file.type.toLowerCase().split(";")[0].trim();
+    if (!allowedTypes.includes(type)) return json({ error: { code: "UNSUPPORTED_FILE_TYPE", message: "Only TXT, HTML, CSV and PDF files are accepted." } },415,headers);
+    const runResponse = await fetch(new URL("/rest/v1/research_runs?select=id&id=eq."+runId+"&limit=1",env.SUPABASE_URL!),{headers:dbHeaders,signal:AbortSignal.timeout(10000)});
+    if (!runResponse.ok) return json({ error: { code: "RESEARCH_RUN_CHECK_FAILED", message: "Could not verify research brief ownership." } },502,headers);
+    const runs = await runResponse.json() as Array<JsonRecord>;
+    if (!runs.length) return json({ error: { code: "RESEARCH_RUN_NOT_FOUND", message: "Research brief not found in your workspace." } },404,headers);
+    const bytes = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256",bytes);
+    const hash = Array.from(new Uint8Array(digest)).map(value=>value.toString(16).padStart(2,"0")).join("");
+    const id = crypto.randomUUID();
+    const originalName = file.name.replace(/[\\/\r\n\0]/g,"_").slice(0,255) || "research-upload";
+    const objectKey = ownerId+"/"+runId+"/"+id;
+    await env.RESEARCH_FILES.put(objectKey,bytes,{httpMetadata:{contentType:type},customMetadata:{owner_id:ownerId,research_run_id:runId,document_id:id,sha256:hash}});
+    const record = {id,user_id:ownerId,research_run_id:runId,object_key:objectKey,original_filename:originalName,content_type:type,byte_size:file.size,content_sha256:hash,ingestion_status:"uploaded"};
+    const saved = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,ingestion_status,created_at",env.SUPABASE_URL!),{method:"POST",headers:{...dbHeaders,prefer:"return=representation"},body:JSON.stringify(record),signal:AbortSignal.timeout(10000)});
+    if (!saved.ok) {
+      await env.RESEARCH_FILES.delete(objectKey).catch(()=>undefined);
+      return json({ error: { code: "DOCUMENT_METADATA_SAVE_FAILED", message: "The file was not registered. Confirm migration 0044 is applied; temporary object cleanup was attempted." } },502,headers);
+    }
+    const rows = await saved.json();
+    return json({data:Array.isArray(rows)?rows[0]:rows},201,headers);
+  } catch {
+    return json({ error: { code: "DOCUMENT_STORAGE_FAILED", message: "Could not safely store the private research document." } },502,headers);
+  }
+}
 
 async function handleResearchReport(request: Request, env: Env, headers: Headers): Promise<Response> {
   if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET." } }, 405, headers);
@@ -1842,6 +1911,7 @@ export default {
     if (resource) return handleResource(request, env, headers, resource);
 
     if (url.pathname === "/api/v1/research/report") return handleResearchReport(request, env, headers);
+    if (url.pathname === "/api/v1/research/documents") return handleResearchDocuments(request, env, headers);
 
     const researchRoutes: Record<string, ResearchResource> = {
       "/api/v1/research/runs": "research_runs",
