@@ -210,3 +210,17 @@ test("outbound copy database guard enforces STANLEE signature and partnership ec
   assert.ok(sql.includes("char_length(new.body_text)>500"));
   assert.ok(sql.includes("outbound signature is not configured; sending is blocked"));
 });
+
+
+test("owner can set general or partnership campaign kind only through authenticated owner RPC", () => {
+  const start = source.indexOf("const outreachCampaignKindMatch");
+  const end = source.indexOf("const outreachRecipientEligibilityMatch", start);
+  const route = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(route.includes('request.method !== "POST"'));
+  assert.ok(route.includes("verifiedUserId(token, env)"));
+  assert.ok(route.includes("gigo_set_outreach_campaign_kind"));
+  assert.ok(route.includes("p_campaign_id: outreachCampaignKindMatch[1]"));
+  assert.ok(route.includes('campaignKind !== "general" && campaignKind !== "partnership"'));
+  assert.ok(route.includes("INVALID_CAMPAIGN_KIND"));
+});
