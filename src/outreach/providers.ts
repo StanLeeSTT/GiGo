@@ -136,16 +136,19 @@ export function createResendAdapter(config: ResendAdapterConfig): OutboundProvid
       } catch {
         return { kind: "rejected_before_send", code: "OUTBOUND_CONTACT_POLICY_FAILED", message: "Promotional and relationship outreach requires a registered contact on this provider.", retryable: false };
       }
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id) ||
-          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.recipientId) ||
-          !validEmail(input.to) || !validEmail(input.fromEmail) ||
-          (input.replyTo !== undefined && !validEmail(input.replyTo)) ||
-          !input.fromName.trim() || /[\r\n]/.test(input.fromName) ||
-          !input.subject.trim() || input.subject.length > 80 || /[\r\n]/.test(input.subject) ||
-          !input.text.trim() || input.text.length > 500 ||
-          !input.text.trimEnd().endsWith("— STANLEE") ||
-          idempotencyKey !== outboundIdempotencyKey(input.id)) {
-        return { kind: "rejected_before_send", code: "OUTBOUND_MESSAGE_VALIDATION_FAILED", message: "Message identity, recipient, sender, subject, size, signature or idempotency validation failed.", retryable: false };
+      const invalidReason =
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.id) ? "INVALID_MESSAGE_ID" :
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.recipientId) ? "INVALID_RECIPIENT_ID" :
+        !validEmail(input.to) ? "INVALID_RECIPIENT_EMAIL" :
+        !validEmail(input.fromEmail) ? "INVALID_SENDER_EMAIL" :
+        (input.replyTo !== undefined && !validEmail(input.replyTo)) ? "INVALID_REPLY_TO" :
+        (!input.fromName.trim() || /[\r\n]/.test(input.fromName)) ? "INVALID_SENDER_NAME" :
+        (!input.subject.trim() || input.subject.length > 80 || /[\r\n]/.test(input.subject)) ? "INVALID_SUBJECT" :
+        (!input.text.trim() || input.text.length > 500) ? "INVALID_BODY_LENGTH" :
+        !input.text.trimEnd().endsWith("— STANLEE") ? "MISSING_REQUIRED_SIGNATURE" :
+        idempotencyKey !== outboundIdempotencyKey(input.id) ? "IDEMPOTENCY_KEY_MISMATCH" : null;
+      if (invalidReason) {
+        return { kind: "rejected_before_send", code: invalidReason, message: "Outbound message validation failed before provider access.", retryable: false };
       }
 
       const payload: Record<string, unknown> = {
