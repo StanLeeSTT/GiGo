@@ -353,3 +353,7 @@ The following implementation supersedes the earlier checkpoint above:
 
 - Marketing Studio now saves owner-private drafts for social posts, email copy, landing pages, advertisements, video scripts, blog articles and other marketing assets. Owners can move drafts through draft, review, internally approved and archived states.
 - This is content storage and review only. Internal approval does not publish content, send messages, buy advertisements or create an external campaign. External publishing/delivery integrations remain unimplemented and approval-gated.
+## Customer Success implementation update — 2026-11-23
+
+- Customer Success now stores owner-private support cases with customer details, issue description, priority, workflow status, internal notes and response drafts. Owners can create cases, update status and edit draft responses.
+- This is an internal support tracker only. Response drafts are never sent by this module; refunds, payments and external account changes remain unavailable.
