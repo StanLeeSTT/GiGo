@@ -450,7 +450,7 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       return [table, Array.isArray(rows) ? rows.length : 0] as const;
     }));
     const counts = Object.fromEntries(results);
-    return { counts, financial_metrics: "not_available_without_transaction_data", money_movement_performed: false };
+    return { counts, count_limit_per_table: 1000, counts_may_be_truncated: true, financial_metrics: "not_available_without_transaction_data", money_movement_performed: false };
   }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
