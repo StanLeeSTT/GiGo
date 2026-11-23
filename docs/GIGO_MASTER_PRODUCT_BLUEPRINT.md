@@ -368,3 +368,8 @@ The following implementation supersedes the earlier checkpoint above:
 - Creative Studio brief storage/API/UI is implemented, including output links and notes; it does not generate or publish media. Migration 0042 remains unapplied.
 - Customer Success support-case tracking is implemented using migration 0041; its latest code correction removed the discarded feedback branch and retained only the support-case schema. Verify the latest CI run before considering this slice green.
 - Migrations 0040–0042 are committed only, not applied. No deployment or external actions occurred.
+
+## Autonomy approval-consumption hardening — 2026-11-23
+
+- The service-role approval-consumption RPC now independently checks that the owner is globally unpaused, the external-execution policy exists and remains enabled/approval-required, and the requested tool name does not match permanent financial-action deny patterns. It also bounds tool and target lengths before atomic quota consumption.
+- Re-initialization reports the actual stored pause state and does not silently re-pause or unpause the owner. External execution remains unavailable until a dedicated sender path is implemented and verified.
