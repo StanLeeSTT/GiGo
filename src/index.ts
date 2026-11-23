@@ -372,7 +372,7 @@ async function handleResearchDocumentExtraction(request: Request, env: Env, head
     let decodedText: string;
     try { decodedText = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
     catch { return json({ error: { code: "DOCUMENT_ENCODING_INVALID", message: "Only valid UTF-8 text documents can be extracted." } }, 415, headers); }
-    let plan;
+    let plan: ReturnType<typeof buildResearchDocumentIngestionPlan>;
     try {
       plan = buildResearchDocumentIngestionPlan({
         id: String(document.id),
@@ -449,7 +449,7 @@ async function handleResearchReport(request: Request, env: Env, headers: Headers
       ["run", "research_runs?select=id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at&id=eq."+runId+"&limit=1"],
       ["sources", "research_sources?select=id,title,url,publisher,published_at,excerpt,evidence_status,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
       ["opportunities", "research_opportunities?select=id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
-      ["passages", "research_evidence_passages?select=id,research_source_id,passage_text,locator_type,locator_value,extraction_method,review_status,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["passages", "research_evidence_passages?select=id,research_source_id,research_document_id,passage_text,locator_type,locator_value,extraction_method,review_status,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
       ["claims", "research_claims?select=id,claim_text,claim_type,verification_status,confidence,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
       ["links", "research_claim_evidence?select=id,claim_id,passage_id,relationship,reviewer_note&research_run_id=eq."+runId+"&order=created_at.asc&limit=500"]
     ];
