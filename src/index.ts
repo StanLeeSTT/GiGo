@@ -1352,6 +1352,52 @@ export default {
     }
 
 
+    if (url.pathname === "/api/v1/autonomy" || url.pathname === "/api/v1/autonomy/initialize" || url.pathname === "/api/v1/autonomy/pause" || url.pathname === "/api/v1/autonomy/policies") {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage GiGo autonomy." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+        if (url.pathname === "/api/v1/autonomy") {
+          if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET." } }, 405, headers);
+          const [pauseResponse, policyResponse] = await Promise.all([
+            fetch(new URL("/rest/v1/autonomy_control_state?select=is_paused,pause_reason,paused_at,updated_at&user_id=eq." + encodeURIComponent(userId) + "&limit=1", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) }),
+            fetch(new URL("/rest/v1/autonomy_policies?select=scope,enabled,require_approval,limits,policy_version,updated_at&user_id=eq." + encodeURIComponent(userId) + "&order=scope.asc", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) })
+          ]);
+          if (!pauseResponse.ok || !policyResponse.ok) return json({ error: { code: "AUTONOMY_READ_FAILED", message: "Could not read durable autonomy settings. Confirm migration 0037 is applied." } }, 502, headers);
+          const pauses = await pauseResponse.json() as Array<JsonRecord>;
+          const policies = await policyResponse.json() as Array<JsonRecord>;
+          return json({ data: { initialized: pauses.length === 1, is_paused: pauses.length !== 1 || pauses[0]?.is_paused !== false, pause_reason: pauses[0]?.pause_reason ?? "Missing pause state is treated as paused.", policies: Array.isArray(policies) ? policies : [], financial_execution: "hard_denied", external_execution_available: false } }, 200, headers);
+        }
+        if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } }, 405, headers);
+        const body = await readJson(request);
+        if (!body) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+        let rpcName = "";
+        let rpcBody: JsonRecord = {};
+        if (url.pathname === "/api/v1/autonomy/initialize") {
+          if (Object.keys(body).length) return json({ error: { code: "INVALID_BODY", message: "Initialization accepts an empty body only." } }, 400, headers);
+          rpcName = "gigo_initialize_autonomy_defaults";
+        } else if (url.pathname === "/api/v1/autonomy/pause") {
+          if (Object.keys(body).some(key => !["is_paused","reason"].includes(key)) || typeof body.is_paused !== "boolean" || (body.reason !== undefined && (typeof body.reason !== "string" || body.reason.length > 500))) return json({ error: { code: "INVALID_PAUSE_REQUEST", message: "Provide is_paused as a boolean and an optional reason up to 500 characters." } }, 400, headers);
+          rpcName = "gigo_set_autonomy_pause";
+          rpcBody = { p_is_paused: body.is_paused, p_reason: body.reason ?? null };
+        } else {
+          const scopes = ["observe","analyse","draft","internal_execute","external_execute"];
+          if (Object.keys(body).some(key => !["scope","enabled","require_approval","limits"].includes(key)) || typeof body.scope !== "string" || !scopes.includes(body.scope) || typeof body.enabled !== "boolean" || typeof body.require_approval !== "boolean" || (body.limits !== undefined && (!body.limits || typeof body.limits !== "object" || Array.isArray(body.limits))) || (body.scope === "external_execute" && body.require_approval !== true)) return json({ error: { code: "INVALID_AUTONOMY_POLICY", message: "Provide a supported non-financial scope, enabled flag, approval flag and optional limits object. External execution must always require approval." } }, 400, headers);
+          rpcName = "gigo_set_autonomy_policy";
+          rpcBody = { p_scope: body.scope, p_enabled: body.enabled, p_require_approval: body.require_approval, p_limits: body.limits ?? {} };
+        }
+        const rpcResponse = await fetch(new URL("/rest/v1/rpc/" + rpcName, env.SUPABASE_URL!), { method: "POST", headers: dbHeaders, body: JSON.stringify(rpcBody), signal: AbortSignal.timeout(10000) });
+        if (!rpcResponse.ok) return json({ error: { code: "AUTONOMY_UPDATE_FAILED", message: "Could not update autonomy settings. Confirm the required database migration is applied." } }, rpcResponse.status === 401 ? 401 : rpcResponse.status === 403 ? 403 : 409, headers);
+        const result = await rpcResponse.json().catch(() => true);
+        return json({ data: { updated: true, result } }, 200, headers);
+      } catch {
+        return json({ error: { code: "AUTONOMY_SETTINGS_UNAVAILABLE", message: "Could not complete the autonomy settings request." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/settings/message-signature") {
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
       const token = bearerToken(request);
