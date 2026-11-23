@@ -237,6 +237,6 @@ test("Outreach Studio exposes the secured campaign workflow without claiming liv
   assert.ok(client.includes("/templates"));
   assert.ok(client.includes("/approve"));
   assert.ok(client.includes("/prepare"));
-  assert.ok(client.includes("provider send performed: no"));
+  assert.ok(client.includes("Provider send performed: no"));
   assert.ok(client.includes("marketing_contact_registered:true"));
 });
