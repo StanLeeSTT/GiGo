@@ -405,3 +405,10 @@ The following implementation supersedes the earlier checkpoint above:
 - Preparation is limited to 25 recipients per invocation and requires approved contact eligibility plus provider marketing-contact registration. The database performs final template rendering and signature/partnership checks. The tool does not send.
 - The Assistant cannot approve campaigns, attest to contact eligibility, send messages, accept commercial counteroffers or sign agreements. Owner review and campaign-level approval remain mandatory; no provider sender or signed webhook is live.
 - Assistant-created outreach templates are constrained to subject <=80 characters and body <=340 characters before trusted signature and partnership terms; the database still enforces final rendered body <=500 characters.
+
+## Verified Assistant integration and production gates — 2026-11-23
+
+- CI run 45110626222 passed TypeScript typecheck, browser JavaScript syntax validation and collection-engine tests on commit 3b890a2.
+- The current feature branch now has owner-facing workflows for Research, Product/Partner, Leads/Offers, Outreach preparation, Marketing drafts, Launch milestones, Commerce planning, Creative briefs, Customer Support cases, Analytics snapshots, Learning plans, Operations and Settings. Assistant tools are connected for the main internal workflows and remain governed by durable pause/policy/audit controls.
+- Production completion still requires: migration application in order, Cloudflare Worker deployment, live environment verification, provider sender/webhook integration under explicit owner authorization, approved platform-specific collection adapters, deeper full-text evidence ingestion and claim verification, scheduler/resume validation, and end-to-end tests against the live database.
+- No migration or deployment is implied by CI success. External messages have not been sent and payment execution is permanently prohibited.
