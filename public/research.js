@@ -16,17 +16,54 @@ async function selectRun(row){
 async function loadRelated(){
  if(!selected)return;
  try{
- const [sources,opportunities]=await Promise.all([
- api.request("/api/v1/research/sources?research_run_id="+encodeURIComponent(selected.id)),
- api.request("/api/v1/research/opportunities?research_run_id="+encodeURIComponent(selected.id))
+ const [sources,opportunities,passages,claims,links]=await Promise.all([
+  api.request("/api/v1/research/sources?research_run_id="+encodeURIComponent(selected.id)),
+  api.request("/api/v1/research/opportunities?research_run_id="+encodeURIComponent(selected.id)),
+  api.request("/api/v1/research/evidence-passages?research_run_id="+encodeURIComponent(selected.id)),
+  api.request("/api/v1/research/claims?research_run_id="+encodeURIComponent(selected.id)),
+  api.request("/api/v1/research/claim-evidence?research_run_id="+encodeURIComponent(selected.id))
  ]);
  document.querySelector("#source-list").innerHTML=(sources||[]).map(s=>'<article class="module-workbench"><strong>'+esc(s.title)+'</strong><p>'+esc(s.excerpt||"No excerpt saved.")+'</p><a href="'+esc(safeHttps(s.url)||"#")+'" target="_blank" rel="noopener noreferrer">Open source</a><p><small>Evidence status: '+esc(s.evidence_status)+'</small></p><div class="form-actions"><select aria-label="Evidence assessment" data-evidence-status="'+esc(s.id)+'"><option value="unreviewed" '+(s.evidence_status==="unreviewed"?"selected":"")+'>Unreviewed</option><option value="supports" '+(s.evidence_status==="supports"?"selected":"")+'>Supports</option><option value="contradicts" '+(s.evidence_status==="contradicts"?"selected":"")+'>Contradicts</option><option value="context" '+(s.evidence_status==="context"?"selected":"")+'>Context</option><option value="rejected" '+(s.evidence_status==="rejected"?"selected":"")+'>Rejected</option></select><button class="secondary-button" type="button" data-save-evidence="'+esc(s.id)+'">Save assessment</button></div></article>').join("")||'<p class="welcome-copy">No evidence sources saved yet.</p>';
  document.querySelector("#opportunity-list").innerHTML=(opportunities||[]).map(o=>'<div class="module-workbench"><strong>'+esc(o.title)+'</strong><p>'+esc(o.customer_problem)+'</p><small>'+esc(o.status)+'</small></div>').join("")||'<p class="welcome-copy">No opportunities recorded yet.</p>';
+ const sourceSelect=document.querySelector("#passage-source");
+ sourceSelect.innerHTML=(sources||[]).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.title)+'</option>').join("")||'<option value="">Save a source first</option>';
+ document.querySelector("#passage-list").innerHTML=(passages||[]).map(p=>'<article class="module-workbench"><p>'+esc(p.passage_text)+'</p><small>'+esc(p.locator_type)+' '+esc(p.locator_value||"")+' · '+esc(p.extraction_method)+' · '+esc(p.review_status)+'</small></article>').join("")||'<p class="welcome-copy">No exact passages saved yet.</p>';
+ document.querySelector("#claim-list").innerHTML=(claims||[]).map(c=>'<article class="module-workbench"><p>'+esc(c.claim_text)+'</p><small>'+esc(c.claim_type)+' · verification: '+esc(c.verification_status)+' · confidence: '+esc(c.confidence??"not set")+'</small><div class="form-actions"><select aria-label="Claim verification status" data-claim-status="'+esc(c.id)+'">'+["unverified","supported","mixed","contradicted","insufficient_evidence"].map(v=>'<option value="'+v+'" '+(c.verification_status===v?"selected":"")+'>'+v.replaceAll("_"," ")+'</option>').join("")+'</select><input type="number" min="0" max="100" step="0.01" placeholder="Confidence 0–100" value="'+esc(c.confidence??"")+'" data-claim-confidence="'+esc(c.id)+'"><button class="secondary-button" type="button" data-save-claim="'+esc(c.id)+'">Save review</button></div></article>').join("")||'<p class="welcome-copy">No claims recorded yet.</p>';
+ document.querySelector("#link-claim").innerHTML=(claims||[]).map(c=>'<option value="'+esc(c.id)+'">'+esc(c.claim_text.slice(0,120))+'</option>').join("");
+ document.querySelector("#link-passage").innerHTML=(passages||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.passage_text.slice(0,120))+'</option>').join("");
+ document.querySelector("#claim-evidence-list").innerHTML=(links||[]).map(link=>'<p class="welcome-copy">'+esc(link.relationship)+' · claim '+esc(link.claim_id)+' ↔ passage '+esc(link.passage_id)+'</p>').join("")||'<p class="welcome-copy">No claim/evidence links yet.</p>';
  }catch(error){showError(error);}
 }
 document.querySelector("#research-form").addEventListener("submit",async event=>{
  event.preventDefault();const form=event.currentTarget;const data=formData(form);status.textContent="Saving research brief…";
- try{const result=await api.request("/api/v1/research/runs",{method:"POST",body:JSON.stringify(data)});form.reset();status.textContent="Research brief saved.";await loadRuns();if(result?.[0])await selectRun(result[0]);}
+ try{const result=await api.request("/api/v1/research/runs",{method:"POST",body:JSON.stringify(data)});form.reset();status.textContent="Research brief saved.";await 
+document.querySelector("#passage-form").addEventListener("submit",async event=>{
+ event.preventDefault();if(!selected)return;const form=event.currentTarget;const data=formData(form);status.textContent="Saving exact evidence passage…";
+ try{await api.request("/api/v1/research/evidence-passages",{method:"POST",body:JSON.stringify({...data,research_run_id:selected.id})});form.reset();status.textContent="Passage saved as unreviewed evidence.";await loadRelated();}
+ catch(error){showError(error);}
+});
+document.querySelector("#claim-form").addEventListener("submit",async event=>{
+ event.preventDefault();if(!selected)return;const form=event.currentTarget;const data=formData(form);status.textContent="Saving claim…";
+ try{await api.request("/api/v1/research/claims",{method:"POST",body:JSON.stringify({...data,research_run_id:selected.id,verification_status:"unverified"})});form.reset();status.textContent="Claim saved as unverified.";await loadRelated();}
+ catch(error){showError(error);}
+});
+document.querySelector("#claim-evidence-form").addEventListener("submit",async event=>{
+ event.preventDefault();if(!selected)return;const data=formData(event.currentTarget);status.textContent="Linking evidence…";
+ try{await api.request("/api/v1/research/claim-evidence",{method:"POST",body:JSON.stringify({...data,research_run_id:selected.id})});status.textContent="Evidence linked.";await loadRelated();}
+ catch(error){showError(error);}
+});
+document.querySelector("#claim-list").addEventListener("click",async event=>{
+ const button=event.target.closest("[data-save-claim]");if(!button)return;const id=button.dataset.saveClaim;
+ const select=document.querySelector('[data-claim-status="'+CSS.escape(id)+'"]'),confidence=document.querySelector('[data-claim-confidence="'+CSS.escape(id)+'"]');
+ if(!select)return;const body={verification_status:select.value};
+ if(confidence?.value!==""){const n=Number(confidence.value);if(!Number.isFinite(n)||n<0||n>100){showError(new Error("Confidence must be between 0 and 100."));return;}body.confidence=n;}
+ button.disabled=true;
+ try{await api.request("/api/v1/research/claims?id="+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify(body)});status.textContent="Claim review saved. Verification is an owner assessment, not automatic fact-checking.";await loadRelated();}
+ catch(error){showError(error);}
+ finally{button.disabled=false;}
+});
+
+loadRuns();if(result?.[0])await selectRun(result[0]);}
  catch(error){showError(error);}
 });
 document.querySelector("#source-form").addEventListener("submit",async event=>{
