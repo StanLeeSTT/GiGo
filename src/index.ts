@@ -1352,6 +1352,40 @@ export default {
     }
 
 
+    if (url.pathname === "/api/v1/settings/message-signature") {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage your message signature." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (request.method === "GET") {
+          const query = new URLSearchParams({ select: "signature_name,updated_at", user_id: "eq." + userId, limit: "1" });
+          const response = await fetch(new URL("/rest/v1/owner_message_settings?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) return json({ error: { code: "SIGNATURE_READ_FAILED", message: "Could not read your signature. Confirm migration 0038 is applied." } }, 502, headers);
+          const rows = await response.json() as Array<JsonRecord>;
+          return json({ data: { signature_name: rows[0]?.signature_name ?? null, configured: rows.length > 0 } }, 200, headers);
+        }
+        if (request.method === "POST") {
+          const body = await readJson(request);
+          const signatureName = typeof body?.signature_name === "string" ? body.signature_name.trim() : "";
+          if (!body || Object.keys(body).some(k => k !== "signature_name") || signatureName.length < 1 || signatureName.length > 80 || /[\\r\\n\\t]/.test(signatureName)) {
+            return json({ error: { code: "INVALID_SIGNATURE", message: "Provide one plain-text signature name of 1 to 80 characters." } }, 400, headers);
+          }
+          const response = await fetch(new URL("/rest/v1/rpc/gigo_set_owner_message_signature", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json" },
+            body: JSON.stringify({ p_signature_name: signatureName }), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "SIGNATURE_UPDATE_FAILED", message: "Could not save your signature. Confirm migration 0038 is applied." } }, 409, headers);
+          return json({ data: { signature_name: signatureName, configured: true } }, 200, headers);
+        }
+        return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST." } }, 405, headers);
+      } catch {
+        return json({ error: { code: "SIGNATURE_SETTINGS_UNAVAILABLE", message: "Could not complete the signature settings request." } }, 502, headers);
+      }
+    }
+
     const outreachRecipientEligibilityMatch = url.pathname.match(/^\/api\/v1\/outreach\/recipients\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12})\/eligibility$/i);
     const outreachPrepareMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/prepare$/i);
     const outreachCampaignApprovalMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/approve$/i);
