@@ -462,3 +462,25 @@ Implement Task A3 — durable owner-configurable autonomy policies and action au
 
 ### Next task
 Task A3: implement durable owner-configurable autonomy policies and action audit, preserving the hard financial deny in both runtime and database policy design.
+
+
+## 16. User clarification — concise automatic messaging policy (2026-11-23)
+
+The user explicitly permits GiGo to send messages automatically, provided outbound messages are very short, structured, simple and direct. This is a narrow messaging permission, not blanket permission for all external actions.
+
+### Product requirements
+- GiGo may automatically send eligible messages after the relevant campaign/template and recipient scope have been explicitly approved and all runtime safety checks pass.
+- Message format should be compact and predictable: brief greeting (when appropriate), one verified reason for contact, one concise value proposition or useful point, and at most one clear next step.
+- Default content limits for the first implementation: subject up to 80 characters; plain-text body up to 500 characters. No attachments, long introductions, multiple topics, excessive claims, pressure tactics or invented personalization.
+- Use approved, immutable templates and evidence-backed personalization only. If required facts are missing, do not send.
+- Automatic send remains bounded by campaign approval, recipient cap, contact authorization/registered-contact requirements, suppression and opt-out checks, quiet hours/send windows, provider rules, rate limits, idempotency and audit logging.
+- A reply, unsubscribe, complaint, hard bounce, revoked campaign approval or global pause must stop subsequent sends/follow-ups.
+- This permission does not authorize arbitrary cold messaging, bulk unsolicited messages, social DMs or bypassing platform restrictions. Each channel requires its own lawful/authorized eligibility checks.
+- External publishing, account changes, commitments and other external actions remain separately gated.
+- Financial actions remain permanently hard-denied.
+
+### Implementation impact
+- Task A3 durable autonomy policy must model a narrowly scoped message_send permission separately from generic external_execute; it may support auto-send only for a pre-approved campaign and bounded recipients/templates/window/caps.
+- The database and runtime must reject any attempt to broaden message permission beyond that campaign's immutable approval.
+- Add tests for message length/structure, approval binding, opt-out/suppression, campaign revocation, pause, quotas and no arbitrary external-send bypass.
+- No provider adapter, webhook or live sender is configured. No messages have been sent by this code.
