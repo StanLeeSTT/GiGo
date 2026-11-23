@@ -334,3 +334,8 @@ The following implementation supersedes the earlier checkpoint above:
 - Latest CI run for the Outreach copy assertion fix (0470f18a85c9b78929b875a4845155e4d75d510e, run 45108882905) succeeded. Research evidence UI/test commit 489c33e6bd557c83f1a9b1e4f137caf280f87b0a is pending CI at the time of this checkpoint.
 - Remaining research work: uploaded PDF/HTML/CSV ingestion, full-text extraction, line/page-level evidence citations, claim-level verification and report export. Remaining collection work: authorized provider adapters and reliable deployment/credential configuration. Remaining business modules include launch, creative, customer support, analytics and learning, many of which remain registry-planned or placeholder pages.
 - All migrations beyond the previously verified applied baseline remain committed code only; no migration has been applied in this milestone. No deployment, no live outbound messages and no money movement.
+
+## Analytics implementation update — 2026-11-23
+
+- Analytics now reads saved owner-scoped projects, tasks, research briefs, partner candidates, leads, offers and outreach campaigns through the authenticated API and derives record counts and approved-campaign counts.
+- It is intentionally an operational snapshot, not a revenue dashboard. No revenue, profit, conversion, ROI or retention claims are displayed without connected underlying transaction/customer-event data.
