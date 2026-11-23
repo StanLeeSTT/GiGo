@@ -23,3 +23,10 @@ test("marketing asset status transitions are bounded to draft review approved an
   for (const state of ["draft","review","approved","archived"]) assert.ok(client.includes('value="'+state+'"'));
   assert.ok(client.includes('method:"PATCH"'));
 });
+
+
+test("marketing asset writes require a supported type and validate optional fields", () => {
+  assert.ok(source.includes("A title, supported asset type and content are required"));
+  assert.ok(source.includes("INVALID_MARKETING_FIELD"));
+  assert.ok(source.includes("INVALID_METADATA"));
+});
