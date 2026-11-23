@@ -377,3 +377,7 @@ The following implementation supersedes the earlier checkpoint above:
 
 - The AI Assistant can now list the owner's saved marketing drafts and create new owner-private marketing copy drafts through the registered, policy-classified tool runtime.
 - These tools only observe or save drafts. They cannot publish posts, send email, buy advertisements or perform other external actions.
+## Assistant Customer Success integration — 2026-11-23
+
+- The AI Assistant can list owner-private support cases, create internal support cases and update case status, response drafts and notes through registered, policy-classified tools.
+- These tools never contact customers or execute refunds, account changes or payments. Response text remains an internal draft until a separate, explicitly authorized delivery capability exists.
