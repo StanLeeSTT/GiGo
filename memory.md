@@ -5,7 +5,7 @@
 **Last updated:** 2026-11-23  
 **Repository:** `StanLeeSTT/GiGo`  
 **Active branch:** `feat/universal-collection-engine`  
-**Last verified branch HEAD at this update:** `0524db569ad0e90d23b919360f5930aa5cd3af3d`  
+**Last verified branch HEAD at this update:** `029c4f656a6f18913600d016df0261a1e528a94b`  
 **Main branch:** do not merge into it unless explicitly requested.
 
 ---
@@ -45,12 +45,13 @@ The current priority is to build a zero-budget foundation that can help discover
 
 ### Latest verified commit at this update
 
-`9f91d26a179b8084bc19c935dfe96f14f10777c8` — documents atomic inbound webhook event idempotency.
+`029c4f656a6f18913600d016df0261a1e528a94b` — final SQL rendering/guard clarification for outreach migration 0036.
 
 Latest verified Actions run on that commit:
 - Typecheck: PASS
 - Collection engine tests: PASS
-- Run ID: `45100957370`
+- Run ID: `45103534399`
+- The test suite reported 68 tests, 68 passed, 0 failed.
 
 Earlier verification:
 - Commit `9138f95dff150942066be0491368618b25445bb5`: typecheck and collection engine tests PASS.
@@ -210,7 +211,7 @@ Current routes are in `src/index.ts` for campaigns, recipients, templates, appro
 Test suite: `tests/outreach-api.test.mjs` includes API and SQL safety assertions for preparation, inbound events, follow-up timing, provider policy, eligibility and migrations 0034/0035.
 
 ### Critical remaining outreach risks before any sending
-1. **Approved template rendering is not yet independently reconstructed in SQL.** Migration 0034 hardens who can write, but SQL still accepts rendered subject/body from trusted API. The API implementation must remain trusted and thoroughly tested; ideally SQL should render or validate content against approved templates and stored evidence, or use immutable server-generated snapshots with hashes. Do not enable sending until this is resolved.
+1. **Approved-template rendering integrity is now implemented in migration 0036.** The API can no longer submit message copy; the service-only SQL function renders from approved immutable templates and owner-scoped stored data/evidence. This migration is committed but unapplied. The future sender must still perform a separate immediate pre-network-send recheck to close the claim-to-send suppression race.
 2. Review RLS and all status-transition paths for `outreach_messages`, not only direct authenticated message table writes.
 3. Provider adapters are empty. No provider API key, sender, verified domain, webhook or sender integration is configured.
 4. Inbound webhook must verify raw-body signature, expected provider account and message/recipient correlation before service-role RPC call.
@@ -264,13 +265,24 @@ Research checked 2026-11-22:
 
 ## 10. Immediate next tasks (continue in order)
 
-### Task A — finish outreach security audit before any send path
-- Inspect migrations 0022–0035, RLS policies, grants, triggers and every message status update.
-- Fix the remaining gap: validate rendered subject/body against the approved template and exact allowed personalization/evidence. Prefer server-side rendering or a cryptographically bound immutable snapshot whose provenance is checked.
-- Ensure client cannot directly set message status, provider IDs, lease fields or delivery outcomes.
-- Confirm campaign approval, recipient authorization, marketing registration, suppression, schedule and send-window are rechecked at the correct point.
-- Add tests for direct RPC attempts, altered message content, unauthorized status changes and stale/in-flight suppression.
-- Do not apply migrations.
+### Task A — outreach security audit before any send path — COMPLETED IN CODE (migration 0036)
+- Audited migrations 0022–0035, outreach RLS, grants, triggers, APIs and message status transitions.
+- Replaced caller-supplied message content with database-side rendering from approved templates and owner-scoped recipient/profile/evidence records.
+- Revoked authenticated/PUBLIC direct outbox writes and reset message privileges to read-only for authenticated owners.
+- Closed direct campaign-row approval forgery: direct campaign UPDATE is revoked; inserts must be draft/unapproved; approval uses a SECURITY DEFINER RPC with explicit auth.uid() ownership check.
+- Final queued-to-sending trigger rechecks campaign approval/revocation, recipient authorization, provider registration, suppression, approved template identity, recipient sequence state, schedule and quiet hours.
+- Added tests for API identifier-only preparation, SQL-bound rendering, client read-only access, final guard and campaign approval bypass.
+- CI PASS on commit 029c4f656a6f18913600d016df0261a1e528a94b: typecheck PASS; 68/68 tests PASS; Actions run 45103534399.
+- Migration 0036 is committed but NOT applied. SQL was not executed against Supabase/Postgres in this task; CI tests are source-level/static tests plus TypeScript/unit checks, not a live migration validation.
+- No provider adapter, webhook endpoint, send worker, sender credential or live send is enabled.
+- Remaining send-specific gap: future worker must call a separate service-only just-in-time authorization/suppression check immediately before the provider network request, since a new suppression can arrive after claim but before send.
+
+### Task A2 — central GiGo autonomy and permission engine — NEXT
+- Implement action classification and permission scopes centrally: observe/read, analyse, draft/prepare, execute and spend.
+- Enforce non-overridable hard-deny for money movement, purchases, paid subscriptions/upgrades, investments/trades, loans, payouts and financial commitments. GiGo can prepare financial information but cannot execute or approve payments.
+- Keep consequential external side effects behind explicit approval until module-specific bounded permissions are designed and approved.
+- Add audit log, pause/stop controls, least-privilege scopes, revocation, quotas and safe failure.
+- Ensure the general agent tool registry does not expose money-moving capabilities.
 
 ### Task B — provider-neutral inbox correlation
 - Map provider account, provider message ID, GiGo message ID, recipient and campaign.
@@ -307,6 +319,7 @@ Research checked 2026-11-22:
 | 2026-11-22 | Contact authorization and marketing registration gate | migration 0033; API route; tests/docs | Existing recipients unreviewed |
 | 2026-11-23 | Outbox privilege hardening | migration 0034; `src/index.ts`; `tests/outreach-api.test.mjs`; `docs/UNIVERSAL_COLLECTION_ENGINE.md` | Commit chain culminated in 9138f95; typecheck/tests PASS |
 | 2026-11-23 | Atomic inbound webhook deduplication | migration 0035; tests; docs | Commit 9f91d26; typecheck/tests PASS |
+| 2026-11-23 | Outreach security audit and database-side rendering | migration 0036; src/index.ts; tests/outreach-api.test.mjs; docs/UNIVERSAL_COLLECTION_ENGINE.md | Commits 4c6fecb, 51d7881, 3563e31, 1ec5b2e, c5c34bc, 2b4caf7, 5ebe257, 802ec66, fb863f0, 029c4f6; final CI PASS run 45103534399; migration unapplied |
 | 2026-11-23 | Create living project memory | `memory.md` | Commit `0524db569ad0e90d23b919360f5930aa5cd3af3d`; documentation-only commit; no new Actions run was triggered. Earlier code verification on `9f91d26` remains PASS. |
 
 **Important:** this ledger records code committed to the feature branch. Migrations 0030–0035 are not applied to Supabase, and none of the email provider/webhook/send functionality is live.
@@ -364,3 +377,43 @@ This is a product/architecture decision recorded from the user's stated directio
 2. Design and implement the central autonomy policy and action classification layer, including the non-overridable financial hard-deny.
 3. Add tests proving that financial actions are blocked even when a task requests broad autonomy, while safe internal/read/draft operations can be policy-scoped.
 4. Then continue provider-neutral inbox/webhook work and dry-run adapters.
+
+
+---
+
+## 14. Outreach security audit completion — migration 0036 (2026-11-23)
+
+### Exact changes
+- supabase/migrations/0036_outreach_database_rendering_and_final_guard.sql
+- src/index.ts
+- tests/outreach-api.test.mjs
+- docs/UNIVERSAL_COLLECTION_ENGINE.md
+
+### Security changes
+1. Database-side template rendering: API preparation accepts only optional recipient_id; subject/body/template/evidence cannot be supplied by the client or API caller. A service-role-only RPC receives verified owner, campaign and recipient IDs and renders from approved template rows inside Postgres.
+2. Trusted personalization provenance: rendering reads recipient name/organisation, campaign offer summary, the selected owner's social profile niche and selected lead-evidence excerpt. It permits only first_name, organisation, niche, specific_observation, offer_summary; requires each placeholder to be declared in the approved template's personalization fields and rejects missing, undeclared, unknown or unresolved placeholders. Evidence references for niche and specific observation are stored with the message.
+3. Outbox privileges: direct PUBLIC, anon and authenticated privileges on outreach_messages are revoked; authenticated owners receive SELECT only. The service-only preparation RPC is the only queue insertion path.
+4. Campaign approval boundary: direct campaign UPDATE privileges are revoked from PUBLIC/anon/authenticated. Owners can read/create/delete their campaigns; insert policy only accepts draft/unapproved records with no sender/approval caps enabled. Campaign approval is performed by the authenticated owner RPC, now SECURITY DEFINER with explicit auth.uid() owner verification and bounded input validation.
+5. Final claim-time guard: the queued-to-sending trigger rechecks campaign active/approved/not revoked, recipient contact authorization and review evidence, provider marketing registration, matching email, suppression list, approved template identity, sequence state, send window, quiet hours and due time.
+
+### Commit chain
+- 4c6fecbb399c3d2558a1634d0eb5187b748629f8 — initial migration 0036.
+- 51d78813ff6fe862f5581105cba18f31b64f63c7 — API now delegates rendering to trusted SQL.
+- 3563e31c7b50d04f7ba6d2557d3099d6ad642a06 — rendering and guard tests.
+- 1ec5b2e2396f57c7c1cc65b96f27563fd9e79555 — SQL regex escaping and independent row-found checks.
+- c5c34bc6b06e21cc3beb042d8f0a37348ffaf0fb — prevent direct campaign approval mutation; secure approval RPC.
+- 2b4caf78445043ca22044a518622d17bd89f181d — campaign approval bypass test.
+- 5ebe257d5bf0681c2c3acaddab0aa3540bb9b653 — constrain direct campaign creation to draft/unapproved.
+- 802ec6666641cc1784fd4842c744b16f161062ba — corrected suppression test assertion; 68/68 tests PASS and typecheck PASS.
+- fb863f024b88cd4be27c0e190b17bd81d4a60024 — documentation update; CI PASS.
+- 029c4f656a6f18913600d016df0261a1e528a94b — explicit SQL expression grouping; typecheck PASS and 68/68 tests PASS; Actions run 45103534399.
+
+### Verification and deployment state
+- Latest branch HEAD when recorded: 029c4f656a6f18913600d016df0261a1e528a94b.
+- Actions run 45103534399: TypeScript typecheck PASS; test suite 68 passed, 0 failed.
+- SQL migration has not been applied or executed against Supabase/Postgres. Static SQL-source assertions are not a substitute for live migration validation.
+- No worker deployed, provider connected, webhook activated, or email sent.
+- Future sender still requires a service-only just-in-time eligibility/suppression recheck immediately before network send to close the in-flight suppression race.
+
+### Next task
+Implement Task A2 — central GiGo autonomy and permission engine as defined above. Preserve the human financial-control boundary and keep consequential external actions gated until bounded permissions are explicitly designed.
