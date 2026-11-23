@@ -12,7 +12,7 @@ test("private research document storage requires R2, owner session and a verifie
  const end=source.indexOf("async function handleResearchReport",start);
  const handler=source.slice(start,end);
  assert.ok(start>=0&&end>start);
- for(const text of ["RESEARCH_FILES","verifiedUserId(token, env)","research_runs?select=id","file.size>5*1024*1024","text/plain","text/html","text/csv","application/pdf","crypto.subtle.digest","RESEARCH_FILES.put","RESEARCH_FILES.get"]) assert.ok(handler.includes(text),text);
+ for(const text of ["RESEARCH_FILES","verifiedUserId(token, env)","research_runs?select=id","file.size>5*1024*1024","text/plain","text/html","text/csv","application/pdf","expectedExtensions","INVALID_FILE_SIGNATURE","crypto.subtle.digest","RESEARCH_FILES.put","RESEARCH_FILES.get"]) assert.ok(handler.includes(text),text);
  assert.ok(source.includes('url.pathname === "/api/v1/research/documents"'));
 });
 
