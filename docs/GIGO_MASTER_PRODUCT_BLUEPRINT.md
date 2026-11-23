@@ -412,3 +412,9 @@ The following implementation supersedes the earlier checkpoint above:
 - The current feature branch now has owner-facing workflows for Research, Product/Partner, Leads/Offers, Outreach preparation, Marketing drafts, Launch milestones, Commerce planning, Creative briefs, Customer Support cases, Analytics snapshots, Learning plans, Operations and Settings. Assistant tools are connected for the main internal workflows and remain governed by durable pause/policy/audit controls.
 - Production completion still requires: migration application in order, Cloudflare Worker deployment, live environment verification, provider sender/webhook integration under explicit owner authorization, approved platform-specific collection adapters, deeper full-text evidence ingestion and claim verification, scheduler/resume validation, and end-to-end tests against the live database.
 - No migration or deployment is implied by CI success. External messages have not been sent and payment execution is permanently prohibited.
+## Browser application integrity and CI — 2026-11-23
+
+- Fixed a duplicate JavaScript declaration that blocked the main browser application script from parsing.
+- CI now runs TypeScript typechecking, the complete Node test suite, and syntax checks for every browser JavaScript file under `public/`.
+- Verified green on commit `1f648d2d194f0f09767adef39dbbbddadcda2022` (run `45110662642`).
+- This is a code-quality milestone, not evidence that the latest database migrations are applied or that the Worker is deployed.
