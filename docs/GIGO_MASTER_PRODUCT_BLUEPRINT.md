@@ -348,3 +348,8 @@ The following implementation supersedes the earlier checkpoint above:
 - Analytics: implemented an owner-scoped operational snapshot from projects, tasks, research, partners, leads, offers and outreach records. Counts/status only; no fabricated revenue, profit or ROI. Dashboard tests passed in CI run 45109041932.
 - Launch Planner: implemented project selection/creation and launch checklist/custom milestone tracking on the existing Projects and Tasks APIs. Internal execution only; no external publishing or payments. Launch UI tests passed in CI run 45109122940.
 - Marketing Studio: migration 0040 adds owner-private marketing draft records; API and UI support create/list/review-status changes. This is draft storage only and does not publish, send or purchase ads. Migration 0040 is not applied. UI/API CI runs passed; marketing test run 45109173405 was pending when this note was written.
+
+## Marketing Studio implementation update — 2026-11-23
+
+- Marketing Studio now saves owner-private drafts for social posts, email copy, landing pages, advertisements, video scripts, blog articles and other marketing assets. Owners can move drafts through draft, review, internally approved and archived states.
+- This is content storage and review only. Internal approval does not publish content, send messages, buy advertisements or create an external campaign. External publishing/delivery integrations remain unimplemented and approval-gated.
