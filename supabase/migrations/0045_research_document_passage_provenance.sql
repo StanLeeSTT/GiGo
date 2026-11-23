@@ -61,6 +61,13 @@ begin
 end;
 $$;
 
+
+drop trigger if exists research_passages_owner_check on public.research_evidence_passages;
+create trigger research_passages_owner_check
+  before insert or update of user_id, research_run_id, research_source_id, research_document_id
+  on public.research_evidence_passages
+  for each row execute function public.gigo_check_research_evidence_ownership();
+
 drop policy if exists research_passages_owner_all on public.research_evidence_passages;
 create policy research_passages_owner_all on public.research_evidence_passages
   for all using (
