@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { createCollectionWorkerStore } from "../src/collection/store.ts";
 import { registerCollectionAdapter } from "../src/collection/adapters.ts";
 import { runCollectionWorkerBatch } from "../src/collection/worker.ts";
+import { createDecodoAdapter } from "../src/collection/decodo.ts";
 
 const USER_AGENT = "GiGoSafeCollector/0.1";
 const MAX_HTML_BYTES = 512 * 1024;
@@ -232,10 +233,15 @@ export async function runHealthCheck() {
   process.stdout.write(JSON.stringify({ health_check: "passed", provider_key: "gigo_safe_http_batch", provider_status: "healthy", egress_probe: "passed", jobs_claimed: 0 }) + "\n");
   return { health_check: "passed", provider_status: "healthy", jobs_claimed: 0 };
 }
+function registerAvailableAdapters() {
+  registerSafeHttpBatchAdapter();
+  const decodoKey = process.env.DECODO_API_KEY;
+  if (decodoKey) registerCollectionAdapter(createDecodoAdapter(decodoKey));
+}
 export async function runBatchFromEnvironment() {
   const supabaseUrl=process.env.SUPABASE_URL,serviceKey=process.env.SUPABASE_SECRET_KEY;
   if(!supabaseUrl||!serviceKey) throw new Error("Required worker secrets are not configured.");
-  registerSafeHttpBatchAdapter();
+  registerAvailableAdapters();
   const store=createCollectionWorkerStore({supabaseUrl,serviceKey});
   const result=await runCollectionWorkerBatch(store,{limit:1,leaseSeconds:120});
   process.stdout.write(JSON.stringify(result)+"\n"); return result;

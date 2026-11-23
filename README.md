@@ -100,6 +100,10 @@ Partnership proposals must state a 50/50 split of net revenue attributable to th
 
 Automatic outreach is not enabled. Campaign preparation does not send messages. A guarded Resend adapter exists as unregistered code only; there is no send worker, webhook route or configured sender. Publicly visible contact details do not automatically create marketing permission. See [outbound provider adapter readiness](docs/OUTBOUND_PROVIDER_ADAPTER_READINESS.md) for the implementation safeguards and activation checklist.
 
+## Decodo Web Data API (optional)
+
+GiGo includes an opt-in Decodo adapter for public-page metadata collection. Add `DECODO_API_KEY` as a trusted GitHub Actions/worker secret; never place it in Supabase tables, source code, browser settings or chat. The provider remains disabled until the owner creates/configures a healthy `decodo` provider record with the `web_fetch` capability. The adapter currently executes the reviewed public-page metadata scrape path; the other official endpoints (`/search`, `/map`, `/crawl`) are exposed by the client helper but are not yet separate GiGo actors. Respect site terms, privacy rules and access restrictions. Decodo advertises up to 10,000 free requests per month, but GiGo does not yet enforce a hard monthly quota; monitor Decodo usage and keep autonomous execution disabled until quota accounting is added. See https://decodo.com/developers.
+
 ## CI
 
 GitHub Actions runs TypeScript typecheck, the Node test suite and browser JavaScript syntax checks on the feature branch. Check the latest workflow result rather than assuming every commit is green.
