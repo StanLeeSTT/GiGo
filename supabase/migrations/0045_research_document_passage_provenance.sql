@@ -10,8 +10,7 @@ alter table public.research_evidence_passages
   references public.research_documents(id) on delete cascade;
 
 create unique index if not exists research_passages_document_locator_uidx
-  on public.research_evidence_passages(research_document_id, locator_type, locator_value)
-  where research_document_id is not null;
+  on public.research_evidence_passages(research_document_id, locator_type, locator_value);
 
 create index if not exists research_passages_document_idx
   on public.research_evidence_passages(user_id, research_document_id, created_at desc)
