@@ -57,6 +57,7 @@ Create local Worker secrets in `.dev.vars` (do not commit this file):
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 SUPABASE_SECRET_KEY=YOUR_SUPABASE_SECRET_KEY
+OWNER_EMAIL=YOUR_OWNER_EMAIL
 ALLOWED_ORIGINS=http://localhost:8787
 APP_ENV=development
 ```
