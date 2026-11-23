@@ -139,6 +139,6 @@ test("API calls the outbox preparation RPC with server credentials only after ve
   assert.ok(route.includes("verifiedUserId(token, env)"));
   assert.ok(route.includes("const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY"));
   assert.ok(route.includes("p_owner_id: userId"));
-  assert.ok(route.includes("authorization: \"Bearer \" + serviceKey"));
+  assert.ok(route.includes('if (!serviceKey.startsWith("sb_secret_")) serviceHeaders.authorization = "Bearer " + serviceKey'));
   assert.ok(route.includes("provider_send_performed: false"));
 });
