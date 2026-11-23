@@ -8,7 +8,7 @@ const client = readFileSync(new URL("../public/research.js", import.meta.url), "
 
 test("research evidence can be assessed by the authenticated owner through the existing PATCH API", () => {
   assert.match(source, /research_sources: \["research_run_id","source_type","title","url","publisher","published_at","excerpt","relevance_score","evidence_status","metadata"\]/);
-  assert.match(source, /research_sources && input\.evidence_status !== undefined && !\["unreviewed","supports","contradicts","context","rejected"\]/);
+  assert.match(source, /resource === "research_sources" && input\.evidence_status !== undefined && !\["unreviewed","supports","contradicts","context","rejected"\]/);
   assert.match(source, /method === "PATCH" && \(!id/);
   assert.ok(page.includes('id="source-list"'));
   assert.ok(client.includes('data-evidence-status='));
