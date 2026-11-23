@@ -20,6 +20,7 @@ test("document ingestion maps decoded text to a provenance source and unreviewed
   assert.equal(plan.passages[1].locator_value, "2");
   assert.equal(plan.passages[0].review_status, "unreviewed");
   assert.equal(plan.passages[0].content_sha256, document.content_sha256);
+  assert.equal(plan.passages[0].research_document_id, document.id);
 });
 
 test("HTML and CSV uploads use the bounded existing extractors", () => {
