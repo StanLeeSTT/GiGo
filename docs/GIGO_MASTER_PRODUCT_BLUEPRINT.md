@@ -452,3 +452,10 @@ The remaining registry-planned capabilities are external outreach delivery, exte
 ### Verification and deployment boundary
 CI run 45110662642 passed on commit 1f648d2d194f0f09767adef39dbbbddadcda2022, including TypeScript typecheck, the Node test suite and syntax checks for every browser JavaScript module. This confirms source-level quality only.
 Migrations 0010–0042 are committed but not applied; 0002/0003 remain uncertain. No production deployment, migration application, outbound send, external publication or money movement is claimed. Before production use, reconcile migration history, apply migrations in order under owner control, save the confirmed STANLEE signature through Settings after migration 0038, initialize autonomy with the default global pause, configure free provider secrets, deploy deliberately and verify the live app.
+
+
+## Production handover and source verification — 2026-11-23
+
+- The repository now has a production readiness runbook at `docs/PRODUCTION_READINESS.md`, and the README, account setup and local development guides have been updated to reflect the current app rather than the initial scaffold.
+- The manual GitHub Actions collection worker registers the reviewed safe public-HTTPS metadata adapter. It pins DNS to public IPv4, rejects private/reserved IPv4 ranges, revalidates redirects and robots policy, and applies request/byte/time/page limits. It is not a social-platform scraper and remains gated by migrations, provider registration, secrets and a successful manual health check.
+- CI verifies source-level typecheck, tests and browser JavaScript syntax. This does not substitute for migration application, Worker deployment or authenticated end-to-end verification.
