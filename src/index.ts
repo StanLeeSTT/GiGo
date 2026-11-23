@@ -303,6 +303,10 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
     const required = resource === "research_runs" ? ["title","research_question"] : resource === "research_sources" ? ["research_run_id","title","url"] : ["research_run_id","title","customer_problem"];
     if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" ? 5000 : key === "url" ? 2048 : key === "customer_problem" ? 5000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
+    if (resource === "research_sources" && input.url !== undefined) {
+      try { const parsed = new URL(String(input.url)); if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) throw new Error(); }
+      catch { return json({ error: { code: "INVALID_SOURCE_URL", message: "Research source URLs must be valid HTTPS links without embedded credentials." } }, 400, headers); }
+    }
     if (resource === "research_runs" && input.status !== undefined && !["draft","queued","running","completed","failed","cancelled"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid research status." } }, 400, headers);
     if (resource === "research_sources" && input.evidence_status !== undefined && !["unreviewed","supports","contradicts","context","rejected"].includes(String(input.evidence_status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid evidence status." } }, 400, headers);
     if (resource === "research_opportunities" && input.status !== undefined && !["discovered","investigating","validated","rejected","pursuing"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid opportunity status." } }, 400, headers);
