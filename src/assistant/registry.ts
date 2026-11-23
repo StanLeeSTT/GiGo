@@ -49,7 +49,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   { id:"commerce.manage_payments", module:"Store, Payments & Fulfilment", description:"Connect checkout, payments and fulfilment providers.", state:"planned", approval:"required" },
   { id:"creative.generate_assets", module:"Creative Studios", description:"Create approved campaign and product creative assets.", state:"planned", approval:"none" },
   { id:"customers.list_cases", module:"Customer Success & Support", description:"List owner-private support cases and draft responses.", state:"available", method:"GET", endpoint:"/api/v1/customers/cases", approval:"none" },
-  { id:"customers.support", module:"Customer Success & Support", description:"Create internal support cases and update response drafts. Never sends customer messages or executes refunds.", state:"available", method:"POST", endpoint:"/api/v1/customers/cases", approval:"none" },
+  { id:"customers.create_case", module:"Customer Success & Support", description:"Create an internal support case without contacting the customer.", state:"available", method:"POST", endpoint:"/api/v1/customers/cases", approval:"none" },
+  { id:"customers.update_case", module:"Customer Success & Support", description:"Update support case status, notes or response draft; never sends the response.", state:"available", method:"PATCH", endpoint:"/api/v1/customers/cases", approval:"none" },
   { id:"analytics.review_performance", module:"Analytics", description:"Analyse business, campaign and product performance.", state:"planned", approval:"none" },
   { id:"learning.plan_and_track", module:"Learning & Accountability", description:"Create learning plans, milestones and reminders.", state:"planned", approval:"none" }
 ];
