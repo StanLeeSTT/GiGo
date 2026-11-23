@@ -1,3 +1,4 @@
+import { getAutonomyPolicySummary } from "./autonomy";
 export type ToolState = "available" | "planned";
 export interface AssistantTool {
   id: string;
@@ -53,6 +54,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
 export function getAssistantCapabilities() {
   return {
     assistant: { name:"GiGo", architecture:"permissioned-tool-registry", ai_runtime:"connected" },
+    autonomy: getAutonomyPolicySummary(),
     summary: {
       total_tools: ASSISTANT_TOOLS.length,
       available_tools: ASSISTANT_TOOLS.filter(tool => tool.state === "available").length,
