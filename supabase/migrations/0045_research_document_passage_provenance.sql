@@ -39,6 +39,12 @@ begin
     if source_owner is distinct from new.user_id or source_run is distinct from new.research_run_id then
       raise exception 'research source ownership or run mismatch' using errcode = '23514';
     end if;
+    if source_url like 'gigo://research-document/%' and (
+      new.research_document_id is null
+      or source_url is distinct from ('gigo://research-document/' || new.research_document_id::text)
+    ) then
+      raise exception 'private document passages cannot be detached from their source document' using errcode = '23514';
+    end if;
     if new.research_document_id is not null then
       select user_id, research_run_id into document_owner, document_run
         from public.research_documents where id = new.research_document_id;
