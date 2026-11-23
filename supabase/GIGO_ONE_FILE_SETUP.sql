@@ -4673,7 +4673,7 @@ insert into public.collection_runs(user_id,job_id,provider_id,actor_key,actor_ve
 insert into public.collection_datasets(user_id,run_id,name,metadata) values(auth.uid(),new_run_id,safe_dataset_name,jsonb_build_object('actor_key',safe_actor_key,'actor_version',p_actor_version,'provider_key',safe_provider_key)) returning id into new_dataset_id;
 update public.jobs set input=input||jsonb_build_object('collection_run_id',new_run_id,'dataset_id',new_dataset_id,'provider_key',safe_provider_key) where id=new_job_id and user_id=auth.uid();
 return jsonb_build_object('job_id',new_job_id,'run_id',new_run_id,'dataset_id',new_dataset_id,'provider_key',safe_provider_key,'status','queued','execution_enabled',false);
-end; $;
+end; $$;
 revoke all on function public.gigo_create_collection_run(text,integer,jsonb,text,text) from public,anon;
 grant execute on function public.gigo_create_collection_run(text,integer,jsonb,text,text) to authenticated;
 comment on function public.gigo_create_collection_run(text,integer,jsonb,text,text) is 'Creates a queued public-page metadata run bound to an owner-configured healthy provider. Decodo credentials remain in worker secrets.';
