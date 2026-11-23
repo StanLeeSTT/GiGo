@@ -357,3 +357,7 @@ The following implementation supersedes the earlier checkpoint above:
 
 - Customer Success now stores owner-private support cases with customer details, issue description, priority, workflow status, internal notes and response drafts. Owners can create cases, update status and edit draft responses.
 - This is an internal support tracker only. Response drafts are never sent by this module; refunds, payments and external account changes remain unavailable.
+## Creative Studio implementation update — 2026-11-23
+
+- Creative Studio now stores owner-private briefs for image, video, audio, brand identity, presentation and other creative asset types. It records the creative brief, generation prompt, target platform, format/aspect ratio, HTTPS reference links, production status, output URL and notes.
+- Owners can track draft, ready, in-progress, complete and archived states. This is brief and output-reference management only; it does not itself generate media, publish content or purchase paid creative services.
