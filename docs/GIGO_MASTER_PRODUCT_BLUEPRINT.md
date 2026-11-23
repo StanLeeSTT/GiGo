@@ -381,3 +381,7 @@ The following implementation supersedes the earlier checkpoint above:
 
 - The AI Assistant can list owner-private support cases, create internal support cases and update case status, response drafts and notes through registered, policy-classified tools.
 - These tools never contact customers or execute refunds, account changes or payments. Response text remains an internal draft until a separate, explicitly authorized delivery capability exists.
+## Assistant Creative Studio integration — 2026-11-23
+
+- The AI Assistant can list private creative briefs, save new briefs and generation prompts with HTTPS reference links, and update production status, output URL and notes.
+- These tools organise and track creative work only. They do not generate media, publish assets or purchase creative services.
