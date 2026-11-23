@@ -66,7 +66,7 @@ begin
   end if;
 
   -- Financial actions are permanently denied, even if a row was mistakenly created.
-  if p_tool_name ~* '(^|[._-])(payment|payments|transfer|withdraw|deposit|purchase|checkout|refund|payout|trade|trading|invest|loan|subscription|charge|billing)([._-]|$)' then
+  if p_tool_name ~* '(^|[._-])(pay(ment|ments)?|purchase|buy|checkout|charge|refund|transfer|withdraw|deposit|payout|subscription|subscribe|billing|invoice_payment|bank|wallet_send|invest|investment|trade|trading|loan|borrow|lend|tip|donate|spend)([._-]|$)' then
     return false;
   end if;
 
