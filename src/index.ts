@@ -1448,7 +1448,9 @@ export default {
             if (missing.size) { skipped.push({ recipient_id: recipient.id, reason: "missing_verified_personalization", missing_fields: Array.from(missing) }); continue; }
             const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
             if (!serviceKey) return json({ error: { code: "SERVICE_DATABASE_NOT_CONFIGURED", message: "Secure outbox preparation is not configured." } }, 503, headers);
-            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ p_owner_id: userId, p_campaign_id: campaignId, p_recipient_id: recipient.id, p_messages: messages }), signal: AbortSignal.timeout(15000) });
+            const serviceHeaders: Record<string, string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json" };
+            if (!serviceKey.startsWith("sb_secret_")) serviceHeaders.authorization = "Bearer " + serviceKey;
+            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers: serviceHeaders, body: JSON.stringify({ p_owner_id: userId, p_campaign_id: campaignId, p_recipient_id: recipient.id, p_messages: messages }), signal: AbortSignal.timeout(15000) });
             if (!rpcResponse.ok) { skipped.push({ recipient_id: recipient.id, reason: "sequence_persistence_rejected" }); continue; }
             prepared.push({ recipient_id: recipient.id, result: await rpcResponse.json() });
           }
