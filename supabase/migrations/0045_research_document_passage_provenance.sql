@@ -6,7 +6,7 @@ alter table public.research_evidence_passages
   add column if not exists research_document_id uuid
   references public.research_documents(id) on delete cascade;
 
-create index if not exists research_passages_document_idx
+create unique index if not exists research_passages_document_locator_uidx\n  on public.research_evidence_passages(research_document_id, locator_type, locator_value)\n  where research_document_id is not null;\n\ncreate index if not exists research_passages_document_idx
   on public.research_evidence_passages(user_id, research_document_id, created_at desc)
   where research_document_id is not null;
 
