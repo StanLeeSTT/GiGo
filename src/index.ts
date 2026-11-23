@@ -268,6 +268,8 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 
 
 async function handleResearchDocuments(request: Request, env: Env, headers: Headers): Promise<Response> {
+  let pendingObjectKey: string | null = null;
+  let metadataPersisted = false;
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
   if (!env.RESEARCH_FILES) return json({ error: { code: "PRIVATE_STORAGE_NOT_CONFIGURED", message: "Create and bind the private GiGo research R2 bucket before uploading files." } }, 503, headers);
   const token = bearerToken(request);
@@ -326,17 +328,21 @@ async function handleResearchDocuments(request: Request, env: Env, headers: Head
     const id = crypto.randomUUID();
     const originalName = file.name.replace(/[\\/\r\n\0]/g,"_").slice(0,255) || "research-upload";
     const objectKey = ownerId+"/"+runId+"/"+id;
+    pendingObjectKey = objectKey;
     await env.RESEARCH_FILES.put(objectKey,bytes,{httpMetadata:{contentType:type},customMetadata:{owner_id:ownerId,research_run_id:runId,document_id:id,sha256:hash}});
     const record = {id,user_id:ownerId,research_run_id:runId,object_key:objectKey,original_filename:originalName,content_type:type,byte_size:file.size,content_sha256:hash,ingestion_status:"uploaded"};
     const saved = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,ingestion_status,created_at",env.SUPABASE_URL!),{method:"POST",headers:{...dbHeaders,prefer:"return=representation"},body:JSON.stringify(record),signal:AbortSignal.timeout(10000)});
     if (!saved.ok) {
       await env.RESEARCH_FILES.delete(objectKey).catch(()=>undefined);
+      pendingObjectKey = null;
       return json({ error: { code: "DOCUMENT_METADATA_SAVE_FAILED", message: "The file was not registered. Confirm migration 0044 is applied; temporary object cleanup was attempted." } },502,headers);
     }
+    metadataPersisted = true;
     const rows = await saved.json();
     return json({data:Array.isArray(rows)?rows[0]:rows},201,headers);
   } catch {
-    return json({ error: { code: "DOCUMENT_STORAGE_FAILED", message: "Could not safely store the private research document." } },502,headers);
+    if (pendingObjectKey && !metadataPersisted) await env.RESEARCH_FILES?.delete(pendingObjectKey).catch(()=>undefined);
+    return json({ error: { code: "DOCUMENT_STORAGE_FAILED", message: "Could not safely store the private research document. Temporary object cleanup was attempted when metadata was not saved." } },502,headers);
   }
 }
 
