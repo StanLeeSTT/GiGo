@@ -34,31 +34,50 @@ test("outreach template API restricts sequence size and personalization fields",
 });
 
 
-test("outreach preparation requires approval, uses evidence-backed placeholders and persists only through atomic RPC", () => {
+test("outreach preparation accepts identifiers only and delegates content rendering to the trusted database", () => {
   const start = source.indexOf("const outreachPrepareMatch =");
-  const end = source.indexOf('if (request.method === "GET" && (url.pathname === "/healthz"', start);
+  const end = source.indexOf("if (outreachCampaignApprovalMatch)", start);
   assert.ok(start >= 0 && end > start, "outreach preparation route should be registered");
   const route = source.slice(start, end);
-  assert.ok(route.includes('approval_status !== "approved"'));
-  assert.ok(route.includes("lead_social_profiles"));
-  assert.ok(route.includes("lead_evidence"));
-  assert.ok(route.includes("missing_verified_personalization"));
-  assert.ok(route.includes("gigo_prepare_outreach_sequence"));
+  assert.ok(route.includes('Object.keys(body).some(key => key !== "recipient_id")'));
+  assert.ok(route.includes("content_rendered_by_database: true"));
+  assert.ok(route.includes("p_owner_id: userId"));
+  assert.ok(route.includes("p_campaign_id: campaignId"));
+  assert.ok(route.includes("p_recipient_id: recipient.id"));
+  assert.ok(!route.includes("subject_template"));
+  assert.ok(!route.includes("body_template"));
+  assert.ok(!route.includes("p_messages"));
   assert.ok(route.includes("provider_send_performed: false"));
-  assert.ok(route.includes('limit: "25"'));
 });
 
-test("outreach preparation SQL is owner-scoped, template-bound, idempotent and does not send", () => {
-  const sql = readFileSync(new URL("../supabase/migrations/0030_outreach_sequence_preparation.sql", import.meta.url), "utf8");
-  assert.ok(sql.includes("auth.uid()"));
-  assert.ok(sql.includes("approval_status <> 'approved'") || sql.includes("approval_status = 'approved'"));
-  assert.ok(sql.includes("approved_at is not null"));
-  assert.ok(sql.includes("on conflict (recipient_id,sequence_number) do nothing"));
+test("database rendering is bound to approved templates and trusted evidence, not caller-supplied copy", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0036_outreach_database_rendering_and_final_guard.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("create or replace function public.gigo_prepare_outreach_sequence"));
+  assert.ok(sql.includes("coalesce(auth.role(), '') <> 'service_role'"));
+  assert.ok(sql.includes("template_row.subject_template"));
+  assert.ok(sql.includes("template_row.body_template"));
+  assert.ok(sql.includes("public.lead_social_profiles"));
+  assert.ok(sql.includes("public.lead_evidence"));
+  assert.ok(sql.includes("template_row.personalization_fields ? placeholder"));
+  assert.ok(sql.includes("grant execute on function public.gigo_prepare_outreach_sequence(uuid, uuid, uuid) to service_role"));
+  assert.ok(!sql.includes("p_messages jsonb"));
+  assert.ok(sql.includes("revoke all on public.outreach_messages from public, anon, authenticated"));
+  assert.ok(sql.includes("message no longer satisfies approved outreach eligibility"));
   assert.ok(sql.includes("outreach_suppressions"));
-  assert.ok(sql.includes("outreach_events"));
-  assert.ok(sql.includes("revoke all on function public.gigo_prepare_outreach_sequence(uuid,uuid,jsonb) from public, anon") || sql.includes("revoke all on function public.gigo_prepare_outreach_sequence(uuid, uuid, jsonb) from public, anon"));
+  assert.ok(sql.includes("approval_revoked_at is not null"));
 });
 
+test("outreach message client access is read-only and message status transitions recheck eligibility", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0036_outreach_database_rendering_and_final_guard.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("revoke all on public.outreach_messages from public, anon, authenticated"));
+  assert.ok(sql.includes("grant select on public.outreach_messages to authenticated"));
+  assert.ok(sql.includes("before update of status on public.outreach_messages"));
+  assert.ok(sql.includes("contact_authorization_status <> 'approved'"));
+  assert.ok(sql.includes("not exists (select 1 from public.outreach_suppressions"));
+  assert.ok(sql.includes("send_window_start"));
+  assert.ok(sql.includes("quiet_hours_start"));
+  assert.ok(sql.includes("previous.status = 'sent'"));
+});
 
 test("inbound outreach events stop queued follow-ups and suppress negative responses", () => {
   const sql = readFileSync(new URL("../supabase/migrations/0031_outreach_inbound_event_safety.sql", import.meta.url), "utf8");
