@@ -459,3 +459,12 @@ Migrations 0010–0042 are committed but not applied; 0002/0003 remain uncertain
 - The repository now has a production readiness runbook at `docs/PRODUCTION_READINESS.md`, and the README, account setup and local development guides have been updated to reflect the current app rather than the initial scaffold.
 - The manual GitHub Actions collection worker registers the reviewed safe public-HTTPS metadata adapter. It pins DNS to public IPv4, rejects private/reserved IPv4 ranges, revalidates redirects and robots policy, and applies request/byte/time/page limits. It is not a social-platform scraper and remains gated by migrations, provider registration, secrets and a successful manual health check.
 - CI verifies source-level typecheck, tests and browser JavaScript syntax. This does not substitute for migration application, Worker deployment or authenticated end-to-end verification.
+
+
+## Research evidence traceability — 2026-11-23
+
+- Added migration `0043_research_evidence_traceability.sql` (commit `a11e37ffd4b76da41367567844f0e24c78b32ae7`). It adds owner-scoped exact evidence passages with page/paragraph/section/timestamp/row/cell locators, optional SHA-256 source-content hash, extraction method and explicit review state.
+- Added atomic research claims with default `unverified` status, plus claim-to-passage relationships marked supports/contradicts/context. Database triggers enforce that source passages, claims and linked evidence belong to the same owner and research run. RLS is enabled on all three tables.
+- Added `tests/research-evidence-traceability.test.mjs` (commit `d32f034885b71500228327d9ebecdb93ad348325`) to assert locator/hash constraints, unverified defaults, owner/run matching and RLS.
+- This is the database foundation only. No PDF/HTML/CSV upload, extraction worker, API/UI route, OCR, semantic index or automatic claim verification has been implemented by this task. A stored excerpt is not proof that a claim is true; review remains explicit.
+- CI run `45113531641` was queued for migration commit `a11e37f` at the time of writing; the separate test commit also needs its own CI result checked. Migration 0043 is committed and unapplied.
