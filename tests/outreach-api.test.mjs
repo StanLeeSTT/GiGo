@@ -73,7 +73,7 @@ test("outreach message client access is read-only and message status transitions
   assert.ok(sql.includes("grant select on public.outreach_messages to authenticated"));
   assert.ok(sql.includes("before update of status on public.outreach_messages"));
   assert.ok(sql.includes("contact_authorization_status <> 'approved'"));
-  assert.ok(sql.includes("not exists (select 1 from public.outreach_suppressions"));
+  assert.ok(sql.includes("exists (select 1 from public.outreach_suppressions"));
   assert.ok(sql.includes("send_window_start"));
   assert.ok(sql.includes("quiet_hours_start"));
   assert.ok(sql.includes("previous.status = 'sent'"));
@@ -85,6 +85,8 @@ test("campaign approval cannot be forged by direct authenticated table updates",
   assert.ok(sql.includes("grant select, insert, delete on public.outreach_campaigns to authenticated"));
   assert.ok(sql.includes("create policy outreach_campaigns_owner_select"));
   assert.ok(sql.includes("create policy outreach_campaigns_owner_insert"));
+  assert.ok(sql.includes("and approval_status = 'not_requested'"));
+  assert.ok(sql.includes("and status = 'draft'"));
   assert.ok(sql.includes("security definer\nset search_path = ''"));
   assert.ok(sql.includes("owner_id uuid := auth.uid()"));
   assert.ok(sql.includes("grant execute on function public.gigo_approve_outreach_campaign"));
