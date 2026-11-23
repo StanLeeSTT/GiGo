@@ -1,10 +1,10 @@
-import { authorizeToolAction } from "./autonomy";
+import { authorizeToolAction, classifyToolAction, type ToolActionClass } from "./autonomy";
 import { getAssistantCapabilities } from "./registry";
 import { callAIModel, providerPoolStatus } from "./providers";
 
 export interface AssistantRuntimeEnv {
   SUPABASE_URL?: string;
-  SUPABASE_ANON_KEY?: string;
+  SUPABASE_ANON_KEY?: string;\n  SUPABASE_SECRET_KEY?: string;\n  SUPABASE_SERVICE_ROLE_KEY?: string;
   AI_PROVIDER_POOL?: string;
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
@@ -478,6 +478,49 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
 
 
 
+type DurableAutonomyGate = { allowed: boolean; action: ToolActionClass; reason: string; decision: "allowed" | "denied" | "approval_required" | "paused"; policyVersion: number | null };
+
+async function durableAutonomyGate(env: AssistantRuntimeEnv, token: string, ownerId: string, toolName: string): Promise<DurableAutonomyGate> {
+  const action = classifyToolAction(toolName);
+  const staticDecision = authorizeToolAction(toolName);
+  if (action === "financial" || action === "unknown") {
+    return { allowed: false, action, reason: staticDecision.reason, decision: "denied", policyVersion: null };
+  }
+  if (action === "external_execute") {
+    return { allowed: false, action, reason: "External execution remains blocked until exact campaign-bound approval consumption and sender controls are connected.", decision: "approval_required", policyVersion: null };
+  }
+  const pauseRows = await db(env, token, "/rest/v1/autonomy_control_state?select=is_paused&user_id=eq." + encodeURIComponent(ownerId) + "&limit=1") as Row[];
+  if (!Array.isArray(pauseRows) || pauseRows.length !== 1 || pauseRows[0]?.is_paused !== false) {
+    return { allowed: false, action, reason: "GiGo is globally paused or its pause state is missing. Initialize governance and explicitly unpause before tool execution.", decision: "paused", policyVersion: null };
+  }
+  const policyRows = await db(env, token, "/rest/v1/autonomy_policies?select=enabled,require_approval,policy_version&user_id=eq." + encodeURIComponent(ownerId) + "&scope=eq." + encodeURIComponent(action) + "&limit=1") as Row[];
+  if (!Array.isArray(policyRows) || policyRows.length !== 1) {
+    return { allowed: false, action, reason: "No durable owner policy exists for this action scope. The action is denied.", decision: "denied", policyVersion: null };
+  }
+  const policy = policyRows[0];
+  const policyVersion = Number.isInteger(policy.policy_version) ? Number(policy.policy_version) : null;
+  if (policy.enabled !== true) {
+    return { allowed: false, action, reason: "The durable owner policy has disabled this action scope.", decision: "denied", policyVersion };
+  }
+  if (policy.require_approval === true) {
+    return { allowed: false, action, reason: "This action scope requires an approval workflow that is not yet connected to this tool.", decision: "approval_required", policyVersion };
+  }
+  return { allowed: true, action, reason: "Allowed by the current durable owner policy.", decision: "allowed", policyVersion };
+}
+
+async function writeAutonomyAudit(env: AssistantRuntimeEnv, event: Row): Promise<boolean> {
+  const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!env.SUPABASE_URL || !serviceKey) return false;
+  const headers: Record<string, string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json", prefer: "return=minimal" };
+  if (!serviceKey.startsWith("sb_secret_")) headers.authorization = "Bearer " + serviceKey;
+  try {
+    const result = await fetch(new URL("/rest/v1/autonomy_audit_events", env.SUPABASE_URL), {
+      method: "POST", headers, body: JSON.stringify(event), signal: AbortSignal.timeout(8000)
+    });
+    return result.ok;
+  } catch { return false; }
+}
+
 async function recordUsage(env: AssistantRuntimeEnv, token: string, ownerId: string, usage: unknown, provider: string, model: string, keyId: string): Promise<void> {
   if (!isObject(usage)) return;
   const prompt = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
@@ -598,12 +641,31 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
           continue;
         }
         let result: Row;
-        const autonomy = authorizeToolAction(name);
-        if (!autonomy.allowed) {
-          result = { error: autonomy.reason, autonomy_action: autonomy.action, approval_required: autonomy.approvalRequired };
+        let gate: DurableAutonomyGate;
+        try {
+          gate = await durableAutonomyGate(env, token, ownerId, name);
+        } catch {
+          gate = { allowed: false, action: classifyToolAction(name), reason: "Durable autonomy policy storage is unavailable. The tool action was denied.", decision: "denied", policyVersion: null };
+        }
+        const auditBase = {
+          user_id: ownerId, tool_name: name.slice(0,120), action_class: gate.action,
+          policy_version: gate.policyVersion, target_ref: null, intent_sha256: null
+        };
+        if (!gate.allowed) {
+          await writeAutonomyAudit(env, { ...auditBase, decision: gate.decision, reason_code: gate.decision.toUpperCase(), idempotency_key: String(currentMessageId || "no-message") + ":" + callId + ":decision", result_summary: gate.reason.slice(0,1000) });
+          result = { error: gate.reason, autonomy_action: gate.action, approval_required: gate.decision === "approval_required" };
         } else {
-          try { result = await executeTool(name, args, env, token, ownerId, currentMessageId); }
-          catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
+          const audited = await writeAutonomyAudit(env, { ...auditBase, decision: "allowed", reason_code: "DURABLE_POLICY_ALLOWED", idempotency_key: String(currentMessageId || "no-message") + ":" + callId + ":decision", result_summary: gate.reason });
+          if (!audited) {
+            result = { error: "The required autonomy audit could not be written. The tool action was not executed.", autonomy_action: gate.action };
+          } else {
+            try {
+              result = await executeTool(name, args, env, token, ownerId, currentMessageId);
+            } catch {
+              result = { error: "The requested workspace operation failed. No success is being reported." };
+            }
+            await writeAutonomyAudit(env, { ...auditBase, decision: result.error ? "failed" : "completed", reason_code: result.error ? "TOOL_FAILED" : "TOOL_COMPLETED", idempotency_key: String(currentMessageId || "no-message") + ":" + callId + ":result", result_summary: result.error ? String(result.error).slice(0,1000) : "Tool returned successfully." });
+          }
         }
         toolActivity.push({ name: name || "unknown_tool", status: result.error ? "failed" : "completed" });
         const toolContent = JSON.stringify(result);
