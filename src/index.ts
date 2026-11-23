@@ -1446,7 +1446,9 @@ export default {
               messages.push({ template_id: template.id, sequence_number: i, message_type: template.message_type, to_email: String(recipient.email).trim().toLowerCase(), subject: render(template.subject_template).slice(0, 300), body_text: render(template.body_template), personalization_evidence: evidenceRefs.filter(e => placeholders.includes(String(e.field))) });
             }
             if (missing.size) { skipped.push({ recipient_id: recipient.id, reason: "missing_verified_personalization", missing_fields: Array.from(missing) }); continue; }
-            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers: { ...dbHeaders, "content-type": "application/json" }, body: JSON.stringify({ p_campaign_id: campaignId, p_recipient_id: recipient.id, p_messages: messages }), signal: AbortSignal.timeout(15000) });
+            const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+            if (!serviceKey) return json({ error: { code: "SERVICE_DATABASE_NOT_CONFIGURED", message: "Secure outbox preparation is not configured." } }, 503, headers);
+            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey, "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ p_owner_id: userId, p_campaign_id: campaignId, p_recipient_id: recipient.id, p_messages: messages }), signal: AbortSignal.timeout(15000) });
             if (!rpcResponse.ok) { skipped.push({ recipient_id: recipient.id, reason: "sequence_persistence_rejected" }); continue; }
             prepared.push({ recipient_id: recipient.id, result: await rpcResponse.json() });
           }
