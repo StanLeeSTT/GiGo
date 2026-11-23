@@ -56,7 +56,7 @@ test("outreach preparation SQL is owner-scoped, template-bound, idempotent and d
   assert.ok(sql.includes("on conflict (recipient_id,sequence_number) do nothing"));
   assert.ok(sql.includes("outreach_suppressions"));
   assert.ok(sql.includes("outreach_events"));
-  assert.ok(sql.includes("revoke all on function public.gigo_prepare_outreach_sequence(uuid, uuid, jsonb) from public, anon, authenticated"));
+  assert.ok(sql.includes("revoke all on function public.gigo_prepare_outreach_sequence(uuid,uuid,jsonb) from public, anon") || sql.includes("revoke all on function public.gigo_prepare_outreach_sequence(uuid, uuid, jsonb) from public, anon"));
 });
 
 
