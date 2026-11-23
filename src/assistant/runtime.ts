@@ -1,3 +1,4 @@
+import { authorizeToolAction } from "./autonomy";
 import { getAssistantCapabilities } from "./registry";
 import { callAIModel, providerPoolStatus } from "./providers";
 
@@ -597,8 +598,13 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
           continue;
         }
         let result: Row;
-        try { result = await executeTool(name, args, env, token, ownerId, currentMessageId); }
-        catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
+        const autonomy = authorizeToolAction(name);
+        if (!autonomy.allowed) {
+          result = { error: autonomy.reason, autonomy_action: autonomy.action, approval_required: autonomy.approvalRequired };
+        } else {
+          try { result = await executeTool(name, args, env, token, ownerId, currentMessageId); }
+          catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
+        }
         toolActivity.push({ name: name || "unknown_tool", status: result.error ? "failed" : "completed" });
         const toolContent = JSON.stringify(result);
         messages.push({ role: "tool", tool_call_id: callId, content: toolContent });
