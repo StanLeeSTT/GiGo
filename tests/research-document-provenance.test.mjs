@@ -29,3 +29,8 @@ test("document lifecycle update grant is restricted to ingestion status",()=>{
  assert.match(migration,/grant update \(ingestion_status\) on public\.research_documents to authenticated/i);
  assert.doesNotMatch(migration,/grant update on public\.research_documents/i);
 });
+
+test("document provenance trigger rechecks document reassignment",()=>{
+ assert.match(migration,/before insert or update of user_id, research_run_id, research_source_id, research_document_id/i);
+ assert.match(migration,/execute function public\.gigo_check_research_evidence_ownership\(\)/i);
+});
