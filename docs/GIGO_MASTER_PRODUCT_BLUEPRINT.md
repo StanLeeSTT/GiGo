@@ -436,3 +436,19 @@ The Analytics dashboard now summarizes saved records across Projects, Tasks, Res
 - Partnership campaigns require the 50/50 net-revenue language, with only direct costs agreed in writing in advance. Subject template <=80 characters and body template <=340 characters before deterministic signature/partnership additions; final DB message guard remains <=500 characters including signature.
 - CI run 45110662642 passed the full test suite and syntax-checks all browser JavaScript modules. The provider-neutral live sender and verified webhook remain unimplemented; no messages have been sent.
 - No migration or deployment was performed. The confirmed STANLEE signature remains unconfigured in the database until migration 0038 is applied and owner settings API is called.
+
+## Consolidated implementation and remaining dependencies — 2026-11-23
+
+### Internal capabilities implemented in the current feature branch
+The current branch contains owner-facing workflows and assistant tools for research briefs/evidence review, product and partner records, leads/offers, marketing drafts, outreach campaign preparation, launch planning, non-transactional commerce estimates, creative briefs, customer support cases, learning plans, analytics snapshots, operations and settings. The assistant's internal tool actions are classified and checked against durable owner pause/policy/audit state.
+
+### Research and collection limitations
+Research discovery stores scholarly metadata/abstracts from Crossref and OpenAlex and best-effort GDELT metadata. Owner review labels are available, but these are not automated fact-checks. PDF/HTML/CSV ingestion, full-text extraction, line/page citations, embeddings/vector search, claim-level verification and comprehensive exports remain future work.
+The Universal Collection Engine includes one bounded public HTTPS metadata actor and a manual batch-worker workflow with DNS/IP pinning, redirect validation, robots checks, limits, resumable leases and durable persistence. It is not enabled by default and requires the collection schema/provider record, GitHub Actions secrets, a successful health check and owner dispatch. It must not bypass authentication, CAPTCHAs, robots restrictions or platform terms.
+
+### External and financial actions
+The remaining registry-planned capabilities are external outreach delivery, external launch publishing and commerce/payment integration. External delivery/publishing remain unavailable pending lawful provider adapters, verified sender identity, consent/registration, signed inbound webhooks, final pre-side-effect suppression checks, owner approval and audit. Commerce/payment execution remains permanently outside GiGo's authority; the owner performs all monetary actions manually.
+
+### Verification and deployment boundary
+CI run 45110662642 passed on commit 1f648d2d194f0f09767adef39dbbbddadcda2022, including TypeScript typecheck, the Node test suite and syntax checks for every browser JavaScript module. This confirms source-level quality only.
+Migrations 0010–0042 are committed but not applied; 0002/0003 remain uncertain. No production deployment, migration application, outbound send, external publication or money movement is claimed. Before production use, reconcile migration history, apply migrations in order under owner control, save the confirmed STANLEE signature through Settings after migration 0038, initialize autonomy with the default global pause, configure free provider secrets, deploy deliberately and verify the live app.
