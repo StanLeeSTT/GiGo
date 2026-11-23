@@ -57,13 +57,18 @@ test("permission scopes can be narrowed without changing the financial hard deny
   assert.equal(authorizeToolAction("payments.send", { policy: readOnly }).allowed, false);
 });
 
-test("assistant runtime enforces the autonomy policy before executing every model-requested tool", () => {
+test("assistant runtime reads durable pause and scope policy before each tool and audits the decision", () => {
   const runtime = readFileSync(new URL("../src/assistant/runtime.ts", import.meta.url), "utf8");
-  const authorization = runtime.indexOf("const autonomy = authorizeToolAction(name)");
-  const execution = runtime.indexOf("executeTool(name, args", authorization);
-  assert.ok(runtime.includes('import { authorizeToolAction } from "./autonomy";'));
-  assert.ok(authorization >= 0 && execution > authorization);
-  assert.ok(runtime.slice(authorization, execution).includes("if (!autonomy.allowed)"));
+  const gate = runtime.indexOf("durableAutonomyGate(env, token, ownerId, name)");
+  const execution = runtime.indexOf("executeTool(name, args", gate);
+  assert.ok(runtime.includes("autonomy_control_state"));
+  assert.ok(runtime.includes("autonomy_policies"));
+  assert.ok(runtime.includes("writeAutonomyAudit"));
+  assert.ok(runtime.includes("SUPABASE_SECRET_KEY"));
+  assert.ok(gate >= 0 && execution > gate);
+  assert.ok(runtime.slice(gate, execution).includes("if (!gate.allowed)"));
+  assert.ok(runtime.includes("Durable autonomy policy storage is unavailable"));
+  assert.ok(runtime.includes("The required autonomy audit could not be written"));
 });
 
 test("assistant capability registry exposes the active autonomy boundary", () => {
