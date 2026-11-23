@@ -29,6 +29,8 @@ test("research page supports private document uploads and safe multipart authori
  assert.ok(page.includes('id="research-document-list"'));
  assert.ok(client.includes('new FormData()'));
  assert.ok(client.includes('"/api/v1/research/documents"'));
+ assert.ok(client.includes('data-extract-document'));
+ assert.ok(client.includes('"/api/v1/research/documents/extract"'));
  assert.match(shared,/options\.body&&!\(options\.body instanceof FormData\)/);
 });
 
