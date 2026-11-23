@@ -56,7 +56,7 @@ test("outreach preparation SQL is owner-scoped, template-bound, idempotent and d
   assert.ok(sql.includes("on conflict (recipient_id,sequence_number) do nothing"));
   assert.ok(sql.includes("outreach_suppressions"));
   assert.ok(sql.includes("outreach_events"));
-  assert.ok(sql.includes("to authenticated"));
+  assert.ok(sql.includes("revoke all on function public.gigo_prepare_outreach_sequence(uuid, uuid, jsonb) from public, anon, authenticated"));
 });
 
 
@@ -117,4 +117,28 @@ test("outreach recipients require a reviewed contact basis and marketing-audienc
   assert.ok(sql.includes("marketing_contact_registered"));
   assert.ok(sql.includes("gigo_guard_outreach_send_eligibility"));
   assert.ok(sql.includes("recipient lacks reviewed marketing-contact authorization"));
+});
+
+
+test("outreach outbox preparation is service-only and users cannot mutate message status directly", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0034_outreach_outbox_privilege_hardening.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("drop policy if exists outreach_messages_owner_all"));
+  assert.ok(sql.includes("for select using (user_id = auth.uid())"));
+  assert.ok(sql.includes("revoke insert, update, delete on public.outreach_messages from anon, authenticated"));
+  assert.ok(sql.includes("coalesce(auth.role(), '') <> 'service_role'"));
+  assert.ok(sql.includes("grant execute on function public.gigo_prepare_outreach_sequence(uuid, uuid, uuid, jsonb) to service_role"));
+  assert.ok(sql.includes("recipient_row.contact_authorization_status <> 'approved'"));
+  assert.ok(sql.includes("recipient_row.marketing_contact_registered is not true"));
+  assert.ok(!sql.includes("to authenticated"));
+});
+
+test("API calls the outbox preparation RPC with server credentials only after verifying user identity", () => {
+  const start = source.indexOf("const outreachPrepareMatch =");
+  const end = source.indexOf('if (outreachCampaignApprovalMatch)', start);
+  const route = source.slice(start, end);
+  assert.ok(route.includes("verifiedUserId(token, env)"));
+  assert.ok(route.includes("const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY"));
+  assert.ok(route.includes("p_owner_id: userId"));
+  assert.ok(route.includes("authorization: \"Bearer \" + serviceKey"));
+  assert.ok(route.includes("provider_send_performed: false"));
 });
