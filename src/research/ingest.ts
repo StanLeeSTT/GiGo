@@ -1,4 +1,4 @@
-import { extractResearchPassages, type ResearchPassageDraft } from "./extract";
+import { extractResearchPassages, type ResearchPassageDraft } from "./extract.ts";
 
 export interface ResearchDocumentForIngestion {
   id: string;
