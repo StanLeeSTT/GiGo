@@ -13,7 +13,7 @@ test("research evidence passages, claims and claim-evidence links are exposed as
 });
 
 test("research API restricts evidence and claim fields and verification states", () => {
-  assert.match(source, /research_evidence_passages: \["research_run_id","research_source_id","passage_text"/);
+  assert.match(source, /research_evidence_passages: \["research_run_id","research_source_id","research_document_id","passage_text"/);
   assert.match(source, /research_claims: \["research_run_id","claim_text","claim_type","verification_status"/);
   assert.match(source, /research_claim_evidence: \["research_run_id","claim_id","passage_id","relationship"/);
   assert.match(source, /"unverified","supported","mixed","contradicted","insufficient_evidence"/);
