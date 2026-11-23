@@ -65,6 +65,12 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "customers_list_cases", description: "List the owner's private customer support cases and response drafts. Does not contact customers.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "customers_create_case", description: "Save a customer support case for internal tracking. Never send a message, issue a refund or change an account.", parameters: { type: "object", properties: { customer_name: { type: "string", minLength: 1, maxLength: 200 }, customer_email: { type: ["string","null"], maxLength: 320 }, subject: { type: "string", minLength: 1, maxLength: 240 }, issue_description: { type: "string", minLength: 1, maxLength: 10000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] }, source: { type: ["string","null"], maxLength: 100 } }, required: ["customer_name","subject","issue_description"], additionalProperties: false } } },
   { type: "function", function: { name: "customers_update_case", description: "Update an internal support case status, response draft or notes. The response remains a draft and is never sent.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: ["string","null"], enum: ["open","investigating","waiting_on_customer","resolved","closed",null] }, response_draft: { type: ["string","null"], maxLength: 10000 }, internal_notes: { type: ["string","null"], maxLength: 10000 } }, required: ["id"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_list_plans", description: "List the owner's saved Learning: projects and progress.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "learning_create_plan", description: "Create an internal learning plan project. Does not enroll in courses or send reminders.", parameters: { type: "object", properties: { goal: { type: "string", minLength: 1, maxLength: 160 }, outcome: { type: ["string","null"], maxLength: 5000 } }, required: ["goal"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_list_milestones", description: "List milestones for one of the owner's learning plans.", parameters: { type: "object", properties: { project_id: { type: "string", minLength: 36, maxLength: 36 } }, required: ["project_id"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_add_milestone", description: "Add an internal study milestone to a learning plan.", parameters: { type: "object", properties: { project_id: { type: "string", minLength: 36, maxLength: 36 }, title: { type: "string", minLength: 1, maxLength: 240 }, description: { type: ["string","null"], maxLength: 5000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] } }, required: ["project_id","title"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_update_milestone", description: "Update the status of a learning milestone.", parameters: { type: "object", properties: { task_id: { type: "string", minLength: 36, maxLength: 36 }, status: { type: "string", enum: ["todo","in_progress","blocked","done","cancelled"] } }, required: ["task_id","status"], additionalProperties: false } } },
+  { type: "function", function: { name: "analytics_snapshot", description: "Read counts and workflow status from the owner's saved business records. Does not infer revenue or profit.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "jobs_list", description: "List the owner's durable GiGo job queue, including pending, processing and completed jobs.", parameters: { type: "object", properties: { status: { type: "string", enum: ["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"] } }, additionalProperties: false } } },
   { type: "function", function: { name: "jobs_create", description: "Queue an internal GiGo task for the background runner. The runner processes eligible jobs on scheduler cycles. Never use it to send messages, publish, contact people, spend money or make commitments.", parameters: { type: "object", properties: { job_type: { type: "string", enum: ["research_scan","business_review","daily_briefing","lead_review","custom"] }, task_prompt: { type: "string", minLength: 1, maxLength: 5000 } }, required: ["job_type","task_prompt"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_cancel", description: "Cancel one pending or paused GiGo job owned by the user. This cannot stop a task that is already executing.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } },
@@ -400,6 +406,52 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     return { updated_case: rows?.[0] ?? null, response_sent: false };
   }
 
+
+  if (name === "learning_list_plans") {
+    const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
+    return { plans: (Array.isArray(rows) ? rows : []).filter(row => String(row.name ?? "").startsWith("Learning: ")) };
+  }
+  if (name === "learning_create_plan") {
+    const goal = typeof args.goal === "string" ? args.goal.trim() : "";
+    const outcome = args.outcome === undefined || args.outcome === null ? null : String(args.outcome).trim();
+    if (!goal || goal.length > 160 || (outcome !== null && outcome.length > 5000)) return { error: "A learning goal and valid optional outcome are required." };
+    const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at", "POST", { user_id: ownerId, name: "Learning: " + goal, description: outcome || "Learning plan managed in GiGo." }) as Row[];
+    return { learning_plan: rows?.[0] ?? null, course_enrollment_performed: false, reminders_created: false };
+  }
+  if (name === "learning_list_milestones") {
+    const projectId = typeof args.project_id === "string" ? args.project_id : "";
+    if (!validUuid(projectId)) return { error: "A valid learning plan ID is required." };
+    const projects = await db(env, token, "/rest/v1/projects?select=id,name&id=eq." + encodeURIComponent(projectId) + "&limit=1") as Row[];
+    if (!Array.isArray(projects) || !String(projects[0]?.name ?? "").startsWith("Learning: ")) return { error: "Learning plan not found." };
+    return { milestones: await db(env, token, "/rest/v1/tasks?select=id,project_id,title,description,status,priority,due_date,created_at,updated_at&project_id=eq." + encodeURIComponent(projectId) + "&order=created_at.asc&limit=200") as Row[] };
+  }
+  if (name === "learning_add_milestone") {
+    const projectId = typeof args.project_id === "string" ? args.project_id : "";
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const description = args.description === undefined || args.description === null ? null : String(args.description);
+    const priority = args.priority ?? "normal";
+    if (!validUuid(projectId) || !title || title.length > 240 || (description !== null && description.length > 5000) || !["low","normal","high","urgent"].includes(String(priority))) return { error: "A valid learning plan, milestone title and supported priority are required." };
+    const projects = await db(env, token, "/rest/v1/projects?select=id,name&id=eq." + encodeURIComponent(projectId) + "&limit=1") as Row[];
+    if (!Array.isArray(projects) || !String(projects[0]?.name ?? "").startsWith("Learning: ")) return { error: "Learning plan not found." };
+    const rows = await db(env, token, "/rest/v1/tasks?select=id,title,status,priority,project_id", "POST", { user_id: ownerId, project_id: projectId, title: "Study: " + title, description, priority, status: "todo" }) as Row[];
+    return { milestone: rows?.[0] ?? null };
+  }
+  if (name === "learning_update_milestone") {
+    const taskId = typeof args.task_id === "string" ? args.task_id : "";
+    const nextStatus = String(args.status ?? "");
+    if (!validUuid(taskId) || !["todo","in_progress","blocked","done","cancelled"].includes(nextStatus)) return { error: "A valid milestone ID and supported status are required." };
+    const rows = await db(env, token, "/rest/v1/tasks?select=id,title,status,project_id&id=eq." + encodeURIComponent(taskId) + "&user_id=eq." + encodeURIComponent(ownerId), "PATCH", { status: nextStatus }) as Row[];
+    return { milestone: rows?.[0] ?? null };
+  }
+  if (name === "analytics_snapshot") {
+    const tables = ["projects","tasks","research_runs","partner_candidates","leads","offers","outreach_campaigns","marketing_assets","creative_briefs","customer_support_cases"];
+    const results = await Promise.all(tables.map(async table => {
+      const rows = await db(env, token, "/rest/v1/" + table + "?select=id&limit=1000") as Row[];
+      return [table, Array.isArray(rows) ? rows.length : 0] as const;
+    }));
+    const counts = Object.fromEntries(results);
+    return { counts, financial_metrics: "not_available_without_transaction_data", money_movement_performed: false };
+  }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
     if (args.status !== undefined) {
