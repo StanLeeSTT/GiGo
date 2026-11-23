@@ -17,13 +17,13 @@ test("default autonomy permits internal observation, analysis, drafting and boun
 
 test("external actions remain blocked until their scope and explicit approval are both present", () => {
   assert.equal(authorizeToolAction("outreach.send").allowed, false);
-  const enabled = { enabledScopes: ["observe","analyse","draft","internal_execute","external_execute"], externalExecutionRequiresApproval: true } as const;
+  const enabled = { enabledScopes: ["observe","analyse","draft","internal_execute","external_execute"], externalExecutionRequiresApproval: true };
   assert.equal(authorizeToolAction("outreach.send", { policy: enabled }).allowed, false);
   assert.equal(authorizeToolAction("outreach.send", { policy: enabled, approved: true }).allowed, true);
 });
 
 test("financial actions are hard-denied even under a maximally permissive non-financial policy", () => {
-  const broad = { enabledScopes: ["observe","analyse","draft","internal_execute","external_execute"], externalExecutionRequiresApproval: false } as const;
+  const broad = { enabledScopes: ["observe","analyse","draft","internal_execute","external_execute"], externalExecutionRequiresApproval: false };
   for (const name of [
     "commerce.manage_payments",
     "payments.execute",
