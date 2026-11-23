@@ -122,6 +122,14 @@ document.querySelector("#research-document-form").addEventListener("submit",asyn
 
 
 document.querySelector("#research-document-list").addEventListener("click",async event=>{
+ const button=event.target.closest("[data-download-document]");if(!button)return;
+ button.disabled=true;
+ try{await api.download("/api/v1/research/documents?id="+encodeURIComponent(button.dataset.downloadDocument),button.dataset.filename||"research-document");}
+ catch(error){showError(error);}
+ finally{button.disabled=false;}
+});
+
+document.querySelector("#research-document-list").addEventListener("click",async event=>{
  const button=event.target.closest("[data-extract-document]");if(!button||!selected)return;
  const documentId=button.dataset.extractDocument;button.disabled=true;status.textContent="Verifying and extracting private document…";
  try{
