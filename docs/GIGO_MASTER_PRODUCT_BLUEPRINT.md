@@ -418,3 +418,10 @@ The following implementation supersedes the earlier checkpoint above:
 - CI now runs TypeScript typechecking, the complete Node test suite, and syntax checks for every browser JavaScript file under `public/`.
 - Verified green on commit `1f648d2d194f0f09767adef39dbbbddadcda2022` (run `45110662642`).
 - This is a code-quality milestone, not evidence that the latest database migrations are applied or that the Worker is deployed.
+
+
+## Assistant Outreach preparation — 2026-11-23
+
+- Assistant tool registry supports campaign listing/creation, recipient staging, template drafting and queue preparation only. Partnership drafts select the agreed 50/50 net revenue model. Queue preparation requires an already owner-approved active campaign plus eligible and provider-registered contacts; it does not deliver messages.
+- External delivery remains unavailable; no provider adapter, signed inbound webhook or live sender is connected. The Outreach Studio page reflects this limitation.
+- Universal Collection Engine's bounded runner and durable worker interfaces are present, but its adapter registry is empty. Public-web or social collection must not be advertised as active until a vetted adapter with network/redirect safety, permissions and quota checks is integrated.
