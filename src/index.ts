@@ -1707,7 +1707,7 @@ export default {
         }
         if (!["GET","POST"].includes(request.method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
         if (request.method === "GET") {
-          const query = new URLSearchParams({ select: "id,name,objective,audience_definition,offer_summary,status,approval_status,approved_sender_email,approved_sender_name,approved_policy,max_recipients,max_messages_per_recipient,initial_send_enabled,followups_enabled,followup_delays_days,send_window_start,send_window_end,timezone,quiet_hours_start,quiet_hours_end,approved_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
+          const query = new URLSearchParams({ select: "id,name,objective,audience_definition,offer_summary,campaign_kind,status,approval_status,approved_sender_email,approved_sender_name,approved_policy,max_recipients,max_messages_per_recipient,initial_send_enabled,followups_enabled,followup_delays_days,send_window_start,send_window_end,timezone,quiet_hours_start,quiet_hours_end,approved_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
           const response = await fetch(new URL("/rest/v1/outreach_campaigns?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
           if (!response.ok) return json({ error: { code: "CAMPAIGN_READ_FAILED", message: "Could not load outreach campaigns. Confirm migration 0022 has been applied." } }, 502, headers);
           return json({ data: await response.json() }, 200, headers);
