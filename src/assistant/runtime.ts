@@ -57,6 +57,8 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "leads_create", description: "Save a prospect in the owner's CRM. This does not contact the person. Preserve do-not-contact preferences.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, organisation: { type: ["string","null"], maxLength: 200 }, email: { type: ["string","null"], maxLength: 320 }, website: { type: ["string","null"], maxLength: 2048 }, source: { type: ["string","null"], maxLength: 200 }, source_url: { type: ["string","null"], maxLength: 2048 }, customer_problem: { type: ["string","null"], maxLength: 5000 }, fit_score: { type: ["number","null"], minimum: 0, maximum: 100 }, stage: { type: "string", enum: ["new","qualified","contacted","proposal","won","lost","do_not_contact"] }, do_not_contact: { type: "boolean" }, notes: { type: ["string","null"], maxLength: 10000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "offers_list", description: "List saved offers and their pricing assumptions.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "offers_create", description: "Create an offer draft and calculate indicative net-before-tax economics from price, delivery cost, payment fee and partner share assumptions. This is an estimate, not a guarantee.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, product_id: { type: ["string","null"] }, target_customer: { type: ["string","null"], maxLength: 2000 }, promised_outcome: { type: ["string","null"], maxLength: 5000 }, deliverables: { type: "array", items: { type: "string" } }, exclusions: { type: ["string","null"], maxLength: 5000 }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, delivery_cost: { type: ["number","null"], minimum: 0 }, payment_fee_percent: { type: ["number","null"], minimum: 0, maximum: 100 }, partner_share_percent: { type: ["number","null"], minimum: 0, maximum: 100 } }, required: ["name"], additionalProperties: false } } },
+  { type: "function", function: { name: "marketing_list_assets", description: "List the owner's saved marketing drafts and internal review status. This does not publish or send anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "marketing_create_asset", description: "Save a marketing draft for owner review. Never publish, send email, buy ads or claim that a post was published.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, asset_type: { type: "string", enum: ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"] }, platform: { type: ["string","null"], maxLength: 80 }, campaign_name: { type: ["string","null"], maxLength: 200 }, objective: { type: ["string","null"], maxLength: 2000 }, audience: { type: ["string","null"], maxLength: 1000 }, content: { type: "string", minLength: 1, maxLength: 30000 } }, required: ["title","asset_type","content"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_list", description: "List the owner's durable GiGo job queue, including pending, processing and completed jobs.", parameters: { type: "object", properties: { status: { type: "string", enum: ["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"] } }, additionalProperties: false } } },
   { type: "function", function: { name: "jobs_create", description: "Queue an internal GiGo task for the background runner. The runner processes eligible jobs on scheduler cycles. Never use it to send messages, publish, contact people, spend money or make commitments.", parameters: { type: "object", properties: { job_type: { type: "string", enum: ["research_scan","business_review","daily_briefing","lead_review","custom"] }, task_prompt: { type: "string", minLength: 1, maxLength: 5000 } }, required: ["job_type","task_prompt"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_cancel", description: "Cancel one pending or paused GiGo job owned by the user. This cannot stop a task that is already executing.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } },
@@ -295,6 +297,24 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       status: "draft", assumptions: economics
     }) as Row[];
     return { created: rows?.[0] ?? null, economics };
+  }
+  if (name === "marketing_list_assets") {
+    return { assets: await db(env, token, "/rest/v1/marketing_assets?select=id,title,asset_type,platform,campaign_name,objective,audience,content,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "marketing_create_asset") {
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const content = typeof args.content === "string" ? args.content.trim() : "";
+    const assetType = typeof args.asset_type === "string" ? args.asset_type : "";
+    const allowed = ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"];
+    if (!title || title.length > 200 || !content || content.length > 30000 || !allowed.includes(assetType)) return { error: "A title, supported asset type and content are required." };
+    const optionalLimits: Array<[string,number]> = [["platform",80],["campaign_name",200],["objective",2000],["audience",1000]];
+    for (const [key,max] of optionalLimits) if (args[key] !== undefined && args[key] !== null && (typeof args[key] !== "string" || String(args[key]).length > max)) return { error: key + " must be text within its allowed length." };
+    const rows = await db(env, token, "/rest/v1/marketing_assets?select=id,title,asset_type,status,created_at", "POST", {
+      user_id: ownerId, title, asset_type: assetType, content,
+      platform: args.platform ?? null, campaign_name: args.campaign_name ?? null,
+      objective: args.objective ?? null, audience: args.audience ?? null, status: "draft", metadata: { created_by: "assistant" }
+    }) as Row[];
+    return { saved_draft: rows?.[0] ?? null, published: false, sent: false };
   }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
