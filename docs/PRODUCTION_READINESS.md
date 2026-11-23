@@ -160,9 +160,9 @@ Research uploads require both migration `0044_private_research_documents.sql` an
 
 1. Create the R2 bucket named `gigo-research-private` in the intended Cloudflare account. Do not enable public access or a public custom domain.
 2. Confirm the Worker has the `RESEARCH_FILES` binding after deployment.
-3. Apply migration 0044 only after all prior migrations are reconciled and applied in numeric order.
+3. Apply migrations 0044 and 0045 only after all prior migrations are reconciled and applied in numeric order. Migration 0045 links extracted passages to the private document and adds the idempotent locator constraint.
 4. Verify authenticated owner upload, listing and download. Test with a second account and confirm it cannot see or retrieve the first owner's file.
 5. Upload limits: 5 MiB; accepted MIME types: TXT, HTML, CSV and PDF. SHA-256 is stored with private metadata. Objects use owner/run/document-scoped keys and are not public URLs.
-6. The upload endpoint stores the original document only. It does not parse PDF binary data or perform OCR. HTML/TXT/CSV extraction remains a separate bounded operation; uploaded content is untrusted and must not be executed or rendered as HTML.
+6. The upload endpoint stores the original document privately. Use the authenticated `POST /api/v1/research/documents/extract` endpoint or the Research workspace's **Extract evidence** action for TXT, HTML and CSV files. Extraction rechecks the stored SHA-256, decodes UTF-8 strictly, uses bounded parsing (500,000 characters and at most 50 passages), creates a provenance-linked research source and exact passages, and leaves every passage unreviewed. Repeated extraction upserts by document/locator and is safe to retry. HTML is stripped to text; scripts and markup are never executed. PDF files are stored and signature-checked but binary PDF extraction/OCR is not implemented.
 
 If the bucket or migration is missing, upload fails closed with a configuration/storage error. Do not treat a file upload as evidence extraction or claim verification.
