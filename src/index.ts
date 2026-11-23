@@ -1386,7 +1386,7 @@ export default {
       }
     }
 
-    const outreachCampaignKindMatch = url.pathname.match(/^\\/api\\/v1\\/outreach\\/campaigns\\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\\/kind$/i);
+    const outreachCampaignKindMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/kind$/i);
     if (outreachCampaignKindMatch) {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } }, 405, headers);
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
