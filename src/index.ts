@@ -447,7 +447,6 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (resource === "leads" && body.stage === undefined) body.stage = "new";
       if (resource === "offers" && body.status === undefined) body.status = "draft";
       if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";
-      if (resource === "customer_feedback") { if (body.status === undefined) body.status = "new"; if (body.sentiment === undefined) body.sentiment = "unclassified"; }
       if (resource === "customer_support_cases" && body.status === undefined) body.status = "open";
       if (resource === "customer_support_cases" && body.priority === undefined) body.priority = "normal";
     }
