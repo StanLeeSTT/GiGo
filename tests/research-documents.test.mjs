@@ -31,3 +31,12 @@ test("research page supports private document uploads and safe multipart authori
  assert.ok(client.includes('"/api/v1/research/documents"'));
  assert.match(shared,/options\.body&&!\(options\.body instanceof FormData\)/);
 });
+
+test("private document extraction verifies integrity and persists idempotent owner-scoped evidence",()=>{
+ const start=source.indexOf("async function handleResearchDocumentExtraction");
+ const end=source.indexOf("async function handleResearchReport",start);
+ const handler=source.slice(start,end);
+ assert.ok(start>=0&&end>start);
+ for(const text of ["verifiedUserId(token, env)","RESEARCH_FILES.get","crypto.subtle.digest","DOCUMENT_INTEGRITY_FAILED","buildResearchDocumentIngestionPlan","research_sources?on_conflict=research_run_id,url","research_document_id,locator_type,locator_value","review_status: \"unreviewed\"","claim_verification"]) assert.ok(handler.includes(text),text);
+ assert.ok(source.includes('url.pathname === "/api/v1/research/documents/extract"'));
+});
