@@ -16,7 +16,7 @@ if(signatureInput&&signatureButton&&signatureStatus){
   });
 }
 
-const autonomyStatus=document.querySelector("#autonomy-status"),initializeAutonomy=document.querySelector("#initialize-autonomy"),toggleAutonomyPause=document.querySelector("#toggle-autonomy-pause"),autonomyPolicies=document.querySelector("#autonomy-policies");
+const autonomyStatus=document.querySelector("#autonomy-status"),initializeAutonomy=document.querySelector("#initialize-autonomy"),toggleAutonomyPause=document.querySelector("#toggle-autonomy-pause"),autonomyPolicies=document.querySelector("#autonomy-policies"),autonomyAudit=document.querySelector("#autonomy-audit");
 if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
   let autonomyState=null;
   const scopeLabels={observe:"Observe workspace data",analyse:"Analyse and research",draft:"Create drafts",internal_execute:"Execute internal workspace actions"};
@@ -27,6 +27,13 @@ if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
       toggleAutonomyPause.disabled=!autonomyState.initialized;
       toggleAutonomyPause.textContent=autonomyState.is_paused?"Resume internal tools":"Pause all tools";
       autonomyStatus.textContent=autonomyState.initialized?(autonomyState.is_paused?"GiGo is PAUSED. "+(autonomyState.pause_reason||""):"GiGo is UNPAUSED. Only enabled, audited internal scopes can run."):"No durable autonomy state exists. GiGo remains paused until initialized.";
+      if(autonomyAudit){
+        try{
+          const audit=await api.request("/api/v1/autonomy/audit?limit=20");
+          const events=Array.isArray(audit.events)?audit.events:[];
+          autonomyAudit.innerHTML=events.length?events.map(event=>'<article class="data-card"><div><strong>'+api.esc(event.tool_name)+' · '+api.esc(event.decision)+'</strong><p>'+api.esc(event.reason_code)+' · '+api.esc(new Date(event.created_at).toLocaleString())+'</p><p>'+api.esc(event.result_summary||"")+'</p></div></article>').join(""):'<div class="empty-card">No autonomy events recorded yet.</div>';
+        }catch(error){autonomyAudit.textContent="Audit history unavailable: "+error.message;}
+      }
       const rows=Array.isArray(autonomyState.policies)?autonomyState.policies:[];
       autonomyPolicies.innerHTML=Object.entries(scopeLabels).map(([scope,label])=>{
         const row=rows.find(item=>item.scope===scope);
