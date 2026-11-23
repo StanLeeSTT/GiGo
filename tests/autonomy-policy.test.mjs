@@ -76,3 +76,17 @@ test("assistant capability registry exposes the active autonomy boundary", () =>
   assert.ok(registry.includes('import { getAutonomyPolicySummary } from "./autonomy";'));
   assert.ok(registry.includes("autonomy: getAutonomyPolicySummary()"));
 });
+
+
+test("Marketing Assistant tools can only read or save owner-private drafts", () => {
+  assert.equal(authorizeToolAction("marketing_list_assets").allowed, true);
+  assert.equal(authorizeToolAction("marketing_create_asset").allowed, true);
+  const runtime = readFileSync(new URL("../src/assistant/runtime.ts", import.meta.url), "utf8");
+  const registry = readFileSync(new URL("../src/assistant/registry.ts", import.meta.url), "utf8");
+  assert.ok(runtime.includes('name: "marketing_list_assets"'));
+  assert.ok(runtime.includes('name: "marketing_create_asset"'));
+  assert.ok(runtime.includes("published: false, sent: false"));
+  assert.ok(registry.includes('id:"marketing.write_assets"'));
+  assert.ok(registry.includes('state:"available"'));
+  assert.ok(!runtime.includes('name: "marketing_publish"'));
+});
