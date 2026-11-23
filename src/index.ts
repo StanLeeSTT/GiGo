@@ -1386,6 +1386,33 @@ export default {
       }
     }
 
+    const outreachCampaignKindMatch = url.pathname.match(/^\\/api\\/v1\\/outreach\\/campaigns\\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\\/kind$/i);
+    if (outreachCampaignKindMatch) {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to change this campaign." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const body = await readJson(request);
+        const campaignKind = body?.campaign_kind;
+        if (!body || Object.keys(body).some(key => key !== "campaign_kind") || (campaignKind !== "general" && campaignKind !== "partnership")) {
+          return json({ error: { code: "INVALID_CAMPAIGN_KIND", message: "campaign_kind must be either general or partnership." } }, 400, headers);
+        }
+        const result = await fetch(new URL("/rest/v1/rpc/gigo_set_outreach_campaign_kind", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_campaign_id: outreachCampaignKindMatch[1], p_campaign_kind: campaignKind }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!result.ok) return json({ error: { code: "CAMPAIGN_KIND_UPDATE_FAILED", message: "Could not change this campaign. Confirm migration 0038 is applied and the campaign is still an editable draft owned by you." } }, result.status === 401 ? 401 : result.status === 403 ? 403 : 409, headers);
+        return json({ data: { campaign_id: outreachCampaignKindMatch[1], campaign_kind: campaignKind, updated: true } }, 200, headers);
+      } catch {
+        return json({ error: { code: "CAMPAIGN_KIND_SETTINGS_UNAVAILABLE", message: "Could not complete the campaign settings request." } }, 502, headers);
+      }
+    }
+
     const outreachRecipientEligibilityMatch = url.pathname.match(/^\/api\/v1\/outreach\/recipients\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12})\/eligibility$/i);
     const outreachPrepareMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/prepare$/i);
     const outreachCampaignApprovalMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/approve$/i);
