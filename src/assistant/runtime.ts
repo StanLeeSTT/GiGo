@@ -59,6 +59,9 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "offers_create", description: "Create an offer draft and calculate indicative net-before-tax economics from price, delivery cost, payment fee and partner share assumptions. This is an estimate, not a guarantee.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, product_id: { type: ["string","null"] }, target_customer: { type: ["string","null"], maxLength: 2000 }, promised_outcome: { type: ["string","null"], maxLength: 5000 }, deliverables: { type: "array", items: { type: "string" } }, exclusions: { type: ["string","null"], maxLength: 5000 }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, delivery_cost: { type: ["number","null"], minimum: 0 }, payment_fee_percent: { type: ["number","null"], minimum: 0, maximum: 100 }, partner_share_percent: { type: ["number","null"], minimum: 0, maximum: 100 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "marketing_list_assets", description: "List the owner's saved marketing drafts and internal review status. This does not publish or send anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "marketing_create_asset", description: "Save a marketing draft for owner review. Never publish, send email, buy ads or claim that a post was published.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, asset_type: { type: "string", enum: ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"] }, platform: { type: ["string","null"], maxLength: 80 }, campaign_name: { type: ["string","null"], maxLength: 200 }, objective: { type: ["string","null"], maxLength: 2000 }, audience: { type: ["string","null"], maxLength: 1000 }, content: { type: "string", minLength: 1, maxLength: 30000 } }, required: ["title","asset_type","content"], additionalProperties: false } } },
+  { type: "function", function: { name: "customers_list_cases", description: "List the owner's private customer support cases and response drafts. Does not contact customers.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "customers_create_case", description: "Save a customer support case for internal tracking. Never send a message, issue a refund or change an account.", parameters: { type: "object", properties: { customer_name: { type: "string", minLength: 1, maxLength: 200 }, customer_email: { type: ["string","null"], maxLength: 320 }, subject: { type: "string", minLength: 1, maxLength: 240 }, issue_description: { type: "string", minLength: 1, maxLength: 10000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] }, source: { type: ["string","null"], maxLength: 100 } }, required: ["customer_name","subject","issue_description"], additionalProperties: false } } },
+  { type: "function", function: { name: "customers_update_case", description: "Update an internal support case status, response draft or notes. The response remains a draft and is never sent.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: ["string","null"], enum: ["open","investigating","waiting_on_customer","resolved","closed",null] }, response_draft: { type: ["string","null"], maxLength: 10000 }, internal_notes: { type: ["string","null"], maxLength: 10000 } }, required: ["id"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_list", description: "List the owner's durable GiGo job queue, including pending, processing and completed jobs.", parameters: { type: "object", properties: { status: { type: "string", enum: ["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"] } }, additionalProperties: false } } },
   { type: "function", function: { name: "jobs_create", description: "Queue an internal GiGo task for the background runner. The runner processes eligible jobs on scheduler cycles. Never use it to send messages, publish, contact people, spend money or make commitments.", parameters: { type: "object", properties: { job_type: { type: "string", enum: ["research_scan","business_review","daily_briefing","lead_review","custom"] }, task_prompt: { type: "string", minLength: 1, maxLength: 5000 } }, required: ["job_type","task_prompt"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_cancel", description: "Cancel one pending or paused GiGo job owned by the user. This cannot stop a task that is already executing.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } },
@@ -315,6 +318,45 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
       objective: args.objective ?? null, audience: args.audience ?? null, status: "draft", metadata: { created_by: "assistant" }
     }) as Row[];
     return { saved_draft: rows?.[0] ?? null, published: false, sent: false };
+  }
+  if (name === "customers_list_cases") {
+    return { cases: await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "customers_create_case") {
+    const customerName = typeof args.customer_name === "string" ? args.customer_name.trim() : "";
+    const subject = typeof args.subject === "string" ? args.subject.trim() : "";
+    const issue = typeof args.issue_description === "string" ? args.issue_description.trim() : "";
+    const priority = args.priority ?? "normal";
+    const email = args.customer_email ?? null;
+    if (!customerName || customerName.length > 200 || !subject || subject.length > 240 || !issue || issue.length > 10000) return { error: "Customer name, subject and issue description are required within the allowed limits." };
+    if (!["low","normal","high","urgent"].includes(String(priority))) return { error: "Priority must be low, normal, high or urgent." };
+    if (email !== null && (typeof email !== "string" || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return { error: "Customer email must be a valid email address or null." };
+    const source = args.source ?? null;
+    if (source !== null && (typeof source !== "string" || source.length > 100)) return { error: "Source must be text up to 100 characters or null." };
+    const rows = await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,subject,priority,status,created_at", "POST", {
+      user_id: ownerId, customer_name: customerName, customer_email: email, subject, issue_description: issue,
+      priority, source, status: "open"
+    }) as Row[];
+    return { saved_case: rows?.[0] ?? null, customer_contacted: false };
+  }
+  if (name === "customers_update_case") {
+    if (!validUuid(args.id)) return { error: "A valid support case ID is required." };
+    const patch: Row = {};
+    if (args.status !== undefined && args.status !== null) {
+      if (!["open","investigating","waiting_on_customer","resolved","closed"].includes(String(args.status))) return { error: "Invalid support case status." };
+      patch.status = args.status;
+    }
+    if (args.response_draft !== undefined) {
+      if (args.response_draft !== null && (typeof args.response_draft !== "string" || args.response_draft.length > 10000)) return { error: "Response draft must be text up to 10,000 characters or null." };
+      patch.response_draft = args.response_draft;
+    }
+    if (args.internal_notes !== undefined) {
+      if (args.internal_notes !== null && (typeof args.internal_notes !== "string" || args.internal_notes.length > 10000)) return { error: "Internal notes must be text up to 10,000 characters or null." };
+      patch.internal_notes = args.internal_notes;
+    }
+    if (!Object.keys(patch).length) return { error: "Provide a status, response draft or internal notes update." };
+    const rows = await db(env, token, "/rest/v1/customer_support_cases?select=id,status,response_draft,internal_notes&id=eq." + encodeURIComponent(args.id), "PATCH", patch) as Row[];
+    return { updated_case: rows?.[0] ?? null, response_sent: false };
   }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
