@@ -50,3 +50,15 @@ test("document extraction requires acknowledgement of every passage upsert",()=>
  assert.match(handler,/DOCUMENT_PASSAGE_COUNT_MISMATCH/);
  assert.match(handler,/savedPassages\.length !== passageRows\.length/);
 });
+
+test("private upload catch path cleans up R2 objects when metadata was not persisted",()=>{
+ const start=source.indexOf("async function handleResearchDocuments");
+ const end=source.indexOf("async function handleResearchDocumentExtraction",start);
+ const handler=source.slice(start,end);
+ assert.match(handler,/let pendingObjectKey: string \| null = null/);
+ assert.match(handler,/let metadataPersisted = false/);
+ assert.match(handler,/pendingObjectKey = objectKey/);
+ assert.match(handler,/metadataPersisted = true/);
+ assert.match(handler,/pendingObjectKey && !metadataPersisted/);
+ assert.match(handler,/RESEARCH_FILES\?\.delete\(pendingObjectKey\)/);
+});
