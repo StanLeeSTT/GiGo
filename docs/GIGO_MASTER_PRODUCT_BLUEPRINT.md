@@ -228,3 +228,37 @@ Never present a scaffold, mock, catalogue record, scheduled routine or successfu
 - No collection job type is enabled in the scheduler.
 - No PR, merge or deployment has been performed for this feature branch.
 - Next engineering milestone: finish the dedicated durable collection execution boundary—transactional run/job creation, Supabase persistence hooks for datasets/items/checkpoints, worker dispatch isolation, retry/recovery semantics, active cancellation, and integration tests—before exposing run creation or enabling any provider.
+
+
+## Autonomy and financial-control architecture
+
+GiGo should progressively operate as an autonomous personal and business operating system, while the owner retains exclusive control over money and financial commitments.
+
+### Action classes
+- Observe/read: retrieve owner-authorized records and permitted public information.
+- Analyse: reason over evidence, calculate estimates and prepare recommendations.
+- Draft/prepare: create internal drafts, research briefs, tasks, offers, content and operational plans.
+- Internal execute: perform bounded, reversible changes to GiGo-owned workspace records and jobs.
+- External execute: send, publish, contact people, modify external accounts or otherwise create external side effects. Requires explicit approval and a bounded permission policy.
+- Financial: payments, purchases, transfers, payouts, subscriptions, investments, trades, loans, charges, withdrawals and other money movement or financial commitments. Always denied to GiGo execution tools.
+
+### Non-overridable owner boundary
+- GiGo may prepare budgets, forecasts, unit economics, price comparisons, cost estimates, invoices and payment instructions.
+- GiGo must not initiate, approve or execute payments, transfers, purchases, paid subscriptions/upgrades, investments, trades, loans, payouts or other financial commitments.
+- Do not expose bank/payment credentials or money-moving tools to the general agent runtime.
+- A broad autonomy toggle must never override the financial hard deny.
+- Free-tier exhaustion must stop safely; no paid fallback or purchase.
+
+### Permission and audit requirements
+- Permission scopes must be least-privilege, owner-controlled, revocable and separately configurable by module and action class.
+- Consequential external actions remain approval-gated until the owner has defined bounded policies.
+- Record action intent, tool, classification, policy decision, approval reference, result, timestamps and stop reason in an owner-scoped audit log.
+- Provide pause/stop controls and safe handling for retries, partial completion and ambiguous outcomes.
+- Unknown tools fail closed.
+
+### Current implementation checkpoint (2026-11-23)
+- src/assistant/autonomy.ts defines the initial action classifier and policy evaluator.
+- src/assistant/runtime.ts enforces the policy before executing model-requested tools.
+- src/assistant/registry.ts exposes the current policy summary in capability reporting.
+- tests/autonomy-policy.test.mjs covers default internal scopes, external approval gates, unknown-tool denial and the non-overridable financial hard deny.
+- This is the first code-level policy layer only. Durable owner-configurable scopes, approval records, audit events, pause/stop controls and UI are not yet implemented.
