@@ -53,4 +53,8 @@ test("settings displays recent owner-scoped autonomy audit records", () => {
   assert.ok(html.includes('id="autonomy-audit"'));
   assert.ok(js.includes("/api/v1/autonomy/audit?limit=20"));
   assert.ok(js.includes("event.reason_code"));
+  assert.ok(html.includes('id="autonomy-approvals"'));
+  assert.ok(js.includes("/api/v1/autonomy/approvals"));
+  assert.ok(js.includes("data-revoke-autonomy-approval"));
+  assert.ok(js.includes("/revoke"));
 });
