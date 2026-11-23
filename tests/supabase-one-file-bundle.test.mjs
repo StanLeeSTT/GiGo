@@ -29,6 +29,14 @@ test('one-file Supabase bundle contains canonical migrations 0010-0046 exactly o
   assert.doesNotMatch(bundle, /CREATE EXTENSION/i);
 });
 
+test('bundle safely includes the idempotent 0002/0003 baseline repairs', () => {
+  const bundle = readFileSync(bundlePath, 'utf8');
+  assert.match(bundle, /BASELINE REPAIR: 0002_task_project_ownership\.sql/);
+  assert.match(bundle, /BASELINE REPAIR: 0003_assistant_conversation_activity\.sql/);
+  assert.match(bundle, /create or replace function public\.check_task_project_owner/);
+  assert.match(bundle, /create or replace function public\.touch_conversation_on_message/);
+});
+
 test('canonical migration files remain the source of truth', () => {
   const bundle = readFileSync(bundlePath, 'utf8');
   assert.match(bundle, /Do NOT delete them/i);

@@ -1,16 +1,16 @@
 -- =============================================================================
 -- GiGo: ONE-FILE PENDING DATABASE SETUP
 -- =============================================================================
--- Scope: applies canonical migrations 0010 through 0045 in their exact order.
+-- Scope: applies canonical migrations 0010 through 0046 in their exact order.
 --
 -- IMPORTANT: This bundle is specifically for the existing GiGo Supabase
 -- project. The known baseline migrations 0001 and 0004-0009 are already
--- applied there. Migrations 0010-0045 are recorded in the repository as
--- unapplied. The application status of 0002/0003 is uncertain; this bundle
--- does not re-run them.
+-- applied there. Migrations 0010-0046 are recorded in the repository as
+-- unapplied. The application status of 0002/0003 was uncertain; this bundle safely re-applies
+-- their idempotent trigger/function/index definitions before migrations 0010+.
 --
 -- Run this file ONCE in Supabase SQL Editor, against the intended GiGo
--- project, after confirming that migrations 0010-0045 have not already been
+-- project, after confirming that migrations 0010-0046 have not already been
 -- applied. Do not run it on a different/fresh project.
 --
 -- The canonical individual files in supabase/migrations/ are deliberately
@@ -43,12 +43,80 @@ BEGIN
   IF to_regprocedure('public.set_updated_at()') IS NULL THEN
     RAISE EXCEPTION 'GiGo baseline missing: public.set_updated_at() was not found. Stop and reconcile the baseline migrations first.';
   END IF;
+  IF to_regclass('public.projects') IS NULL OR to_regclass('public.tasks') IS NULL
+     OR to_regclass('public.assistant_conversations') IS NULL OR to_regclass('public.assistant_messages') IS NULL THEN
+    RAISE EXCEPTION 'GiGo baseline missing: projects/tasks/assistant conversation tables are required before this setup.';
+  END IF;
   IF to_regclass('public.collection_providers') IS NOT NULL THEN
     RAISE EXCEPTION 'GiGo migrations 0010+ appear to be present already. This one-file bundle is not safe to re-run.';
   END IF;
 END;
 $gigo_preflight$;
 
+
+
+
+
+-- ============================================================================
+-- BASELINE REPAIR: 0002_task_project_ownership.sql (idempotent)
+-- ============================================================================
+
+-- Keep tasks attached only to projects owned by the same account.
+-- Runs with the caller's auth context and relies on projects RLS.
+create or replace function public.check_task_project_owner()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.project_id is not null and not exists (
+    select 1
+    from public.projects p
+    where p.id = new.project_id
+      and p.user_id = new.user_id
+  ) then
+    raise exception 'The selected project does not belong to this account.'
+      using errcode = '23503';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists tasks_check_project_owner on public.tasks;
+create trigger tasks_check_project_owner
+before insert or update of project_id, user_id on public.tasks
+for each row execute function public.check_task_project_owner();
+
+create index if not exists tasks_user_created_idx
+  on public.tasks(user_id, created_at desc);
+
+
+-- ============================================================================
+-- BASELINE REPAIR: 0003_assistant_conversation_activity.sql (idempotent)
+-- ============================================================================
+
+-- Keep conversation recency aligned with its newest message.
+create or replace function public.touch_conversation_on_message()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  update public.assistant_conversations
+  set updated_at = now()
+  where id = new.conversation_id
+    and user_id = new.user_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists assistant_messages_touch_conversation on public.assistant_messages;
+create trigger assistant_messages_touch_conversation
+after insert on public.assistant_messages
+for each row execute function public.touch_conversation_on_message();
+
+create index if not exists assistant_messages_user_created_idx
+  on public.assistant_messages(user_id, created_at desc);
 
 
 -- ============================================================================
