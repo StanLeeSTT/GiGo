@@ -484,3 +484,16 @@ The user explicitly permits GiGo to send messages automatically, provided outbou
 - The database and runtime must reject any attempt to broaden message permission beyond that campaign's immutable approval.
 - Add tests for message length/structure, approval binding, opt-out/suppression, campaign revocation, pause, quotas and no arbitrary external-send bypass.
 - No provider adapter, webhook or live sender is configured. No messages have been sent by this code.
+
+
+## 2026-11-23 — concise automatic messaging and mandatory sender signature
+
+User clarified outbound messaging behavior:
+- GiGo may automatically send messages within an explicitly authorized, bounded campaign; it does not need per-message approval once the campaign-level authorization and all policy checks are satisfied.
+- Outbound messages must be short, structured and direct. Default structure: brief greeting (when appropriate), one specific reason for contact, one concise value proposition, and one simple next step.
+- Default limits: subject at most 80 characters; body at most 500 characters, including the sender signature. Avoid long introductions, unnecessary explanations, multiple topics and attachments by default.
+- **Every outbound message must end with the user's name as the writer/sender**, especially partnership messages, and this applies to other message types too. Use the known display name **Agu Stanley** as the default signature, on its own final line. The signature is mandatory and must be appended by the trusted message-rendering layer, not left to the language model to remember. Future owner-profile settings may allow the user to change the display/signature name; never silently omit it. The signature counts toward the body character limit.
+- These rules do not weaken recipient authorization, consent/contact eligibility, suppression/opt-out, provider/platform compliance, approved-template, schedule, rate-limit, audit, campaign-boundary or pause controls. Do not send arbitrary unsolicited messages or bypass restrictions.
+- Financial execution remains permanently hard-denied.
+
+Implementation status: requirement recorded in project handover and product blueprint; not yet implemented in the message-rendering code. The next outreach implementation must make the signature deterministic and test that every rendered message ends with the configured owner signature, including partnership templates and short-message length enforcement. No database migration was applied and no deployment or live sending occurred.
