@@ -188,3 +188,25 @@ test("inbound provider webhook deduplication is atomic and scoped to provider ac
   assert.ok(sql.includes("update public.outreach_recipients"));
   assert.ok(sql.includes("outreach_suppressions"));
 });
+
+test("owner can manage outbound signature through an authenticated settings endpoint", () => {
+  const start = source.indexOf('if (url.pathname === "/api/v1/settings/message-signature")');
+  const end = source.indexOf("const outreachRecipientEligibilityMatch", start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.ok(route.includes("verifiedUserId(token, env)"));
+  assert.ok(route.includes("gigo_set_owner_message_signature"));
+  assert.ok(route.includes("signature_name"));
+  assert.ok(route.includes("SIGNATURE_READ_FAILED"));
+  assert.ok(route.includes("INVALID_SIGNATURE"));
+});
+
+test("outbound copy database guard enforces STANLEE signature and partnership economics", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0038_outreach_signature_and_partnership_terms.sql", import.meta.url), "utf8");
+  assert.ok(sql.includes("owner_message_settings"));
+  assert.ok(sql.includes("50/50 split of net revenue attributable to this partnership"));
+  assert.ok(sql.includes("direct costs we both agree to in writing in advance"));
+  assert.ok(sql.includes("char_length(new.subject)>80"));
+  assert.ok(sql.includes("char_length(new.body_text)>500"));
+  assert.ok(sql.includes("outbound signature is not configured; sending is blocked"));
+});
