@@ -25,5 +25,7 @@ test("GiGo Assistant Analytics snapshot is read-only and does not invent financi
   assert.ok(registry.includes('id:"analytics.snapshot"'));
   assert.match(autonomy,/analytics_snapshot: "observe"/);
   assert.ok(runtime.includes('financial_metrics: "not_available_without_transaction_data"'));
+  assert.ok(runtime.includes("count_limit_per_table: 1000"));
+  assert.ok(runtime.includes("counts_may_be_truncated: true"));
   assert.ok(runtime.includes("money_movement_performed: false"));
 });
