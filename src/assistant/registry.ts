@@ -53,8 +53,12 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   { id:"customers.list_cases", module:"Customer Success & Support", description:"List owner-private support cases and draft responses.", state:"available", method:"GET", endpoint:"/api/v1/customers/cases", approval:"none" },
   { id:"customers.create_case", module:"Customer Success & Support", description:"Create an internal support case without contacting the customer.", state:"available", method:"POST", endpoint:"/api/v1/customers/cases", approval:"none" },
   { id:"customers.update_case", module:"Customer Success & Support", description:"Update support case status, notes or response draft; never sends the response.", state:"available", method:"PATCH", endpoint:"/api/v1/customers/cases", approval:"none" },
-  { id:"analytics.review_performance", module:"Analytics", description:"Analyse business, campaign and product performance.", state:"planned", approval:"none" },
-  { id:"learning.plan_and_track", module:"Learning & Accountability", description:"Create learning plans, milestones and reminders.", state:"planned", approval:"none" }
+  { id:"analytics.snapshot", module:"Analytics", description:"Read counts and workflow status from owner-scoped business records; no fabricated financial metrics.", state:"available", method:"GET", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
+  { id:"learning.list_plans", module:"Learning & Accountability", description:"List saved learning plans.", state:"available", method:"GET", endpoint:"/api/v1/projects", approval:"none" },
+  { id:"learning.create_plan", module:"Learning & Accountability", description:"Create an internal learning plan.", state:"available", method:"POST", endpoint:"/api/v1/projects", approval:"none" },
+  { id:"learning.list_milestones", module:"Learning & Accountability", description:"List study milestones for a learning plan.", state:"available", method:"GET", endpoint:"/api/v1/tasks", approval:"none" },
+  { id:"learning.add_milestone", module:"Learning & Accountability", description:"Add an internal study milestone.", state:"available", method:"POST", endpoint:"/api/v1/tasks", approval:"none" },
+  { id:"learning.update_milestone", module:"Learning & Accountability", description:"Update a study milestone status.", state:"available", method:"PATCH", endpoint:"/api/v1/tasks", approval:"none" }
 ];
 export function getAssistantCapabilities() {
   return {
