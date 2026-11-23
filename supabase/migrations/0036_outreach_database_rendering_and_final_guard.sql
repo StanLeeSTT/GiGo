@@ -299,7 +299,18 @@ drop policy if exists outreach_campaigns_owner_delete on public.outreach_campaig
 create policy outreach_campaigns_owner_select on public.outreach_campaigns
   for select using (user_id = auth.uid());
 create policy outreach_campaigns_owner_insert on public.outreach_campaigns
-  for insert with check (user_id = auth.uid());
+  for insert with check (
+    user_id = auth.uid()
+    and status = 'draft'
+    and approval_status = 'not_requested'
+    and approved_at is null
+    and approval_revoked_at is null
+    and approved_sender_email is null
+    and approved_sender_name is null
+    and initial_send_enabled is false
+    and max_recipients = 0
+    and max_messages_per_recipient = 0
+  );
 create policy outreach_campaigns_owner_delete on public.outreach_campaigns
   for delete using (user_id = auth.uid());
 
