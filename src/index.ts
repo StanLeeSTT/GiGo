@@ -312,7 +312,7 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
       : resource === "research_evidence_passages" ? ["research_run_id","research_source_id","passage_text"]
       : resource === "research_claims" ? ["research_run_id","claim_text"]
       : ["research_run_id","claim_id","passage_id","relationship"];
-    if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" ? 5000 : key === "url" ? 2048 : key === "customer_problem" ? 5000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
+    if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" || key === "customer_problem" ? 5000 : key === "url" ? 2048 : key === "passage_text" ? 12000 : key === "claim_text" ? 3000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
     if (resource === "research_sources" && input.url !== undefined) {
       try { const parsed = new URL(String(input.url)); if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) throw new Error(); }
