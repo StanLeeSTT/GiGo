@@ -42,3 +42,11 @@ test("private document extraction verifies integrity and persists idempotent own
  for(const text of ["verifiedUserId(token, env)","RESEARCH_FILES.get","crypto.subtle.digest","DOCUMENT_INTEGRITY_FAILED","buildResearchDocumentIngestionPlan","research_sources?on_conflict=research_run_id,url","research_document_id,locator_type,locator_value","review_status: \"unreviewed\"","claim_verification"]) assert.ok(handler.includes(text),text);
  assert.ok(source.includes('url.pathname === "/api/v1/research/documents/extract"'));
 });
+
+test("document extraction requires acknowledgement of every passage upsert",()=>{
+ const start=source.indexOf("async function handleResearchDocumentExtraction");
+ const end=source.indexOf("async function handleResearchReport",start);
+ const handler=source.slice(start,end);
+ assert.match(handler,/DOCUMENT_PASSAGE_COUNT_MISMATCH/);
+ assert.match(handler,/savedPassages\.length !== passageRows\.length/);
+});
