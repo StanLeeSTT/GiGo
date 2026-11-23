@@ -54,7 +54,7 @@ begin
   if p_event_type is null or p_event_type not in ('reply_received','bounce_received','unsubscribe_received','complaint_received') then
     raise exception 'unsupported inbound event type' using errcode = '22023';
   end if;
-  if normalized_email !~ '^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$' then
+  if normalized_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' then
     raise exception 'valid recipient email required' using errcode = '22023';
   end if;
   if provider_value = '' or char_length(provider_value) > 80
