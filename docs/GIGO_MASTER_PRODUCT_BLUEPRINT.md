@@ -289,3 +289,19 @@ Migration `0037_durable_autonomy_governance.sql` adds the first persistent gover
 Owner policy/pause/approval changes use SECURITY DEFINER RPCs that derive ownership from `auth.uid()`; authenticated clients cannot directly forge policy, approval, pause or audit rows. Financial tool-name patterns are rejected again at approval creation as defense in depth; the TypeScript hard deny remains authoritative and must run before any persisted policy lookup.
 
 Migration 0037 is committed but NOT applied. Runtime reads, approval consumption, audit emission, API endpoints and UI are not yet wired. Until that integration is complete, the schema does not enable autonomous external actions. The initial pause state intentionally fails closed when no owner control row exists.
+
+
+## Partnership offer standard — 50/50 revenue share
+
+Every GiGo-generated partnership proposal must include a clear **50/50 commercial offer**: the partner and GiGo's owner each receive 50% of the revenue attributable to the agreed partnership. This is a proposed commercial structure, not a claim that the prospect has accepted it and not a guarantee of earnings.
+
+Message and deal safeguards:
+- State the split plainly and briefly; make clear that both sides have an opportunity to earn from the partnership.
+- Before any agreement is finalized, define in writing what revenue is included, how it is attributed/tracked, which direct costs (if any) are deducted before splitting, each party's responsibilities, payment timing/records, duration, refunds/chargebacks and exit terms.
+- Default wording should describe a 50/50 split of **net partnership revenue after only mutually agreed, documented direct costs**. Do not silently redefine "50/50" as gross revenue, profit, commission or a split of all company revenue.
+- Do not invent expected earnings, sales, audience performance or guaranteed results.
+- GiGo may propose and explain the offer automatically inside an owner-approved partnership campaign. It must not accept counteroffers, negotiate binding terms, sign contracts, promise exclusivity, or make financial commitments on the owner's behalf. Material changes and final agreements require the owner's explicit approval.
+- Keep the initial message concise (subject <=80 characters; body <=500 characters including the mandatory owner signature). The signature is appended by trusted rendering code; if the owner has not configured a confirmed signature name, sending fails closed.
+- The 50/50 partnership offer does not override contact eligibility, marketing-provider registration, consent/lawful-basis review, suppression, opt-out, rate limits, approved-template, campaign or pause controls.
+
+This is the default proposal structure for partnership messages, not a universal legal or tax conclusion. The parties must agree on the exact commercial definitions before launch.
