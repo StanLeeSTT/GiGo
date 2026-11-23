@@ -53,7 +53,7 @@ test("governance migration tail uses valid SQL function quoting and real line br
   assert.equal(migration.includes("\\n"), false, "migration must not contain escaped newline text");
   assert.ok(migration.includes("create or replace function public.gigo_revoke_autonomy_approval"));
   assert.ok(migration.includes("as $"));
-  assert.ok(migration.includes("end;\n$;"));
+  assert.ok(migration.includes("end;\n$$;"));
   assert.ok(migration.includes("grant execute on function public.gigo_revoke_autonomy_approval(uuid) to authenticated"));
 });
 
