@@ -425,3 +425,7 @@ The following implementation supersedes the earlier checkpoint above:
 - Assistant tool registry supports campaign listing/creation, recipient staging, template drafting and queue preparation only. Partnership drafts select the agreed 50/50 net revenue model. Queue preparation requires an already owner-approved active campaign plus eligible and provider-registered contacts; it does not deliver messages.
 - External delivery remains unavailable; no provider adapter, signed inbound webhook or live sender is connected. The Outreach Studio page reflects this limitation.
 - Universal Collection Engine's bounded runner and durable worker interfaces are present, but its adapter registry is empty. Public-web or social collection must not be advertised as active until a vetted adapter with network/redirect safety, permissions and quota checks is integrated.
+
+## Analytics dashboard scope — 2026-11-23
+
+The Analytics dashboard now summarizes saved records across Projects, Tasks, Research, Partners, Leads, Offers, Outreach, Marketing, Creative Studio and Customer Success. It reports workflow counts and approval status only. It must not imply revenue, profit, conversion, cost or ROI measurement until a verified transaction/analytics data source is integrated. API pagination may limit displayed counts. Financial execution remains hard-denied.
