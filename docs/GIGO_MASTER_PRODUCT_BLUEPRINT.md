@@ -343,3 +343,8 @@ The following implementation supersedes the earlier checkpoint above:
 
 - Launch Planner now uses the existing owner-scoped Projects and Tasks APIs to create launch projects, select an existing project, add a standard launch checklist, add custom milestones and track task status.
 - The checklist covers customer/problem validation, offer economics, product readiness, sales assets, launch content, authorized distribution/partner preparation, customer support and post-launch measurement. These are internal tasks only; the module does not publish, send messages, purchase services or execute payments.
+## Additional workspace modules — 2026-11-23
+
+- Analytics: implemented an owner-scoped operational snapshot from projects, tasks, research, partners, leads, offers and outreach records. Counts/status only; no fabricated revenue, profit or ROI. Dashboard tests passed in CI run 45109041932.
+- Launch Planner: implemented project selection/creation and launch checklist/custom milestone tracking on the existing Projects and Tasks APIs. Internal execution only; no external publishing or payments. Launch UI tests passed in CI run 45109122940.
+- Marketing Studio: migration 0040 adds owner-private marketing draft records; API and UI support create/list/review-status changes. This is draft storage only and does not publish, send or purchase ads. Migration 0040 is not applied. UI/API CI runs passed; marketing test run 45109173405 was pending when this note was written.
