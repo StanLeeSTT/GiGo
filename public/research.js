@@ -33,7 +33,7 @@ async function loadRelated(){
  document.querySelector("#link-passage").innerHTML=(passages||[]).map(p=>'<option value="'+esc(p.id)+'">'+esc(p.passage_text.slice(0,120))+'</option>').join("");
  document.querySelector("#claim-evidence-list").innerHTML=(links||[]).map(link=>'<p class="welcome-copy">'+esc(link.relationship)+' · claim '+esc(link.claim_id)+' ↔ passage '+esc(link.passage_id)+'</p>').join("")||'<p class="welcome-copy">No claim/evidence links yet.</p>';
  const docs=await api.request("/api/v1/research/documents?research_run_id="+encodeURIComponent(selected.id));
- document.querySelector("#research-document-list").innerHTML=(docs||[]).map(doc=>'<article class="module-workbench"><strong>'+esc(doc.original_filename)+'</strong><p>'+esc(doc.content_type)+' · '+esc(Math.ceil(doc.byte_size/1024))+' KB · '+esc(doc.ingestion_status)+'</p><small>SHA-256: '+esc(doc.content_sha256)+'</small></article>').join("")||'<p class="welcome-copy">No private documents uploaded yet.</p>';
+ document.querySelector("#research-document-list").innerHTML=(docs||[]).map(doc=>'<article class="module-workbench"><strong>'+esc(doc.original_filename)+'</strong><p>'+esc(doc.content_type)+' · '+esc(Math.ceil(doc.byte_size/1024))+' KB · '+esc(doc.ingestion_status)+'</p><small>SHA-256: '+esc(doc.content_sha256)+'</small><div class="form-actions"><button class="secondary-button" type="button" data-extract-document="'+esc(doc.id)+'" '+(!["text/plain","text/html","text/csv"].includes(doc.content_type)?"disabled":"")+'>Extract evidence</button><a class="secondary-button" href="/api/v1/research/documents?id='+encodeURIComponent(doc.id)+'" target="_blank" rel="noopener noreferrer">Download private file</a></div></article>').join("")||'<p class="welcome-copy">No private documents uploaded yet.</p>';
  }catch(error){showError(error);}
 }
 
@@ -117,6 +117,19 @@ document.querySelector("#research-document-form").addEventListener("submit",asyn
  const button=form.querySelector("button");button.disabled=true;status.textContent="Uploading private research document…";
  try{await api.request("/api/v1/research/documents",{method:"POST",body:data});form.reset();status.textContent="Private document uploaded and hashed. Extraction is a separate step.";await loadRelated();}
  catch(error){showError(error);}
+ finally{button.disabled=false;}
+});
+
+
+document.querySelector("#research-document-list").addEventListener("click",async event=>{
+ const button=event.target.closest("[data-extract-document]");if(!button||!selected)return;
+ const documentId=button.dataset.extractDocument;button.disabled=true;status.textContent="Verifying and extracting private document…";
+ try{
+  const result=await api.request("/api/v1/research/documents/extract",{method:"POST",body:JSON.stringify({document_id:documentId})});
+  const data=result?.data||{};
+  status.textContent="Saved "+(data.passages_saved||0)+" unreviewed evidence passage(s). Claim verification was not performed.";
+  await loadRelated();
+ }catch(error){showError(error);}
  finally{button.disabled=false;}
 });
 
