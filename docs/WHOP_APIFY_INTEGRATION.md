@@ -22,7 +22,7 @@ Subscribe only to the payment events handled by the receiver:
 - `refund.created`
 - `dispute.created`
 
-The receiver verifies the signed raw request body and a five-minute timestamp window, requires the body event ID to match the signed `webhook-id`, and rejects events unless their `account_id` or `company_id` matches `WHOP_ACCOUNT_ID`. It then inserts an idempotent event record. Unsupported but valid events are acknowledged and ignored. Only allow-listed sales fields are stored; customer contact details and raw webhook bodies are not stored.
+The receiver verifies the signed raw request body and a five-minute timestamp window, uses the signed `webhook-id` as its deduplication key, and rejects events unless their account/company ID (including the nested `data.company.id` form) matches `WHOP_ACCOUNT_ID`. It then inserts an idempotent event record. Unsupported but valid events are acknowledged and ignored. Only allow-listed sales fields are stored; customer contact details and raw webhook bodies are not stored.
 
 The Analytics workspace includes a read-only Whop sales monitor. The owner-only report endpoint is:
 
