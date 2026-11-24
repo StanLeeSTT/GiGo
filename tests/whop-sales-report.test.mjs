@@ -36,6 +36,7 @@ test("Whop sales report is restricted to the configured owner and does not claim
   const route = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.match(route, /userId !== env\.WHOP_OWNER_USER_ID/);
+  assert.match(route, /biz_/);
   assert.match(route, /commission_calculation: "not_configured"/);
   assert.match(route, /limited_to_latest: 500/);
   assert.match(docs, /monthly usage ledger/);
