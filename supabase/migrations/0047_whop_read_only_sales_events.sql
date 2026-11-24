@@ -3,7 +3,7 @@
 -- ============================================================================
 
 -- Read-only Whop webhook event ledger. GiGo has no funds, checkout, refund,
--- balance, transfer or payout permissions. Whop remains the payment authority.
+-- balance, transfer or payout permissions.
 
 create table if not exists public.whop_webhook_events (
   id uuid primary key default gen_random_uuid(),
