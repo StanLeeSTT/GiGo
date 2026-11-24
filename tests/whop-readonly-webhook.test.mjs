@@ -46,5 +46,6 @@ test("Whop event normalizer stores only allowlisted sales facts", () => {
   assert.equal(event.amount, 20);
   assert.deepEqual(event.safeMetadata, { campaign_id: "campaign_1" });
   assert.equal("customer" in event, false);
+  assert.equal(normalizeWhopSalesEvent("msg_2", { type: "payment.succeeded", data: { id: "pay_2", amount: "99999999999999999999", currency: "usd" } }).amount, null);
   assert.equal(normalizeWhopSalesEvent("msg_2", { type: "membership.activated", data: {} }), null);
 });
