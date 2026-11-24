@@ -45,7 +45,4 @@ grant select on public.whop_webhook_events to authenticated;
 grant all on public.whop_webhook_events to service_role;
 
 comment on table public.whop_webhook_events is
-  'Immutable, deduplicated, read-only Whop event ledger for owner sales reporting. No payment or payout actions are exposed to GiGo.';
-
--- END CANONICAL MIGRATION 0047_whop_read_only_sales_events.sql
--- ============================================================================
+  'Immutable, deduplicated, read-only Whop event ledger for owner sales reporting. No payment or payout actions are exposed to GiGo.';-- ============================================================================
