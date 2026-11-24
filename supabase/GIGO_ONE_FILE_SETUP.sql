@@ -4824,7 +4824,8 @@ BEGIN
      OR to_regclass('public.marketing_assets') IS NULL
      OR to_regclass('public.customer_support_cases') IS NULL
      OR to_regclass('public.creative_briefs') IS NULL
-     OR to_regclass('public.research_documents') IS NULL THEN
+     OR to_regclass('public.research_documents') IS NULL
+     OR to_regclass('public.whop_payment_events') IS NULL THEN
     RAISE EXCEPTION 'GiGo postflight failed: one or more expected tables are missing. Transaction will roll back.';
   END IF;
 END;
