@@ -7,6 +7,7 @@ const MAX_ITEM_CHARS = 30000;
 const ALLOWED_ACTOR = "apify~web-scraper";
 
 function publicHttpsUrl(value: string): URL {
+  if (typeof value !== "string" || value.length < 1 || value.length > 2048) throw new Error("Apify URL must be a bounded public HTTPS URL.");
   const url = new URL(value);
   const host = url.hostname.toLowerCase();
   if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")
@@ -55,8 +56,11 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
       const supplied = Array.isArray(input.urls) ? input.urls.slice(0, maxPages) as string[] : [];
       if (!supplied.length || supplied.length > MAX_PAGES_PER_RUN) throw new Error("Apify requires between 1 and 10 permitted public URLs.");
       const urls = supplied.map(value => publicHttpsUrl(value).toString());
-      const completedUrls = Array.isArray(context.checkpoint?.completed_urls) ? context.checkpoint.completed_urls as string[] : [];
-      const completed = new Set(completedUrls.map(checkpointUrlKey));
+      const completedUrls = Array.isArray(context.checkpoint?.completed_urls)
+        ? (context.checkpoint.completed_urls as unknown[]).filter((value): value is string => typeof value === "string" && value.length <= 2048)
+        : [];
+      const completed = new Set<string>();
+      for (const value of completedUrls) { try { completed.add(checkpointUrlKey(value)); } catch { /* Ignore invalid checkpoint entries. */ } }
       const pending = urls.filter(url => !completed.has(checkpointUrlKey(url)));
       if (!pending.length) return { status: "completed", counters: { pages: Number(context.checkpoint?.pages ?? 0), items: 0, requests: Number(context.checkpoint?.requests ?? 0) }, checkpoint: context.checkpoint };
 
