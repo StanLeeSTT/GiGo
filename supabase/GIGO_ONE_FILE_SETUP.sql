@@ -4798,6 +4798,7 @@ comment on column public.whop_payment_events.partner_id is
 comment on column public.whop_payment_events.amount is
   'Observed event amount only. Net proceeds and 50/50 shares must not be inferred until fees, refunds and partner attribution rules are confirmed.';
 
+
 -- END CANONICAL MIGRATION 0047_whop_readonly_sales_ledger.sql
 
 DO $gigo_postflight$
