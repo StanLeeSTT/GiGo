@@ -78,7 +78,7 @@ export function toWhopEventRecord(event: WhopEvent, ownerId: string) {
   const data = event.data;
   const metadata = isRecord(data.metadata) ? data.metadata : {};
   const amountText = typeof data.amount === "number" && Number.isFinite(data.amount) ? String(data.amount) : typeof data.amount === "string" ? data.amount : "";
-  const amount = amountText.length <= 20 && /^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$/.test(amountText) ? amountText : null;
+  const amount = amountText.length <= 20 && /^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/.test(amountText) ? amountText : null;
   const occurredAt = event.timestamp && Number.isFinite(Date.parse(event.timestamp)) ? event.timestamp : null;
   return {
     owner_id: ownerId,
