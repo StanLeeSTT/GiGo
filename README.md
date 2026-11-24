@@ -104,9 +104,9 @@ Automatic outreach is not enabled. Campaign preparation does not send messages. 
 
 GiGo includes an opt-in Decodo adapter for public-page metadata collection. Add `DECODO_API_KEY` as a trusted GitHub Actions/worker secret; never place it in Supabase tables, source code, browser settings or chat. The provider remains disabled until the owner creates/configures a healthy `decodo` provider record with the `web_fetch` capability and explicitly enables an owner-scoped monthly quota policy. Each outbound scrape reserves one request atomically before leaving GiGo. The other official endpoints (`/search`, `/map`, `/crawl`) are not yet exposed as separate GiGo actors. Respect site terms, privacy rules and access restrictions. Decodo advertises up to 10,000 free requests per month; verify the actual account allowance in its dashboard.
 
-## CI
+## CI and one-file SQL bundle
 
-GitHub Actions runs TypeScript typecheck, the Node test suite and browser JavaScript syntax checks on the feature branch. Check the latest workflow result rather than assuming every commit is green.
+GitHub Actions runs TypeScript typecheck, the Node test suite, browser JavaScript syntax checks and exact migration-bundle parity checks on development branches. After adding a migration, run `npm run db:bundle` to rebuild `supabase/GIGO_ONE_FILE_SETUP.sql`; run `npm run db:bundle:check` to verify that migrations 0010-0048 are embedded exactly once and in order. Keep every individual migration file: those files remain canonical.
 
 ## License and deployment
 
@@ -115,4 +115,4 @@ No production deployment, third-party sender, or external social collector shoul
 
 ## Whop and Apify integration status
 
-GiGo's Whop integration is read-only: signed payment, refund and dispute events feed the Analytics sales monitor. Whop retains checkout and all partner settlement. GiGo has no payout, withdrawal, transfer or balance controls. The Apify Web Scraper adapter is registered only when `APIFY_API_TOKEN` is configured; every run requires an enabled monthly quota policy and a provider-enforced `maxTotalChargeUsd` ceiling. See [the integration handover](docs/WHOP_APIFY_INTEGRATION.md) before configuring either service.
+GiGo's Whop integration is read-only: signed payment, refund and dispute events feed the Analytics sales monitor. Whop retains checkout and all partner settlement. GiGo has no payout, withdrawal, transfer or balance controls. The Apify Web Scraper and Decodo Web Data API adapters are registered only when their server-side tokens are configured; both require an enabled monthly quota policy. Apify also requires a provider-enforced `maxTotalChargeUsd` ceiling. Both quota policies default to disabled. See [the integration handover](docs/WHOP_APIFY_INTEGRATION.md) before configuring either service.
