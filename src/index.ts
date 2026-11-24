@@ -1446,7 +1446,7 @@ export default {
         const monthlyLimit = input.monthly_request_limit;
         const maxCost = input.max_cost_per_run_usd;
         if ((providerKey !== "apify" && providerKey !== "decodo") || typeof enabled !== "boolean"
-          || !Number.isInteger(monthlyLimit) || monthlyLimit < 0 || monthlyLimit > 100000
+          || typeof monthlyLimit !== "number" || !Number.isInteger(monthlyLimit) || monthlyLimit < 0 || monthlyLimit > 100000
           || (providerKey === "apify" && (typeof maxCost !== "number" || !Number.isFinite(maxCost) || maxCost < 0.0001 || maxCost > 100))
           || (providerKey === "decodo" && maxCost !== null)
           || (enabled && monthlyLimit < 1)) {
