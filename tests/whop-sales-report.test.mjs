@@ -12,7 +12,7 @@ test("Whop webhook is signature-verified, idempotent and stores only allow-liste
   const end = source.indexOf('if (url.pathname === "/api/v1/collection/providers/register")', start);
   const route = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
-  for (const required of ["WHOP_WEBHOOK_SECRET", "WHOP_OWNER_USER_ID", "WHOP_ACCOUNT_ID", "WEBHOOK_ID_MISMATCH", "WHOP_ACCOUNT_MISMATCH", "verifyWhopWebhook", "normalizeWhopSalesEvent", "whop_payment_events", "resolution=ignore-duplicates"]) {
+  for (const required of ["WHOP_WEBHOOK_SECRET", "WHOP_OWNER_USER_ID", "WHOP_ACCOUNT_ID", "WEBHOOK_ID_MISMATCH", "WHOP_ACCOUNT_MISMATCH", "eventData.company", "company.id", "verifyWhopWebhook", "normalizeWhopSalesEvent", "whop_payment_events", "resolution=ignore-duplicates"]) {
     assert.ok(route.includes(required), required);
   }
   assert.match(adapter, /webhook-timestamp/);
