@@ -4791,6 +4791,7 @@ create index if not exists whop_payment_events_owner_partner_idx
 
 alter table public.whop_payment_events enable row level security;
 revoke all on public.whop_payment_events from public, anon, authenticated;
+grant select, insert on public.whop_payment_events to service_role;
 comment on table public.whop_payment_events is
   'Server-only, idempotent Whop payment event ledger for read-only sales reporting. No customer contact details or payout controls are stored.';
 comment on column public.whop_payment_events.partner_id is
