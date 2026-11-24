@@ -9,11 +9,14 @@ import { planCollectionProviders, type ConnectedCollectionProvider } from "./col
 import { listRegisteredCollectionAdapters } from "./collection/adapters";
 import { buildSafeHttpProviderRegistration, isSafeHttpProviderRegistrationRequest } from "./collection/onboarding";
 import { buildResearchDocumentIngestionPlan } from "./research/ingest";
+import { parseWhopEvent, toWhopEventRecord, verifyWhopWebhook } from "./integrations/whop";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
+  WHOP_WEBHOOK_SECRET?: string;
+  WHOP_OWNER_USER_ID?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
   OWNER_EMAIL?: string;
