@@ -7,10 +7,10 @@ const root = process.cwd();
 const migrationsDir = join(root, 'supabase', 'migrations');
 const bundlePath = join(root, 'supabase', 'GIGO_ONE_FILE_SETUP.sql');
 
-test('one-file Supabase bundle contains canonical migrations 0010-0046 exactly once and in order', () => {
+test('one-file Supabase bundle contains canonical migrations 0010-0047 exactly once and in order', () => {
   const bundle = readFileSync(bundlePath, 'utf8');
   const expectedFiles = readdirSync(migrationsDir)
-    .filter((name) => /^00(?:1[0-9]|2[0-9]|3[0-9]|4[0-6])_.*\.sql$/.test(name))
+    .filter((name) => /^00(?:1[0-9]|2[0-9]|3[0-9]|4[0-7])_.*\.sql$/.test(name))
     .sort();
   const marker = /-- BEGIN CANONICAL MIGRATION ([^\r\n]+)\r?\n-- =+\r?\n\r?\n([\s\S]*?)\r?\n\r?\n-- END CANONICAL MIGRATION \1/g;
   const embedded = [...bundle.matchAll(marker)];
