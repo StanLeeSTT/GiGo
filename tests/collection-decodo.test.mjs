@@ -23,6 +23,7 @@ test("Decodo adapter persists bounded public-page evidence", async () => {
   const result = await adapter.execute({}, { urls: ["https://example.com"], max_pages: 1 }, {
     userId: "owner", runId: "run", providerKey: "decodo", signal: new AbortController().signal,
     deadlineAt: new Date(Date.now()+30000).toISOString(), checkpoint: {},
+    async reserveProviderUsage() { return { maxCostPerRunUsd: null }; },
     async reportProgress(v) { progress.push(v); }, async emitItem(v) { emitted.push(v); }
   });
   assert.equal(result.counters.requests, 1);
@@ -37,11 +38,37 @@ test("Decodo rejects non-public URL schemes and hosts before any API request", a
   const adapter = createDecodoAdapter("test-key", async () => { calls++; return new Response("{}", {status:200}); });
   await assert.rejects(() => adapter.execute({}, { urls: ["http://example.com"] }, {
     userId:"owner",runId:"run",providerKey:"decodo",signal:new AbortController().signal,
-    deadlineAt:new Date().toISOString(),checkpoint:{},async reportProgress(){},async emitItem(){}
+    deadlineAt:new Date().toISOString(),checkpoint:{},async reserveProviderUsage(){return {maxCostPerRunUsd:null};},async reportProgress(){},async emitItem(){}
   }));
   assert.equal(calls,0);
 });
 
 test("Decodo rate limits are surfaced as retryable errors", async () => {
   await assert.rejects(() => decodoRequest("test-key","scrape",{url:"https://example.com"},async () => new Response("{}",{status:429})), /rate limit/i);
+});
+
+test("Decodo reserves monthly request quota before making the external call", async () => {
+  let reserved = 0, called = 0;
+  const adapter = createDecodoAdapter("test-key", async () => { called++; return new Response(JSON.stringify({ results: [] }), { status: 200 }); });
+  const state = {
+    userId:"owner",runId:"run",providerKey:"decodo",signal:new AbortController().signal,
+    deadlineAt:new Date().toISOString(),checkpoint:{},
+    async reserveProviderUsage(units) { reserved += units; return { maxCostPerRunUsd:null }; },
+    async reportProgress(){},async emitItem(){}
+  };
+  await adapter.execute({}, { urls:["https://example.com"], max_pages:1 }, state);
+  assert.equal(reserved, 1);
+  assert.equal(called, 1);
+});
+
+test("Decodo fails closed when monthly quota cannot be reserved", async () => {
+  let called = 0;
+  const adapter = createDecodoAdapter("test-key", async () => { called++; return new Response("{}", { status:200 }); });
+  await assert.rejects(() => adapter.execute({}, { urls:["https://example.com"] }, {
+    userId:"owner",runId:"run",providerKey:"decodo",signal:new AbortController().signal,
+    deadlineAt:new Date().toISOString(),checkpoint:{},
+    async reserveProviderUsage(){ throw new Error("quota exhausted"); },
+    async reportProgress(){},async emitItem(){}
+  }), /quota exhausted/);
+  assert.equal(called, 0);
 });
