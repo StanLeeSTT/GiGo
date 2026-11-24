@@ -111,3 +111,8 @@ GitHub Actions runs TypeScript typecheck, the Node test suite and browser JavaSc
 ## License and deployment
 
 No production deployment, third-party sender, or external social collector should be assumed from repository contents alone. Review each dependency's licence, current free-tier limits, privacy terms and acceptable-use policy before enabling it.
+
+
+## Whop and Apify integration status
+
+GiGo's Whop integration is read-only: signed payment, refund and dispute events feed the Analytics sales monitor. Whop retains checkout and all partner settlement. GiGo has no payout, withdrawal, transfer or balance controls. The Apify Web Scraper adapter is present but stays disabled until a durable monthly cost ceiling is implemented. See [the integration handover](docs/WHOP_APIFY_INTEGRATION.md) before configuring either service.
