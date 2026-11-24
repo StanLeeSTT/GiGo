@@ -1383,7 +1383,6 @@ export default {
       const eventId = request.headers.get("webhook-id") ?? "";
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Whop event envelope is invalid." } }, 400, headers);
       const envelope = payload as JsonRecord;
-      if (typeof envelope.id !== "string" || envelope.id !== eventId) return json({ error: { code: "WEBHOOK_ID_MISMATCH", message: "Whop event ID does not match the signed delivery ID." } }, 401, headers);
       const eventData = envelope.data && typeof envelope.data === "object" && !Array.isArray(envelope.data) ? envelope.data as JsonRecord : {};
       const company = eventData.company && typeof eventData.company === "object" && !Array.isArray(eventData.company) ? eventData.company as JsonRecord : {};
       const eventAccountId = typeof envelope.account_id === "string" ? envelope.account_id
