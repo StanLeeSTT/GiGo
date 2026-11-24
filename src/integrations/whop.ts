@@ -87,8 +87,8 @@ function nestedId(value: unknown): string | null {
 function amountValue(data: Record<string, unknown>): number | null {
   for (const key of ["amount", "final_amount", "total", "price"]) {
     const value = data[key];
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
-    if (typeof value === "string" && value.length <= 40 && /^\d+(?:\.\d+)?$/.test(value)) return Number(value);
+    const text = typeof value === "number" && Number.isFinite(value) ? String(value) : typeof value === "string" ? value : "";
+    if (text.length <= 20 && /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/.test(text)) return Number(text);
   }
   return null;
 }
