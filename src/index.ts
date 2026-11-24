@@ -1324,6 +1324,44 @@ export default {
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
 
 
+
+    if (url.pathname === "/api/v1/whop/sales") {
+      if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } }, 405, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view Whop sales reports." } }, 401, headers);
+      if (!configured(env) || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)) return json({ error: { code: "SALES_REPORT_NOT_CONFIGURED", message: "GiGo server-side database access is not configured." } }, 503, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        if (userId !== env.WHOP_OWNER_USER_ID) return json({ error: { code: "FORBIDDEN", message: "Whop sales reports are restricted to the configured GiGo owner." } }, 403, headers);
+        const rows = await serviceRest(env, "/rest/v1/whop_payment_events?select=whop_event_id,event_type,payment_id,product_id,plan_id,partner_id,amount,currency,payment_status,occurred_at,received_at&order=received_at.desc&limit=500") as Array<JsonRecord>;
+        const totals = new Map<string, { currency: string; successful_payments: number; observed_sales_amount: number; refunds: number; observed_refund_amount: number; failed_payments: number; disputes: number }>();
+        const partners = new Map<string, { partner_id: string; successful_payments: number; observed_sales_amount: number; currency: string }>();
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const currency = typeof row.currency === "string" ? row.currency : "UNKNOWN";
+          const amount = typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0);
+          const safeAmount = Number.isFinite(amount) && amount >= 0 ? amount : 0;
+          if (!totals.has(currency)) totals.set(currency, { currency, successful_payments: 0, observed_sales_amount: 0, refunds: 0, observed_refund_amount: 0, failed_payments: 0, disputes: 0 });
+          const total = totals.get(currency)!;
+          if (row.event_type === "payment.succeeded") {
+            total.successful_payments++;
+            total.observed_sales_amount += safeAmount;
+            if (typeof row.partner_id === "string" && row.partner_id) {
+              if (!partners.has(row.partner_id)) partners.set(row.partner_id, { partner_id: row.partner_id, successful_payments: 0, observed_sales_amount: 0, currency });
+              const partner = partners.get(row.partner_id)!;
+              partner.successful_payments++;
+              partner.observed_sales_amount += safeAmount;
+            }
+          } else if (row.event_type === "payment.failed") total.failed_payments++;
+          else if (row.event_type === "refund.created") { total.refunds++; total.observed_refund_amount += safeAmount; }
+          else if (row.event_type === "dispute.created") total.disputes++;
+        }
+        return json({ data: { source: "verified_whop_webhook_events", event_count: Array.isArray(rows) ? rows.length : 0, limited_to_latest: 500, currencies: Array.from(totals.values()), partner_sales: Array.from(partners.values()), payout_access: false, commission_calculation: "not_configured", note: "Amounts are observed webhook values, not reconciled net proceeds. Refunds, fees and partner commission rules must be confirmed before any 50/50 share is reported." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "SALES_REPORT_FAILED", message: "Could not read the Whop sales ledger. Confirm migration 0047 is applied." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/webhooks/whop") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       const webhookSecret = env.WHOP_WEBHOOK_SECRET ?? "";
