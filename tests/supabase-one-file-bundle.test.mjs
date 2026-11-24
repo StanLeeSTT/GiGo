@@ -15,7 +15,7 @@ test('one-file Supabase bundle contains canonical migrations 0010-0046 exactly o
   const marker = /-- BEGIN CANONICAL MIGRATION ([^\r\n]+)\r?\n-- =+\r?\n\r?\n([\s\S]*?)\r?\n\r?\n-- END CANONICAL MIGRATION \1/g;
   const embedded = [...bundle.matchAll(marker)];
 
-  assert.equal(expectedFiles.length, 37, 'expected canonical migration range 0010-0045');
+  assert.equal(expectedFiles.length, 38, 'expected canonical migration range 0010-0047');
   assert.deepEqual(embedded.map((match) => match[1]), expectedFiles);
   for (const match of embedded) {
     const canonical = readFileSync(join(migrationsDir, match[1]), 'utf8');
@@ -40,5 +40,5 @@ test('bundle safely includes the idempotent 0002/0003 baseline repairs', () => {
 test('canonical migration files remain the source of truth', () => {
   const bundle = readFileSync(bundlePath, 'utf8');
   assert.match(bundle, /Do NOT delete them/i);
-  assert.ok(readdirSync(migrationsDir).includes('0046_decodo_web_data_api.sql'));
+  assert.ok(readdirSync(migrationsDir).includes('0046_decodo_web_data_api.sql') && readdirSync(migrationsDir).includes('0047_whop_read_only_sales_events.sql'));
 });
