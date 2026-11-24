@@ -57,3 +57,36 @@ async function loadAnalytics(){
 }
 document.querySelector("#refresh-analytics").addEventListener("click",loadAnalytics);
 loadAnalytics();
+
+const whopStatus=document.querySelector("#whop-status"),whopStats=document.querySelector("#whop-stats"),whopEvents=document.querySelector("#whop-events");
+async function loadWhopEvents(){
+  if(!whopStatus||!whopStats||!whopEvents)return;
+  whopStatus.textContent="Loading verified Whop events…";
+  try{
+    const rows=await api.request("/api/v1/whop/events");
+    const events=Array.isArray(rows)?rows:(Array.isArray(rows?.data)?rows.data:[]);
+    const succeeded=events.filter(x=>x.event_type==="payment.succeeded").length;
+    const failed=events.filter(x=>x.event_type==="payment.failed").length;
+    const refunds=events.filter(x=>String(x.event_type||"").startsWith("refund.")).length;
+    const disputes=events.filter(x=>String(x.event_type||"").startsWith("dispute.")).length;
+    whopStats.innerHTML=[
+      countCard("Successful payment events",succeeded,"Verified Whop notifications in this view"),
+      countCard("Failed payment events",failed,"Payment failure notifications"),
+      countCard("Refund events",refunds,"Refund lifecycle notifications"),
+      countCard("Dispute events",disputes,"Dispute lifecycle notifications")
+    ].join("");
+    whopEvents.innerHTML=events.slice(0,20).map(event=>{
+      const amount=event.amount===null||event.amount===undefined?"Amount not supplied":(String(event.amount)+" "+String(event.currency||""));
+      const partner=event.partner_id?" · Partner "+event.partner_id:"";
+      const reference=event.payment_id||event.resource_id||event.event_id;
+      return '<article class="module-workbench"><div class="workbench-state"><span class="state-dot"></span><small>'+api.esc(String(event.event_type||"event"))+'</small></div><h3>'+api.esc(amount)+'</h3><p>'+api.esc(reference||"No payment reference")+'</p><small>'+api.esc(event.product_id||"Product not identified")+api.esc(partner)+'</small><p class="welcome-copy">'+api.esc(event.occurred_at?new Date(event.occurred_at).toLocaleString():new Date(event.received_at).toLocaleString())+'</p></article>';
+    }).join("")||'<p class="welcome-copy">No Whop events recorded yet. Configure the signed webhook and complete a sandbox purchase to populate this feed.</p>';
+    whopStatus.textContent=events.length+" verified Whop event(s) loaded. Showing the latest 20.";
+  }catch(error){
+    whopStats.innerHTML="";
+    whopEvents.innerHTML="";
+    whopStatus.textContent=error.message||"Whop sales events are not available yet. Apply migration 0047 and configure the webhook secrets.";
+  }
+}
+document.querySelector("#refresh-whop")?.addEventListener("click",loadWhopEvents);
+loadWhopEvents();
