@@ -38,7 +38,7 @@ test("Whop parser accepts only supported sales lifecycle events", () => {
 
 test("Whop reporting record contains partner and sales fields but excludes customer PII", () => {
   const event = parseWhopEvent({
-    id: "msg_1", type: "payment.succeeded", timestamp: "2026-11-24T10:00:00.000Z",
+    id: "msg_1", type: "payment.succeeded", timestamp: "2026-11-24T10:00:00.000Z", account_id: "biz_1",
     data: { id: "pay_1", amount: "49.99", currency: "USD", product: { id: "prod_1" }, affiliate_id: "aff_1",
       customer: { id: "mem_1", email: "private@example.com" }, metadata: { offer_id: "offer_1" } }
   });
@@ -46,6 +46,7 @@ test("Whop reporting record contains partner and sales fields but excludes custo
   assert.equal(row.payment_id, "pay_1");
   assert.equal(row.product_id, "prod_1");
   assert.equal(row.partner_id, "aff_1");
+  assert.equal(row.company_id, "biz_1");
   assert.equal(row.amount, "49.99");
   assert.equal(row.safe_metadata.offer_id, "offer_1");
   assert.equal(JSON.stringify(row).includes("private@example.com"), false);
