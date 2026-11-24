@@ -79,7 +79,7 @@ export async function runCollectionWorkerBatch(
         actor,
         claim.actor_input,
         adapter,
-        { userId: claim.user_id, runId: claim.run_id, providerKey: claim.provider_key, checkpoint: claim.checkpoint, signal: controller.signal },
+        { userId: claim.user_id, runId: claim.run_id, providerKey: claim.provider_key, checkpoint: claim.checkpoint, signal: controller.signal, reserveProviderUsage: (units = 1) => store.reserveProviderUsage(claim.job_id, claim.lease_token, units) },
         {
           async persistProgress(progress) {
             const saved = await store.progress(claim.job_id, claim.lease_token, {

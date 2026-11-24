@@ -39,6 +39,6 @@ test("Whop sales report is restricted to the configured owner and does not claim
   assert.match(route, /userId !== env\.WHOP_OWNER_USER_ID/);
   assert.match(route, /commission_calculation: "not_configured"/);
   assert.match(route, /limited_to_latest: 500/);
-  assert.match(docs, /monthly usage ledger/);
-  assert.match(docs, /not enabled in the collection worker/);
+  assert.match(docs, /monthly quota policy/);
+  assert.match(docs, /registered by the trusted batch worker/);
 });

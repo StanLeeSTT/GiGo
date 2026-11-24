@@ -204,3 +204,19 @@ test("approved outreach campaigns require valid timezone, complete quiet hours a
   assert.ok(sql.includes("follow-up delays must be strictly increasing"));
   assert.ok(sql.includes("before update on public.outreach_campaigns"));
 });
+
+test("Apify and Decodo external calls require an atomic owner quota reservation under the live lease", () => {
+  const sql = migration("0048_collection_provider_quota_ledger.sql");
+  assert.match(sql, /collection_provider_quota_policies/);
+  assert.match(sql, /collection_provider_usage_monthly/);
+  assert.match(sql, /enabled boolean not null default false/);
+  assert.match(sql, /monthly_request_limit integer not null default 0/);
+  assert.match(sql, /gigo_reserve_collection_provider_usage/);
+  assert.match(sql, /collection_lease_token/);
+  assert.match(sql, /collection_lease_expires_at/);
+  assert.match(sql, /for update/);
+  assert.match(sql, /requests_reserved\s*\+\s*p_units\s*<=\s*policy_row\.monthly_request_limit/);
+  assert.match(sql, /max_cost_per_run_usd/);
+  assert.match(sql, /grant execute on function public\.gigo_reserve_collection_provider_usage\(uuid,uuid,integer\) to service_role/);
+  assert.match(sql, /safe_provider_key not in \('crawlee','playwright','gigo_safe_http_batch','decodo','apify'\)/);
+});

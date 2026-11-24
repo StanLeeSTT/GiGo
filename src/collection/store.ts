@@ -18,6 +18,7 @@ export interface CollectionWorkerClaim {
 export interface CollectionWorkerStore {
   healthCheck(): Promise<string>;
   promoteSafeHttpProvider(providerId: string): Promise<boolean>;
+  reserveProviderUsage(jobId: string, leaseToken: string, units?: number): Promise<{ maxCostPerRunUsd: number | null }>;
   claim(limit?: number, leaseSeconds?: number): Promise<CollectionWorkerClaim[]>;
   heartbeat(jobId: string, leaseToken: string): Promise<"renewed" | "cancel_requested" | "lease_lost">;
   progress(jobId: string, leaseToken: string, counters: { pages: number; items: number; requests: number }, checkpoint: Record<string, unknown>): Promise<boolean>;
@@ -78,6 +79,14 @@ export function createCollectionWorkerStore(config: CollectionWorkerStoreConfig)
     healthCheck() { return rpc<string>("gigo_collection_worker_health", {}); },
     promoteSafeHttpProvider(providerId) {
       return rpc<boolean>("gigo_set_collection_provider_health", { p_provider_id: providerId, p_check_version: "safe-http-batch-v1" });
+    },
+    async reserveProviderUsage(jobId, leaseToken, units = 1) {
+      const result = await rpc<{ reserved?: boolean; max_cost_per_run_usd?: number | string | null }>("gigo_reserve_collection_provider_usage", { p_job_id: jobId, p_lease_token: leaseToken, p_units: units });
+      if (result?.reserved !== true) throw new Error("Provider quota reservation was not confirmed.");
+      const raw = result.max_cost_per_run_usd;
+      const maxCostPerRunUsd = raw === null || raw === undefined ? null : Number(raw);
+      if (maxCostPerRunUsd !== null && (!Number.isFinite(maxCostPerRunUsd) || maxCostPerRunUsd <= 0)) throw new Error("Provider quota returned an invalid per-run spending cap.");
+      return { maxCostPerRunUsd };
     },
     heartbeat(jobId, leaseToken) {
       return rpc<"renewed" | "cancel_requested" | "lease_lost">("gigo_collection_worker_heartbeat", { p_job_id: jobId, p_lease_token: leaseToken });

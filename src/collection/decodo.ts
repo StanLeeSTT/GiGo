@@ -62,6 +62,7 @@ export function createDecodoAdapter(apiKey: string, fetcher: typeof fetch = fetc
         if (context.signal.aborted) throw new Error("Collection cancelled.");
         if (completed.has(suppliedUrl)) continue;
         const url = safePublicHttpsUrl(suppliedUrl);
+        await context.reserveProviderUsage(1);
         const result = await decodoRequest(apiKey, "scrape", { url: url.toString(), headless: "html" }, fetcher);
         requests++;
         const results = Array.isArray(result.results) ? result.results as Record<string, unknown>[] : [];

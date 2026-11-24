@@ -7,6 +7,7 @@ import { createCollectionWorkerStore } from "../src/collection/store.ts";
 import { registerCollectionAdapter } from "../src/collection/adapters.ts";
 import { runCollectionWorkerBatch } from "../src/collection/worker.ts";
 import { createDecodoAdapter } from "../src/collection/decodo.ts";
+import { createApifyAdapter } from "../src/collection/apify.ts";
 
 const USER_AGENT = "GiGoSafeCollector/0.1";
 const MAX_HTML_BYTES = 512 * 1024;
@@ -237,6 +238,8 @@ function registerAvailableAdapters() {
   registerSafeHttpBatchAdapter();
   const decodoKey = process.env.DECODO_API_KEY;
   if (decodoKey) registerCollectionAdapter(createDecodoAdapter(decodoKey));
+  const apifyToken = process.env.APIFY_API_TOKEN;
+  if (apifyToken) registerCollectionAdapter(createApifyAdapter({ apiToken: apifyToken }));
 }
 export async function runBatchFromEnvironment() {
   const supabaseUrl=process.env.SUPABASE_URL,serviceKey=process.env.SUPABASE_SECRET_KEY;

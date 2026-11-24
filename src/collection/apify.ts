@@ -22,7 +22,7 @@ function publicHttpsUrl(value: string): URL {
 function checkpointUrlKey(value: string): string {
   const url = new URL(value);
   url.hash = "";
-  if (url.pathname.length > 1) url.pathname = url.pathname = url.pathname.replace(/\/+$/, "");
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
   return url.toString();
 }
 
@@ -37,7 +37,7 @@ async function hash(value: string): Promise<string> {
 
 export interface ApifyAdapterConfig {
   apiToken: string;
-  /** Explicit per-run cap. A durable monthly quota ledger is still required before activation. */
+  /** Monthly quota and per-run spending cap are read from the durable owner policy. */
   maxPagesPerRun?: number;
   fetcher?: typeof fetch;
 }
@@ -65,9 +65,13 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
       if (!pending.length) return { status: "completed", counters: { pages: Number(context.checkpoint?.pages ?? 0), items: 0, requests: Number(context.checkpoint?.requests ?? 0) }, checkpoint: context.checkpoint };
 
       if (context.signal.aborted) throw new Error("Collection cancelled.");
+      const quota = await context.reserveProviderUsage(1);
+      if (quota.maxCostPerRunUsd === null) throw new Error("Apify is disabled until an owner-approved per-run USD ceiling is configured.");
       const endpoint = new URL(API_BASE + "/acts/" + ALLOWED_ACTOR + "/run-sync-get-dataset-items");
       endpoint.searchParams.set("timeout", "60");
       endpoint.searchParams.set("memory", "1024");
+      endpoint.searchParams.set("maxItems", String(pending.length));
+      endpoint.searchParams.set("maxTotalChargeUsd", quota.maxCostPerRunUsd.toFixed(4));
       const response = await fetcher(endpoint.toString(), {
         method: "POST",
         headers: { authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },

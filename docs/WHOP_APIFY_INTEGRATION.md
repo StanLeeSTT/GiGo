@@ -1,4 +1,4 @@
-# Whop and Apify integration status
+# Whop, Apify and Decodo integration status
 
 This document records the current guarded implementation. Neither external integration is considered production-ready merely because its code is present.
 
@@ -32,26 +32,25 @@ It reports observed sales, failed payments, refunds, disputes and attributed par
 
 **Permanent boundary:** GiGo has no checkout-write, payout, withdrawal, transfer, balance-management or Whop account-administration capability. Whop itself remains responsible for checkout and any configured affiliate/partner payout. A future API reconciliation key, if needed, must be read-only and payment-scoped.
 
-## Apify: bounded collection adapter
+## Apify: bounded, quota-capped collection adapter
 
 A bounded adapter exists in `src/collection/apify.ts`. It calls only the fixed official `apify~web-scraper` Actor, accepts only credential-free public HTTPS URLs, caps a run at ten pages, limits returned data and preserves checkpoints.
 
-Apify is listed in the provider catalogue as an integration scaffold and is **not enabled in the collection worker**. Do not register it as healthy or add `APIFY_API_TOKEN` to an active runner yet. Before activation, GiGo still needs:
+Apify is registered by the trusted batch worker when `APIFY_API_TOKEN` is present, but a job cannot make an Actor call unless its owner has enabled a monthly quota policy. The reservation RPC supplies a mandatory `maxTotalChargeUsd` cap and `maxItems` limit to the fixed `apify~web-scraper` Actor. Keep the provider record disabled/unhealthy until the owner has configured and reviewed the policy. Apify documents `maxTotalChargeUsd` as a per-run spending limit and `maxItems` as a cap on billable results for pay-per-result Actors. The monthly reservation counts each Actor invocation conservatively; the per-run charge cap limits provider-side spend for that invocation.
 
-1. A durable, atomic monthly usage ledger and hard owner-approved spending ceiling.
-2. Provider health verification and safe retry/reconciliation behavior.
-3. Explicit Actor input and site-access policy review.
-4. A confirmed Apify account budget/usage allowance.
+## Decodo: Web Data API
 
-Apify Actors and proxy options can have separate usage-based charges. A page-count limit alone is not a reliable dollar ceiling.
+Decodo is a separate supported provider, not a replacement for Apify. Its adapter uses the official bearer-authenticated Web Data API `/scrape` endpoint and collects bounded public-page evidence. The trusted batch worker registers it only when `DECODO_API_KEY` is present. Every outbound scrape first reserves one request against the owner's monthly quota policy; if no enabled policy exists or the ceiling is exhausted, the request is rejected before leaving GiGo.
+
+Decodo currently advertises a free tier of up to 10,000 requests/pages per month with no credit card required. Account entitlements and usage must still be checked in the Decodo dashboard. GiGo counts attempted calls conservatively, even though Decodo's pricing page says failed requests are not charged. Search, map and crawl endpoints are not yet enabled by GiGo's adapter; the current registered capability is only `web_fetch`.
 
 ## Database setup
 
 The new server-only ledger is migration:
 
-`supabase/migrations/0047_whop_readonly_sales_ledger.sql`
+`supabase/migrations/0048_collection_provider_quota_ledger.sql` (monthly Apify/Decodo limits) and `supabase/migrations/0047_whop_readonly_sales_ledger.sql` (Whop event ledger)
 
-It is also included in `supabase/GIGO_ONE_FILE_SETUP.sql`. The bundle test checks that canonical migrations are embedded exactly and in order. The migration has **not** been applied to the user's Supabase project by this code change. Apply the bundle only after verifying the existing database's migration history against the documented preflight requirements; do not run it against a fresh or mismatched database.
+Both are included in `supabase/GIGO_ONE_FILE_SETUP.sql`. Run `npm run db:bundle` after adding any migration; `npm run db:bundle:check` verifies that the combined file exactly matches canonical migrations 0010-0048. CI runs this check. The migration has **not** been applied to the user's Supabase project by this code change. Apply the bundle only after verifying the existing database's migration history against the documented preflight requirements; do not run it against a fresh or mismatched database.
 
 ## Not yet completed
 
@@ -59,4 +58,6 @@ It is also included in `supabase/GIGO_ONE_FILE_SETUP.sql`. The bundle test check
 - No Whop API reconciliation call has been made.
 - No live affiliate/50-50 configuration has been verified in the Whop dashboard.
 - No Apify Actor run has been made with the user's account.
+- No Decodo live request has been made with the user's account.
+- Monthly quota policies remain disabled by default and must be explicitly configured by the owner.
 - No deployment or Supabase SQL application is claimed.
