@@ -14,7 +14,7 @@ test("Analytics is backed by saved owner workspace data and avoids invented fina
   for (const route of ["/api/v1/projects","/api/v1/tasks","/api/v1/research/runs","/api/v1/partners","/api/v1/leads","/api/v1/offers","/api/v1/outreach/campaigns","/api/v1/marketing/assets","/api/v1/creative/briefs","/api/v1/customers/cases"]) assert.ok(js.includes(route));
   assert.ok(js.includes("Promise.allSettled"));
   assert.ok(js.includes('api.request("/api/v1/whop/sales")'));
-  assert.ok(js.includes("Whop retains all payment and payout control."));
+  assert.ok(html.includes("Whop retains all payment and payout control."));
   assert.ok(js.includes("approvedCampaigns"));
   assert.ok(!js.includes("revenue ="));
   assert.ok(!js.includes("ROI ="));
