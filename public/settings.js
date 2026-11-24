@@ -80,3 +80,44 @@ if(autonomyStatus&&initializeAutonomy&&toggleAutonomyPause&&autonomyPolicies){
   });
   loadAutonomy();
 }
+
+const quotaStatus=document.querySelector("#collection-quota-status");
+const quotaFields={
+  decodo:{limit:document.querySelector("#decodo-monthly-limit"),enabled:document.querySelector("#decodo-enabled"),usage:document.querySelector("#decodo-usage"),save:document.querySelector("#save-decodo-quota")},
+  apify:{limit:document.querySelector("#apify-monthly-limit"),cap:document.querySelector("#apify-run-cap"),enabled:document.querySelector("#apify-enabled"),usage:document.querySelector("#apify-usage"),save:document.querySelector("#save-apify-quota")}
+};
+async function loadCollectionQuotas(){
+  if(!quotaStatus||!quotaFields.decodo.limit||!quotaFields.apify.limit)return;
+  try{
+    const data=await api.request("/api/v1/collection/quotas");
+    const policies=Array.isArray(data.data?.policies)?data.data.policies:[];
+    const usage=Array.isArray(data.data?.usage)?data.data.usage:[];
+    for(const key of ["decodo","apify"]){
+      const field=quotaFields[key],policy=policies.find(row=>row.provider_key===key),used=usage.find(row=>row.provider_key===key);
+      field.limit.value=String(policy?.monthly_request_limit??0);
+      field.enabled.checked=policy?.enabled===true;
+      if(key==="apify"&&policy?.max_cost_per_run_usd!=null)field.cap.value=String(policy.max_cost_per_run_usd);
+      field.usage.textContent="This month: "+String(used?.requests_reserved??0)+" / "+String(policy?.monthly_request_limit??0)+" reserved requests. "+(policy?.enabled?"Quota policy enabled.":"Quota policy disabled.");
+    }
+    quotaStatus.textContent="Quota settings loaded. Saving a policy does not activate credentials or collection jobs.";
+  }catch(error){quotaStatus.textContent="Quota settings unavailable: "+error.message+" Confirm migration 0048 is applied.";}
+}
+for(const key of ["decodo","apify"]){
+  const field=quotaFields[key];
+  if(!field.save)continue;
+  field.save.addEventListener("click",async()=>{
+    const limit=Number(field.limit.value),enabled=field.enabled.checked;
+    const cap=key==="apify"?Number(field.cap.value):null;
+    if(!Number.isInteger(limit)||limit<0||limit>100000||(enabled&&limit<1)||(key==="apify"&&(!Number.isFinite(cap)||cap<0.0001||cap>100))){
+      quotaStatus.textContent="Enter a valid monthly limit (1–100,000 when enabled)"+(key==="apify"?" and per-run cap (0.0001–100 USD).":".");return;
+    }
+    field.save.disabled=true;quotaStatus.textContent="Saving "+key+" quota policy…";
+    try{
+      await api.request("/api/v1/collection/quotas",{method:"POST",body:JSON.stringify({provider_key:key,enabled,monthly_request_limit:limit,max_cost_per_run_usd:cap})});
+      quotaStatus.textContent=key+" quota policy saved. Collection remains separately gated by provider health and runner configuration.";
+      await loadCollectionQuotas();
+    }catch(error){quotaStatus.textContent="Could not save "+key+" quota: "+error.message;}
+    finally{field.save.disabled=false;}
+  });
+}
+loadCollectionQuotas();
