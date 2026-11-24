@@ -1,0 +1,61 @@
+# Whop and Apify integration status
+
+This document records the current guarded implementation. Neither external integration is considered production-ready merely because its code is present.
+
+## Whop: read-only sales monitoring
+
+The Worker route is:
+
+`POST /api/v1/webhooks/whop`
+
+Configure these as Cloudflare Worker secrets/variables (never commit them):
+
+- `WHOP_WEBHOOK_SECRET`: the signing secret for the specific Whop webhook endpoint.
+- `WHOP_OWNER_USER_ID`: the UUID of the single GiGo owner in Supabase Auth.
+- `SUPABASE_URL` and `SUPABASE_SECRET_KEY`: existing server-side database configuration.
+
+Subscribe only to the payment events handled by the receiver:
+
+- `payment.succeeded`
+- `payment.failed`
+- `refund.created`
+- `dispute.created`
+
+The receiver verifies the signed raw request body and a five-minute timestamp window, then inserts an idempotent event record. Unsupported but valid events are acknowledged and ignored. Only allow-listed sales fields are stored; customer contact details and raw webhook bodies are not stored.
+
+The owner-only report endpoint is:
+
+`GET /api/v1/whop/sales`
+
+It reports observed sales, failed payments, refunds, disputes and attributed partner sales from the latest 500 events. Amounts are grouped by currency. It does not calculate distributable net proceeds or 50/50 shares yet because Whop fees, refund treatment and the intended gross-versus-net split have not been confirmed.
+
+**Permanent boundary:** GiGo has no checkout-write, payout, withdrawal, transfer, balance-management or Whop account-administration capability. Whop itself remains responsible for checkout and any configured affiliate/partner payout. A future API reconciliation key, if needed, must be read-only and payment-scoped.
+
+## Apify: bounded collection adapter
+
+A bounded adapter exists in `src/collection/apify.ts`. It calls only the fixed official `apify~web-scraper` Actor, accepts only credential-free public HTTPS URLs, caps a run at ten pages, limits returned data and preserves checkpoints.
+
+Apify is listed in the provider catalogue as an integration scaffold and is **not enabled in the collection worker**. Do not register it as healthy or add `APIFY_API_TOKEN` to an active runner yet. Before activation, GiGo still needs:
+
+1. A durable, atomic monthly usage ledger and hard owner-approved spending ceiling.
+2. Provider health verification and safe retry/reconciliation behavior.
+3. Explicit Actor input and site-access policy review.
+4. A confirmed Apify account budget/usage allowance.
+
+Apify Actors and proxy options can have separate usage-based charges. A page-count limit alone is not a reliable dollar ceiling.
+
+## Database setup
+
+The new server-only ledger is migration:
+
+`supabase/migrations/0047_whop_readonly_sales_ledger.sql`
+
+It is also included in `supabase/GIGO_ONE_FILE_SETUP.sql`. The bundle test checks that canonical migrations are embedded exactly and in order. The migration has **not** been applied to the user's Supabase project by this code change. Apply the bundle only after verifying the existing database's migration history against the documented preflight requirements; do not run it against a fresh or mismatched database.
+
+## Not yet completed
+
+- No live Whop webhook has been delivered to this Worker.
+- No Whop API reconciliation call has been made.
+- No live affiliate/50-50 configuration has been verified in the Whop dashboard.
+- No Apify Actor run has been made with the user's account.
+- No deployment or Supabase SQL application is claimed.
