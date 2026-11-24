@@ -115,26 +115,13 @@ const providers: readonly CollectionProviderDefinition[] = [
     key: "apify",
     name: "Apify Web Scraper",
     category: "web_crawl",
-    verification: "integration_scaffold",
+    verification: "official_api",
     executionModes: ["batch_runner", "external_api"],
     capabilities: ["web_fetch"],
     platforms: ["web"],
     freeTier: "quota_limited",
     defaultEnabled: false,
-    notes: "A bounded Apify Web Scraper adapter is implemented but deliberately not executable until durable monthly usage accounting, a hard owner-approved budget ceiling, and provider-specific health verification are in place. Actor execution and proxy usage may incur separate costs.",
-    officialUrl: "https://apify.com/"
-  },
-  {
-    key: "apify",
-    name: "Apify Web Scraper",
-    category: "web_crawl",
-    verification: "integration_scaffold",
-    executionModes: ["batch_runner", "external_api"],
-    capabilities: ["web_fetch"],
-    platforms: ["web"],
-    freeTier: "quota_limited",
-    defaultEnabled: false,
-    notes: "Fixed Web Scraper Actor adapter. Requires an owner-enabled monthly quota policy and mandatory per-run USD cap enforced by Apify's maxTotalChargeUsd option.",
+    notes: "Fixed official Web Scraper Actor adapter. Requires an owner-enabled monthly request quota and mandatory per-run USD cap; provider health and account allowance must be verified before activation.",
     officialUrl: "https://apify.com/"
   },
   {
