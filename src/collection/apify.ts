@@ -77,6 +77,7 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
       if (!Array.isArray(payload)) throw new Error("Apify returned an invalid dataset response.");
 
       let items = 0;
+      const completedThisRun = new Set<string>();
       for (const raw of payload.slice(0, Math.min(MAX_RESPONSE_ITEMS, pending.length))) {
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
         const record = raw as Record<string, unknown>;
@@ -97,8 +98,9 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
           record: { url: finalUrl, title: title || null, content_excerpt: text, provider: "apify" }
         });
         items++;
+        completedThisRun.add(finalUrl);
       }
-      const nextCompleted = [...new Set([...completed, ...pending])];
+      const nextCompleted = [...new Set([...completed, ...completedThisRun])];
       const pages = Number(context.checkpoint?.pages ?? 0) + items;
       const requests = Number(context.checkpoint?.requests ?? 0) + 1;
       const checkpoint = { completed_urls: nextCompleted, pages, requests };
