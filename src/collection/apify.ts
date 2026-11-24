@@ -78,7 +78,7 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
 
       let items = 0;
       const completedThisRun = new Set<string>();
-      for (const raw of payload.slice(0, Math.min(MAX_RESPONSE_ITEMS, pending.length))) {
+      for (const [index, raw] of payload.slice(0, Math.min(MAX_RESPONSE_ITEMS, pending.length)).entries()) {
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
         const record = raw as Record<string, unknown>;
         const rawUrl = typeof record.url === "string" ? record.url : "";
@@ -98,7 +98,7 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
           record: { url: finalUrl, title: title || null, content_excerpt: text, provider: "apify" }
         });
         items++;
-        completedThisRun.add(finalUrl);
+        completedThisRun.add(pending[index]);
       }
       const nextCompleted = [...new Set([...completed, ...completedThisRun])];
       const pages = Number(context.checkpoint?.pages ?? 0) + items;
