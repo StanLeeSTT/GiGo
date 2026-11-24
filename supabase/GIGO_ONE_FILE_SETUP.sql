@@ -4756,6 +4756,7 @@ comment on function public.gigo_create_collection_run(text,integer,jsonb,text,te
 -- ============================================================================
 -- BEGIN CANONICAL MIGRATION 0047_whop_read_only_sales_events.sql
 -- ============================================================================
+
 -- Read-only Whop webhook event ledger. GiGo has no funds, checkout, refund,
 -- balance, transfer or payout permissions.
 
@@ -4800,6 +4801,7 @@ grant all on public.whop_webhook_events to service_role;
 
 comment on table public.whop_webhook_events is
   'Immutable, deduplicated, read-only Whop event ledger for owner sales reporting. No payment or payout actions are exposed to GiGo.';
+
 -- ============================================================================
 -- END CANONICAL MIGRATION 0047_whop_read_only_sales_events.sql
 -- ============================================================================
