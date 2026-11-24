@@ -1384,7 +1384,12 @@ export default {
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Whop event envelope is invalid." } }, 400, headers);
       const envelope = payload as JsonRecord;
       if (typeof envelope.id !== "string" || envelope.id !== eventId) return json({ error: { code: "WEBHOOK_ID_MISMATCH", message: "Whop event ID does not match the signed delivery ID." } }, 401, headers);
-      const eventAccountId = typeof envelope.account_id === "string" ? envelope.account_id : typeof envelope.company_id === "string" ? envelope.company_id : "";
+      const eventData = envelope.data && typeof envelope.data === "object" && !Array.isArray(envelope.data) ? envelope.data as JsonRecord : {};
+      const company = eventData.company && typeof eventData.company === "object" && !Array.isArray(eventData.company) ? eventData.company as JsonRecord : {};
+      const eventAccountId = typeof envelope.account_id === "string" ? envelope.account_id
+        : typeof envelope.company_id === "string" ? envelope.company_id
+        : typeof eventData.company_id === "string" ? eventData.company_id
+        : typeof company.id === "string" ? company.id : "";
       if (!eventAccountId || eventAccountId !== expectedAccountId) return json({ error: { code: "WHOP_ACCOUNT_MISMATCH", message: "This event does not belong to the configured Whop account." } }, 403, headers);
       const event = normalizeWhopSalesEvent(eventId, payload);
       if (!event) return new Response(null, { status: 204, headers });
