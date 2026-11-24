@@ -7,6 +7,10 @@ const migrationsDir = join(root, "supabase", "migrations");
 const bundlePath = join(root, "supabase", "GIGO_ONE_FILE_SETUP.sql");
 const rangePattern = /^00(?:1[0-9]|2[0-9]|3[0-9]|4[0-8])_.*\.sql$/;
 
+function canonicalNames() {
+  return readdirSync(migrationsDir).filter(name => rangePattern.test(name)).sort();
+}
+
 export function buildSupabaseBundle() {
   const current = readFileSync(bundlePath, "utf8");
   const firstMarker = current.indexOf("-- BEGIN CANONICAL MIGRATION 0010_");
@@ -16,7 +20,7 @@ export function buildSupabaseBundle() {
   }
   const prefix = current.slice(0, firstMarker);
   const suffix = current.slice(postflight);
-  const names = readdirSync(migrationsDir).filter(name => rangePattern.test(name)).sort();
+  const names = canonicalNames();
   if (names.length !== 39 || !names[0].startsWith("0010_") || !names.at(-1).startsWith("0048_")) {
     throw new Error("Expected the complete canonical migration range 0010-0048 (39 files).");
   }
@@ -34,27 +38,23 @@ export function buildSupabaseBundle() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const generated = buildSupabaseBundle();
   if (process.argv.includes("--check")) {
     const current = readFileSync(bundlePath, "utf8");
-    const marker = /-- BEGIN CANONICAL MIGRATION ([^\\r\\n]+)\\r?\\n-- =+\\r?\\n\\r?\\n([\\s\\S]*?)\\r?\\n\\r?\\n-- END CANONICAL MIGRATION \\1/g;
+    const marker = /-- BEGIN CANONICAL MIGRATION ([^\r\n]+)\r?\n-- =+\r?\n\r?\n([\s\S]*?)\r?\n\r?\n-- END CANONICAL MIGRATION \1/g;
     const embedded = [...current.matchAll(marker)];
-    const names = readdirSync(migrationsDir).filter(name => rangePattern.test(name)).sort();
+    const names = canonicalNames();
     const exact = embedded.length === names.length && embedded.every((match, index) =>
       match[1] === names[index] && match[2] === readFileSync(join(migrationsDir, names[index]), "utf8")
     );
-    const wrapper = current.includes("DO $gigo_preflight$") && current.includes("DO $gigo_postflight$") && /COMMIT;\\s*$/.test(current);
+    const wrapper = current.includes("DO $gigo_preflight$") && current.includes("DO $gigo_postflight$") && /COMMIT;\s*$/.test(current);
     if (!exact || !wrapper) {
-      process.stderr.write("GIGO_ONE_FILE_SETUP.sql does not exactly embed the canonical migration sequence. Run npm run db:bundle.\\n");
+      process.stderr.write("GIGO_ONE_FILE_SETUP.sql does not exactly embed the canonical migration sequence. Run npm run db:bundle.\n");
       process.exitCode = 1;
     } else {
-      process.stdout.write("Supabase one-file bundle exactly embeds canonical migrations 0010-0048.\\n");
+      process.stdout.write("Supabase one-file bundle exactly embeds canonical migrations 0010-0048.\n");
     }
   } else {
-      process.stdout.write("Supabase one-file bundle matches canonical migrations 0010-0048.\n");
-    }
-  } else {
-    writeFileSync(bundlePath, generated, "utf8");
+    writeFileSync(bundlePath, buildSupabaseBundle(), "utf8");
     process.stdout.write("Updated supabase/GIGO_ONE_FILE_SETUP.sql from canonical migrations 0010-0048.\n");
   }
 }
