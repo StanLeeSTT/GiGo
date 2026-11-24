@@ -112,6 +112,19 @@ const providers: readonly CollectionProviderDefinition[] = [
     officialUrl: "https://github.com/searxng/searxng"
   },
   {
+    key: "apify",
+    name: "Apify Web Scraper",
+    category: "web_crawl",
+    verification: "integration_scaffold",
+    executionModes: ["batch_runner", "external_api"],
+    capabilities: ["web_fetch"],
+    platforms: ["web"],
+    freeTier: "quota_limited",
+    defaultEnabled: false,
+    notes: "A bounded Apify Web Scraper adapter is implemented but deliberately not executable until durable monthly usage accounting, a hard owner-approved budget ceiling, and provider-specific health verification are in place. Actor execution and proxy usage may incur separate costs.",
+    officialUrl: "https://apify.com/"
+  },
+  {
     key: "maxun",
     name: "Maxun",
     category: "web_crawl",
