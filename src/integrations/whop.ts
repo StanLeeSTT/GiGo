@@ -100,8 +100,6 @@ export function normalizeWhopSalesEvent(eventId: string, payload: unknown): Whop
   if (!SUPPORTED_EVENTS.has(eventType)) return null;
   const data = record(root.data);
   const payment = record(data.payment);
-  const product = record(data.product);
-  const plan = record(data.plan);
   const affiliate = record(data.affiliate);
   const occurredRaw = root.timestamp ?? data.created_at ?? data.updated_at;
   const occurredAt = typeof occurredRaw === "string" && Number.isFinite(Date.parse(occurredRaw)) ? new Date(occurredRaw).toISOString() : null;
@@ -119,7 +117,7 @@ export function normalizeWhopSalesEvent(eventId: string, payload: unknown): Whop
   return {
     eventId,
     eventType: eventType as WhopSalesEvent["eventType"],
-    paymentId: scalarId(data.payment_id) ?? nestedId(data.payment) ?? scalarId(data.id),
+    paymentId: scalarId(data.payment_id) ?? nestedId(data.payment) ?? (eventType.startsWith("payment.") ? scalarId(data.id) : null),
     productId: scalarId(data.product_id) ?? nestedId(data.product),
     planId: scalarId(data.plan_id) ?? nestedId(data.plan),
     partnerId,
