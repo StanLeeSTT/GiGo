@@ -2,6 +2,8 @@ export interface WhopEvent {
   id: string;
   type: string;
   timestamp?: string;
+  account_id?: string;
+  company_id?: string;
   data: Record<string, unknown>;
 }
 
@@ -62,7 +64,7 @@ export async function verifyWhopWebhook(
 export function parseWhopEvent(value: unknown): WhopEvent | null {
   if (!isRecord(value) || typeof value.id !== "string" || value.id.length < 1 || value.id.length > 200
     || typeof value.type !== "string" || !TRACKED_EVENTS.has(value.type) || !isRecord(value.data)) return null;
-  return { id: value.id, type: value.type, timestamp: typeof value.timestamp === "string" ? value.timestamp : undefined, data: value.data };
+  return { id: value.id, type: value.type, timestamp: typeof value.timestamp === "string" ? value.timestamp : undefined, account_id: typeof value.account_id === "string" ? value.account_id : undefined, company_id: typeof value.company_id === "string" ? value.company_id : undefined, data: value.data };
 }
 
 function idValue(value: unknown): string | null {
@@ -86,8 +88,8 @@ export function toWhopEventRecord(event: WhopEvent, ownerId: string) {
     resource_id: idValue(data.id),
     product_id: idValue(data.product) ?? idValue(data.product_id),
     plan_id: idValue(data.plan) ?? idValue(data.plan_id),
-    partner_id: idValue(data.affiliate) ?? idValue(data.affiliate_id) ?? idValue(metadata.affiliate_id) ?? idValue(metadata.partner_id),
-    company_id: idValue(data.company) ?? idValue(data.company_id),
+    partner_id: idValue(data.affiliate) ?? idValue(data.affiliate_id) ?? idValue(data.affiliate_user_id) ?? idValue(metadata.affiliate_id) ?? idValue(metadata.partner_id),
+    company_id: event.account_id ?? event.company_id ?? idValue(data.company) ?? idValue(data.company_id),
     amount,
     currency: typeof data.currency === "string" && /^[A-Z]{3}$/.test(data.currency) ? data.currency : null,
     occurred_at: occurredAt,
