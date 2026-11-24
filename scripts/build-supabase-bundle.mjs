@@ -37,10 +37,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const generated = buildSupabaseBundle();
   if (process.argv.includes("--check")) {
     const current = readFileSync(bundlePath, "utf8");
-    if (current !== generated) {
-      process.stderr.write("GIGO_ONE_FILE_SETUP.sql is stale. Run npm run db:bundle.\n");
+    const marker = /-- BEGIN CANONICAL MIGRATION ([^\\r\\n]+)\\r?\\n-- =+\\r?\\n\\r?\\n([\\s\\S]*?)\\r?\\n\\r?\\n-- END CANONICAL MIGRATION \\1/g;
+    const embedded = [...current.matchAll(marker)];
+    const names = readdirSync(migrationsDir).filter(name => rangePattern.test(name)).sort();
+    const exact = embedded.length === names.length && embedded.every((match, index) =>
+      match[1] === names[index] && match[2] === readFileSync(join(migrationsDir, names[index]), "utf8")
+    );
+    const wrapper = current.includes("DO $gigo_preflight$") && current.includes("DO $gigo_postflight$") && /COMMIT;\\s*$/.test(current);
+    if (!exact || !wrapper) {
+      process.stderr.write("GIGO_ONE_FILE_SETUP.sql does not exactly embed the canonical migration sequence. Run npm run db:bundle.\\n");
       process.exitCode = 1;
     } else {
+      process.stdout.write("Supabase one-file bundle exactly embeds canonical migrations 0010-0048.\\n");
+    }
+  } else {
       process.stdout.write("Supabase one-file bundle matches canonical migrations 0010-0048.\n");
     }
   } else {
