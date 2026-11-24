@@ -87,8 +87,8 @@ function nestedId(value: unknown): string | null {
 function amountValue(data: Record<string, unknown>): number | null {
   for (const key of ["amount", "final_amount", "total", "price"]) {
     const value = data[key];
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
-    if (typeof value === "string" && value.length <= 40 && /^\d+(?:\.\d+)?$/.test(value)) return Number(value);
+    const text = typeof value === "number" && Number.isFinite(value) ? String(value) : typeof value === "string" ? value : "";
+    if (text.length <= 20 && /^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/.test(text)) return Number(text);
   }
   return null;
 }
@@ -99,13 +99,12 @@ export function normalizeWhopSalesEvent(eventId: string, payload: unknown): Whop
   const eventType = typeof root.type === "string" ? root.type : typeof root.event === "string" ? root.event : "";
   if (!SUPPORTED_EVENTS.has(eventType)) return null;
   const data = record(root.data);
-  const payment = record(data.payment);
   const affiliate = record(data.affiliate);
   const occurredRaw = root.timestamp ?? data.created_at ?? data.updated_at;
   const occurredAt = typeof occurredRaw === "string" && Number.isFinite(Date.parse(occurredRaw)) ? new Date(occurredRaw).toISOString() : null;
   const currencyRaw = data.currency;
   const statusRaw = data.status;
-  const partnerId = nestedId(data.affiliate) ?? scalarId(data.affiliate_id) ?? scalarId(data.partner_id);
+  const partnerId = scalarId(data.affiliate) ?? nestedId(data.affiliate) ?? scalarId(data.affiliate_id) ?? scalarId(data.partner_id);
   const safeMetadata: WhopSalesEvent["safeMetadata"] = {};
   const metadata = record(data.metadata);
   for (const key of ["campaign_id", "source", "partner_code"]) {
@@ -117,9 +116,9 @@ export function normalizeWhopSalesEvent(eventId: string, payload: unknown): Whop
   return {
     eventId,
     eventType: eventType as WhopSalesEvent["eventType"],
-    paymentId: scalarId(data.payment_id) ?? nestedId(data.payment) ?? (eventType.startsWith("payment.") ? scalarId(data.id) : null),
-    productId: scalarId(data.product_id) ?? nestedId(data.product),
-    planId: scalarId(data.plan_id) ?? nestedId(data.plan),
+    paymentId: scalarId(data.payment_id) ?? scalarId(data.payment) ?? nestedId(data.payment) ?? (eventType.startsWith("payment.") ? scalarId(data.id) : null),
+    productId: scalarId(data.product_id) ?? scalarId(data.product) ?? nestedId(data.product),
+    planId: scalarId(data.plan_id) ?? scalarId(data.plan) ?? nestedId(data.plan),
     partnerId,
     amount: amountValue(data),
     currency: typeof currencyRaw === "string" && /^[A-Za-z]{3,12}$/.test(currencyRaw) ? currencyRaw.toUpperCase() : null,

@@ -46,5 +46,17 @@ test("Whop event normalizer stores only allowlisted sales facts", () => {
   assert.equal(event.amount, 20);
   assert.deepEqual(event.safeMetadata, { campaign_id: "campaign_1" });
   assert.equal("customer" in event, false);
+  assert.equal(normalizeWhopSalesEvent("msg_2", { type: "payment.succeeded", data: { id: "pay_2", amount: "99999999999999999999", currency: "usd" } }).amount, null);
   assert.equal(normalizeWhopSalesEvent("msg_2", { type: "membership.activated", data: {} }), null);
+});
+
+test("Whop normalizer accepts scalar resource and affiliate identifiers", () => {
+  const event = normalizeWhopSalesEvent("msg_scalar", {
+    type: "payment.succeeded",
+    data: { id: "pay_root", payment: "pay_1", product: "prod_1", plan: "plan_1", affiliate: "aff_1", amount: 10, currency: "usd" }
+  });
+  assert.equal(event?.paymentId, "pay_1");
+  assert.equal(event?.productId, "prod_1");
+  assert.equal(event?.planId, "plan_1");
+  assert.equal(event?.partnerId, "aff_1");
 });

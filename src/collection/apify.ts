@@ -7,6 +7,7 @@ const MAX_ITEM_CHARS = 30000;
 const ALLOWED_ACTOR = "apify~web-scraper";
 
 function publicHttpsUrl(value: string): URL {
+  if (typeof value !== "string" || value.length < 1 || value.length > 2048) throw new Error("Apify URL must be a bounded public HTTPS URL.");
   const url = new URL(value);
   const host = url.hostname.toLowerCase();
   if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")
@@ -16,6 +17,13 @@ function publicHttpsUrl(value: string): URL {
     throw new Error("Apify collection accepts only credential-free public HTTPS URLs.");
   }
   return url;
+}
+
+function checkpointUrlKey(value: string): string {
+  const url = new URL(value);
+  url.hash = "";
+  if (url.pathname.length > 1) url.pathname = url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
 }
 
 function boundedText(value: unknown, max = MAX_ITEM_CHARS): string {
@@ -48,8 +56,12 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
       const supplied = Array.isArray(input.urls) ? input.urls.slice(0, maxPages) as string[] : [];
       if (!supplied.length || supplied.length > MAX_PAGES_PER_RUN) throw new Error("Apify requires between 1 and 10 permitted public URLs.");
       const urls = supplied.map(value => publicHttpsUrl(value).toString());
-      const completed = new Set(Array.isArray(context.checkpoint?.completed_urls) ? context.checkpoint.completed_urls as string[] : []);
-      const pending = urls.filter(url => !completed.has(url));
+      const completedUrls = Array.isArray(context.checkpoint?.completed_urls)
+        ? (context.checkpoint.completed_urls as unknown[]).filter((value): value is string => typeof value === "string" && value.length <= 2048)
+        : [];
+      const completed = new Set<string>();
+      for (const value of completedUrls) { try { completed.add(checkpointUrlKey(value)); } catch { /* Ignore invalid checkpoint entries. */ } }
+      const pending = urls.filter(url => !completed.has(checkpointUrlKey(url)));
       if (!pending.length) return { status: "completed", counters: { pages: Number(context.checkpoint?.pages ?? 0), items: 0, requests: Number(context.checkpoint?.requests ?? 0) }, checkpoint: context.checkpoint };
 
       if (context.signal.aborted) throw new Error("Collection cancelled.");
@@ -78,7 +90,7 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
 
       let items = 0;
       const completedThisRun = new Set<string>();
-      for (const [index, raw] of payload.slice(0, Math.min(MAX_RESPONSE_ITEMS, pending.length)).entries()) {
+      for (const raw of payload.slice(0, Math.min(MAX_RESPONSE_ITEMS, pending.length))) {
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
         const record = raw as Record<string, unknown>;
         const rawUrl = typeof record.url === "string" ? record.url : "";
@@ -98,14 +110,15 @@ export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapte
           record: { url: finalUrl, title: title || null, content_excerpt: text, provider: "apify" }
         });
         items++;
-        completedThisRun.add(pending[index]);
+        const matchedRequest = pending.find(url => checkpointUrlKey(url) === checkpointUrlKey(finalUrl));
+        if (matchedRequest) completedThisRun.add(matchedRequest);
       }
-      const nextCompleted = [...new Set([...completed, ...completedThisRun])];
+      const nextCompleted = [...new Set([...completedUrls, ...completedThisRun])];
       const pages = Number(context.checkpoint?.pages ?? 0) + items;
       const requests = Number(context.checkpoint?.requests ?? 0) + 1;
       const checkpoint = { completed_urls: nextCompleted, pages, requests };
       await context.reportProgress({ pages, items, requests, checkpoint });
-      return { status: items < pending.length ? "partial" : "completed", counters: { pages, items, requests }, checkpoint };
+      return { status: completedThisRun.size < pending.length ? "partial" : "completed", counters: { pages, items, requests }, checkpoint };
     }
   };
 }

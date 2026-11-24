@@ -74,7 +74,7 @@ For production, configure Worker variables/secrets using Cloudflare's dashboard 
 
 The canonical, versioned source of truth remains `supabase/migrations/`. Keep every individual migration file; do not delete or replace that history with a generated bundle.
 
-For the **existing GiGo Supabase project only**, a convenience one-file SQL bundle is available at `supabase/GIGO_ONE_FILE_SETUP.sql`. It includes idempotent repairs for migrations `0002` and `0003`, followed by canonical migrations `0010` through `0046` in order, inside one transaction with baseline preflight and postflight checks. It assumes the previously confirmed baseline (`0001`, `0004`–`0009`) is already installed and that `0010`–`0046` are still unapplied. The 0002/0003 repairs recreate their owner-check and conversation-recency triggers safely if missing.
+For the **existing GiGo Supabase project only**, a convenience one-file SQL bundle is available at `supabase/GIGO_ONE_FILE_SETUP.sql`. It includes idempotent repairs for migrations `0002` and `0003`, followed by canonical migrations `0010` through `0047` in order, inside one transaction with baseline preflight and postflight checks. It assumes the previously confirmed baseline (`0001`, `0004`–`0009`) is already installed and that `0010`–`0047` are still unapplied. The 0002/0003 repairs recreate their owner-check and conversation-recency triggers safely if missing.
 
 **Run the bundle once only, after checking the target project's migration history.** It is not a fresh-project bootstrap and must not be re-run after successful application. If any preflight check fails, stop and reconcile the database rather than removing the guard. Running SQL manually in the Supabase SQL Editor does not automatically record these versions in Supabase's migration ledger; before returning to Supabase CLI migrations, reconcile the ledger with the CLI migration-repair workflow after verifying the actual database state. Never blindly run `db push`.
 
@@ -111,3 +111,8 @@ GitHub Actions runs TypeScript typecheck, the Node test suite and browser JavaSc
 ## License and deployment
 
 No production deployment, third-party sender, or external social collector should be assumed from repository contents alone. Review each dependency's licence, current free-tier limits, privacy terms and acceptable-use policy before enabling it.
+
+
+## Whop and Apify integration status
+
+GiGo's Whop integration is read-only: signed payment, refund and dispute events feed the Analytics sales monitor. Whop retains checkout and all partner settlement. GiGo has no payout, withdrawal, transfer or balance controls. The Apify Web Scraper adapter is present but stays disabled until a durable monthly cost ceiling is implemented. See [the integration handover](docs/WHOP_APIFY_INTEGRATION.md) before configuring either service.

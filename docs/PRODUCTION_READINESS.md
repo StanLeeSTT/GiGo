@@ -17,7 +17,7 @@ This checklist separates committed source code from a working deployment. Comple
 
 ## 2. Reconcile the Supabase migration history
 
-There are 44 ordered migration files, from `0001_initial_schema.sql` through `0044_private_research_documents.sql`. The repository files are source-of-truth proposals, not proof of database state.
+There are 47 ordered migration files, from `0001_initial_schema.sql` through `0047_whop_readonly_sales_ledger.sql`. The repository files are source-of-truth proposals, not proof of database state.
 
 1. Open the intended GiGo Supabase project and inspect its migration history.
 2. If using Supabase CLI history, inspect `supabase_migrations.schema_migrations` (if present) and compare each version against the filenames in `supabase/migrations/`.
@@ -32,7 +32,9 @@ Later migration groups include:
 - 0010–0021: Universal Collection Engine, worker leases, persistence, intelligence and lead evidence.
 - 0022–0036: Outreach campaigns, approvals, recipient eligibility, templates, queue preparation, inbound safety and final send guards.
 - 0037–0039: Durable autonomy governance, owner initialization, exact approval consumption and outbound signature/partnership rules.
-- 0040–0042: Marketing assets, Customer Support cases and Creative Studio briefs.\n- 0043–0044: Research evidence traceability, private research document metadata and owner/run constraints.
+- 0040–0042: Marketing assets, Customer Support cases and Creative Studio briefs.\n- 0043–0045: Research evidence traceability, private research document metadata and passage provenance.
+- 0046: Decodo Web Data API provider controls.
+- 0047: Server-only Whop read-only sales event ledger.
 
 Do not disable RLS to make an API request work. Fix the owner-scoped policy or RPC boundary.
 
@@ -174,7 +176,7 @@ A guarded Resend adapter is implemented but remains unregistered and cannot be s
 
 ## 12. Whop sales monitoring and Apify collection (migrations 0047)
 
-Whop integration now has a signed webhook receiver at `POST /api/v1/webhooks/whop`, an owner-only read endpoint at `GET /api/v1/whop/sales`, and a server-only event ledger in migration `0047_whop_readonly_sales_ledger.sql`. The receiver stores allow-listed payment/refund/dispute facts and deduplicates by webhook message ID. It does not store customer contact details or raw payloads. Configure `WHOP_WEBHOOK_SECRET` and `WHOP_OWNER_USER_ID` as Worker secrets/variables only after validating the webhook secret format against the endpoint created in the Whop dashboard. The database server secret must already be configured.
+Whop integration now has a signed webhook receiver at `POST /api/v1/webhooks/whop`, an owner-only read endpoint at `GET /api/v1/whop/sales`, and a server-only event ledger in migration `0047_whop_readonly_sales_ledger.sql`. The receiver stores allow-listed payment/refund/dispute facts and deduplicates by webhook message ID. It does not store customer contact details or raw payloads. Configure `WHOP_WEBHOOK_SECRET` and `WHOP_OWNER_USER_ID` as Worker secrets, and `WHOP_ACCOUNT_ID` as a Worker variable. The receiver checks the signed message ID and rejects events whose account/company ID does not match `WHOP_ACCOUNT_ID`. The database server secret must already be configured.
 
 Whop checkout and partner payouts remain outside GiGo. Do not request payout, withdrawal, transfer, balance-management or broad account-administration permissions. No 50/50 commission amount is reported until Whop's actual affiliate configuration, fee treatment, refund handling and gross-versus-net basis have been confirmed. The current sales report reflects webhook events only (latest 500), not a historical API reconciliation.
 

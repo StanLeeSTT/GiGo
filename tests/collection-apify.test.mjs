@@ -59,3 +59,26 @@ test("Apify adapter resumes only URLs represented by returned dataset items", as
   assert.equal(result.status, "partial");
   assert.deepEqual(result.checkpoint.completed_urls, ["https://example.com/one"]);
 });
+
+test("Apify checkpoints the returned URL rather than assuming dataset order", async () => {
+  const adapter = createApifyAdapter({
+    apiToken: "test-token",
+    fetcher: async () => new Response(JSON.stringify([{ url: "https://example.com/two", text: "two" }]), { status: 200 })
+  });
+  const state = context();
+  const result = await adapter.execute({}, { urls: ["https://example.com/one", "https://example.com/two"] }, state.value);
+  assert.equal(result.status, "partial");
+  assert.deepEqual(result.checkpoint.completed_urls, ["https://example.com/two"]);
+});
+
+test("Apify ignores malformed checkpoint entries and rejects non-string URLs", async () => {
+  const adapter = createApifyAdapter({
+    apiToken: "test-token",
+    fetcher: async () => new Response(JSON.stringify([{ url: "https://example.com/page", text: "ok" }]), { status: 200 })
+  });
+  const state = context();
+  state.value.checkpoint = { completed_urls: [null, "not a URL", "https://example.com/other"] };
+  const result = await adapter.execute({}, { urls: ["https://example.com/page"] }, state.value);
+  assert.equal(result.status, "completed");
+  await assert.rejects(() => adapter.execute({}, { urls: [{}] }, context().value));
+});

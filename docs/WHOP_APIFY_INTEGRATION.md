@@ -12,6 +12,7 @@ Configure these as Cloudflare Worker secrets/variables (never commit them):
 
 - `WHOP_WEBHOOK_SECRET`: the signing secret for the specific Whop webhook endpoint.
 - `WHOP_OWNER_USER_ID`: the UUID of the single GiGo owner in Supabase Auth.
+- `WHOP_ACCOUNT_ID`: the expected Whop business/account ID (for example, the `biz_...` identifier), stored as a Worker variable.
 - `SUPABASE_URL` and `SUPABASE_SECRET_KEY`: existing server-side database configuration.
 
 Subscribe only to the payment events handled by the receiver:
@@ -21,9 +22,9 @@ Subscribe only to the payment events handled by the receiver:
 - `refund.created`
 - `dispute.created`
 
-The receiver verifies the signed raw request body and a five-minute timestamp window, then inserts an idempotent event record. Unsupported but valid events are acknowledged and ignored. Only allow-listed sales fields are stored; customer contact details and raw webhook bodies are not stored.
+The receiver verifies the signed raw request body and a five-minute timestamp window, uses the signed `webhook-id` as its deduplication key, and rejects events unless their account/company ID (including the nested `data.company.id` form) matches `WHOP_ACCOUNT_ID`. It then inserts an idempotent event record. Unsupported but valid events are acknowledged and ignored. Only allow-listed sales fields are stored; customer contact details and raw webhook bodies are not stored.
 
-The owner-only report endpoint is:
+The Analytics workspace includes a read-only Whop sales monitor. The owner-only report endpoint is:
 
 `GET /api/v1/whop/sales`
 
