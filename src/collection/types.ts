@@ -26,6 +26,7 @@ export interface CollectionExecutionContext {
   signal: AbortSignal;
   deadlineAt: string;
   checkpoint: Record<string, unknown>;
+  reserveProviderUsage(units?: number): Promise<{ maxCostPerRunUsd: number | null }>;
   reportProgress(progress: { pages?: number; items?: number; requests?: number; checkpoint?: Record<string, unknown> }): Promise<void>;
   emitItem(item: CollectionOutputItem): Promise<void>;
 }
