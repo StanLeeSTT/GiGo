@@ -1347,8 +1347,9 @@ export default {
             total.successful_payments++;
             total.observed_sales_amount += safeAmount;
             if (typeof row.partner_id === "string" && row.partner_id) {
-              if (!partners.has(row.partner_id)) partners.set(row.partner_id, { partner_id: row.partner_id, successful_payments: 0, observed_sales_amount: 0, currency });
-              const partner = partners.get(row.partner_id)!;
+              const partnerKey = currency + ":" + row.partner_id;
+              if (!partners.has(partnerKey)) partners.set(partnerKey, { partner_id: row.partner_id, successful_payments: 0, observed_sales_amount: 0, currency });
+              const partner = partners.get(partnerKey)!;
               partner.successful_payments++;
               partner.observed_sales_amount += safeAmount;
             }
