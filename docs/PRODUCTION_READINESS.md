@@ -171,3 +171,16 @@ If the bucket or migration is missing, upload fails closed with a configuration/
 ## Outbound provider adapter readiness
 
 A guarded Resend adapter is implemented but remains unregistered and cannot be selected by the send path. It includes strict pre-send message checks, provider idempotency, a registered-contact restriction for the marketing channel, conservative handling of uncertain provider outcomes, and Svix HMAC verification. This is not permission to send: the durable worker, owner authorization, campaign eligibility and suppression rechecks, signed webhook route with replay/event deduplication, sender authentication and audit controls remain activation gates. Follow [OUTBOUND_PROVIDER_ADAPTER_READINESS.md](OUTBOUND_PROVIDER_ADAPTER_READINESS.md) before any future activation.
+
+
+## Read-only Whop sales monitoring (migration 0047)
+
+The feature branch now contains a signed Whop webhook receiver at `POST /api/webhooks/whop`, an owner-scoped read API at `GET /api/v1/whop/events`, and migration `0047_whop_read_only_sales_events.sql`. The receiver validates the raw body using Whop's literal `ws_` signing key, checks the timestamp, deduplicates on the webhook event ID and stores only a narrow reporting projection. It does not store full customer payloads.
+
+Activation still requires the owner to apply migration 0047, configure `WHOP_WEBHOOK_SECRET` and `WHOP_OWNER_USER_ID` as Worker secrets, and create the Whop v1 webhook. Only payment, refund and dispute event types are recorded. The endpoint has no checkout, refund, balance, payout, withdrawal, transfer or account-administration capability. GiGo must not be granted those scopes.
+
+The existing partnership policy defines a 50/50 split of attributable net revenue after only direct costs approved and documented in advance. The current event ledger is an event-reporting foundation, not a settlement engine. Before calculating partner shares, verify Whop's native affiliate/partner settlement configuration, attribution fields, fee basis, refund/dispute adjustments and sandbox behavior. Whop must perform all actual partner settlement independently.
+
+## Apify adapter readiness
+
+An allow-listed Apify Web Scraper Actor adapter is present for explicitly supplied public HTTPS URLs and Apify is listed in the provider catalogue. It is deliberately not registered with the background runner. Do not enable it until a durable monthly usage/cost ledger and hard ceiling are implemented and tested; Apify Actor pricing may be per compute unit, per event or usage-based, so a page-count cap is not a reliable spend cap. Store any eventual token only as a Worker secret. Continue to use the already reviewed collection providers until the Apify budget gate is complete.
