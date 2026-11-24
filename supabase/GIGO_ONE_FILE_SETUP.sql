@@ -4772,23 +4772,7 @@ create table if not exists public.whop_payment_events (
   plan_id text check (plan_id is null or char_length(plan_id) <= 200),
   partner_id text check (partner_id is null or char_length(partner_id) <= 200),
   amount numeric(20,6) check (amount is null or amount >= 0),
-  currency text check (currency is null or currency ~ '^[A-Za-z]{3,12}
-BEGIN
-  IF to_regclass('public.collection_providers') IS NULL
-     OR to_regclass('public.outreach_campaigns') IS NULL
-     OR to_regclass('public.outreach_templates') IS NULL
-     OR to_regclass('public.marketing_assets') IS NULL
-     OR to_regclass('public.customer_support_cases') IS NULL
-     OR to_regclass('public.creative_briefs') IS NULL
-     OR to_regclass('public.research_documents') IS NULL
-     OR to_regclass('public.whop_payment_events') IS NULL THEN
-    RAISE EXCEPTION 'GiGo postflight failed: one or more expected tables are missing. Transaction will roll back.';
-  END IF;
-END;
-$gigo_postflight$;
-
-COMMIT;
-),
+  currency text check (currency is null or currency ~ '^[A-Za-z]{3,12}$'),
   payment_status text check (payment_status is null or char_length(payment_status) <= 40),
   occurred_at timestamptz,
   safe_metadata jsonb not null default '{}'::jsonb check (jsonb_typeof(safe_metadata) = 'object'),
