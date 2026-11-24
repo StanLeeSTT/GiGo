@@ -4908,6 +4908,7 @@ revoke all on function public.gigo_create_collection_run(text,integer,jsonb,text
 grant execute on function public.gigo_create_collection_run(text,integer,jsonb,text,text) to authenticated;
 comment on function public.gigo_create_collection_run(text,integer,jsonb,text,text) is 'Creates a queued public-page metadata run bound to a healthy owner-configured provider. Apify and Decodo require durable monthly quota reservations before external requests.';
 
+
 -- END CANONICAL MIGRATION 0048_collection_provider_quota_ledger.sql
 -- ============================================================================
 
