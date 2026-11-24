@@ -1418,6 +1418,54 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/v1/collection/quotas") {
+      if (request.method !== "GET" && request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage collection quotas." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const authHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (request.method === "GET") {
+          const period = new Date();
+          period.setUTCDate(1);
+          const periodStart = period.toISOString().slice(0, 10);
+          const [policyResponse, usageResponse] = await Promise.all([
+            fetch(new URL("/rest/v1/collection_provider_quota_policies?select=provider_key,enabled,monthly_request_limit,max_cost_per_run_usd,updated_at&order=provider_key.asc", env.SUPABASE_URL!), { headers: authHeaders, signal: AbortSignal.timeout(10000) }),
+            fetch(new URL("/rest/v1/collection_provider_usage_monthly?select=provider_key,period_start,requests_reserved,updated_at&period_start=eq." + periodStart, env.SUPABASE_URL!), { headers: authHeaders, signal: AbortSignal.timeout(10000) })
+          ]);
+          if (!policyResponse.ok || !usageResponse.ok) return json({ error: { code: "COLLECTION_QUOTA_READ_FAILED", message: "Could not read collection quota settings. Confirm migration 0048 is applied." } }, 502, headers);
+          const [policies, usage] = await Promise.all([policyResponse.json(), usageResponse.json()]);
+          return json({ data: { policies: Array.isArray(policies) ? policies : [], usage: Array.isArray(usage) ? usage : [], period_start: periodStart } }, 200, headers);
+        }
+        const input = await readJson(request);
+        if (!input || typeof input !== "object" || Array.isArray(input)) return json({ error: { code: "INVALID_QUOTA_POLICY", message: "A quota policy object is required." } }, 400, headers);
+        const providerKey = input.provider_key;
+        const enabled = input.enabled;
+        const monthlyLimit = input.monthly_request_limit;
+        const maxCost = input.max_cost_per_run_usd;
+        if ((providerKey !== "apify" && providerKey !== "decodo") || typeof enabled !== "boolean"
+          || !Number.isInteger(monthlyLimit) || monthlyLimit < 0 || monthlyLimit > 100000
+          || (providerKey === "apify" && (typeof maxCost !== "number" || !Number.isFinite(maxCost) || maxCost < 0.0001 || maxCost > 100))
+          || (providerKey === "decodo" && maxCost !== null)
+          || (enabled && monthlyLimit < 1)) {
+          return json({ error: { code: "INVALID_QUOTA_POLICY", message: "Apify needs a monthly request limit and a per-run USD cap; Decodo needs a monthly request limit and no cost cap. Enabled limits must be at least one." } }, 400, headers);
+        }
+        const response = await fetch(new URL("/rest/v1/collection_provider_quota_policies?on_conflict=user_id%2Cprovider_key", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { ...authHeaders, "content-type": "application/json", prefer: "resolution=merge-duplicates,return=representation" },
+          body: JSON.stringify({ user_id: userId, provider_key: providerKey, enabled, monthly_request_limit: monthlyLimit, max_cost_per_run_usd: maxCost }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "COLLECTION_QUOTA_SAVE_FAILED", message: "Could not save quota policy. Confirm migration 0048 and owner permissions." } }, response.status >= 500 ? 502 : response.status, headers);
+        const rows = await response.json() as Array<Record<string, unknown>>;
+        return json({ data: { policy: Array.isArray(rows) ? rows[0] ?? null : null, execution_enabled: false } }, 200, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_QUOTA_FAILED", message: "Could not process collection quota settings." } }, 502, headers);
+      }
+    }
+
     if (url.pathname === "/api/v1/collection/providers/register") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
