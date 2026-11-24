@@ -125,6 +125,32 @@ const providers: readonly CollectionProviderDefinition[] = [
     officialUrl: "https://apify.com/"
   },
   {
+    key: "apify",
+    name: "Apify Web Scraper",
+    category: "web_crawl",
+    verification: "integration_scaffold",
+    executionModes: ["batch_runner", "external_api"],
+    capabilities: ["web_fetch"],
+    platforms: ["web"],
+    freeTier: "quota_limited",
+    defaultEnabled: false,
+    notes: "Fixed Web Scraper Actor adapter. Requires an owner-enabled monthly quota policy and mandatory per-run USD cap enforced by Apify's maxTotalChargeUsd option.",
+    officialUrl: "https://apify.com/"
+  },
+  {
+    key: "decodo",
+    name: "Decodo Web Data API",
+    category: "web_crawl",
+    verification: "official_api",
+    executionModes: ["batch_runner", "external_api"],
+    capabilities: ["web_fetch", "web_search", "web_crawl", "structured_extraction"],
+    platforms: ["web"],
+    freeTier: "quota_limited",
+    defaultEnabled: false,
+    notes: "Official scrape/search/map/crawl API. Every request must reserve against the owner's durable monthly request ceiling; service credentials remain in the trusted batch worker.",
+    officialUrl: "https://decodo.com/web-data-api"
+  },
+  {
     key: "maxun",
     name: "Maxun",
     category: "web_crawl",
