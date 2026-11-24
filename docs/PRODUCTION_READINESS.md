@@ -17,7 +17,7 @@ This checklist separates committed source code from a working deployment. Comple
 
 ## 2. Reconcile the Supabase migration history
 
-There are 47 ordered migration files, from `0001_initial_schema.sql` through `0047_whop_readonly_sales_ledger.sql`. The repository files are source-of-truth proposals, not proof of database state.
+There are 47 ordered migration files, from `0001_initial_schema.sql` through `0048_whop_readonly_sales_ledger.sql`. The repository files are source-of-truth proposals, not proof of database state.
 
 1. Open the intended GiGo Supabase project and inspect its migration history.
 2. If using Supabase CLI history, inspect `supabase_migrations.schema_migrations` (if present) and compare each version against the filenames in `supabase/migrations/`.
@@ -35,6 +35,7 @@ Later migration groups include:
 - 0040–0042: Marketing assets, Customer Support cases and Creative Studio briefs.\n- 0043–0045: Research evidence traceability, private research document metadata and passage provenance.
 - 0046: Decodo Web Data API provider controls.
 - 0047: Server-only Whop read-only sales event ledger.
+- 0048: Durable monthly Apify and Decodo quota policies, usage reservations and Apify run charge caps.
 
 Do not disable RLS to make an API request work. Fix the owner-scoped policy or RPC boundary.
 
@@ -174,12 +175,12 @@ If the bucket or migration is missing, upload fails closed with a configuration/
 
 A guarded Resend adapter is implemented but remains unregistered and cannot be selected by the send path. It includes strict pre-send message checks, provider idempotency, a registered-contact restriction for the marketing channel, conservative handling of uncertain provider outcomes, and Svix HMAC verification. This is not permission to send: the durable worker, owner authorization, campaign eligibility and suppression rechecks, signed webhook route with replay/event deduplication, sender authentication and audit controls remain activation gates. Follow [OUTBOUND_PROVIDER_ADAPTER_READINESS.md](OUTBOUND_PROVIDER_ADAPTER_READINESS.md) before any future activation.
 
-## 12. Whop sales monitoring and Apify collection (migrations 0047)
+## 12. Whop sales monitoring and Apify collection (migrations 0048)
 
-Whop integration now has a signed webhook receiver at `POST /api/v1/webhooks/whop`, an owner-only read endpoint at `GET /api/v1/whop/sales`, and a server-only event ledger in migration `0047_whop_readonly_sales_ledger.sql`. The receiver stores allow-listed payment/refund/dispute facts and deduplicates by webhook message ID. It does not store customer contact details or raw payloads. Configure `WHOP_WEBHOOK_SECRET` and `WHOP_OWNER_USER_ID` as Worker secrets, and `WHOP_ACCOUNT_ID` as a Worker variable. The receiver checks the signed message ID and rejects events whose account/company ID does not match `WHOP_ACCOUNT_ID`. The database server secret must already be configured.
+Whop integration now has a signed webhook receiver at `POST /api/v1/webhooks/whop`, an owner-only read endpoint at `GET /api/v1/whop/sales`, and a server-only event ledger in migration `0048_whop_readonly_sales_ledger.sql`. The receiver stores allow-listed payment/refund/dispute facts and deduplicates by webhook message ID. It does not store customer contact details or raw payloads. Configure `WHOP_WEBHOOK_SECRET` and `WHOP_OWNER_USER_ID` as Worker secrets, and `WHOP_ACCOUNT_ID` as a Worker variable. The receiver checks the signed message ID and rejects events whose account/company ID does not match `WHOP_ACCOUNT_ID`. The database server secret must already be configured.
 
 Whop checkout and partner payouts remain outside GiGo. Do not request payout, withdrawal, transfer, balance-management or broad account-administration permissions. No 50/50 commission amount is reported until Whop's actual affiliate configuration, fee treatment, refund handling and gross-versus-net basis have been confirmed. The current sales report reflects webhook events only (latest 500), not a historical API reconciliation.
 
 An Apify adapter is implemented for the fixed `apify~web-scraper` Actor and listed as `integration_scaffold`. It is intentionally not registered in the batch worker. Before activation, implement an atomic monthly quota ledger and a hard owner-approved cost ceiling; per-run page limits do not cap Actor compute/proxy charges. Do not set `APIFY_API_TOKEN` on the active runner until this gate and the provider health review are complete.
 
-Migration 0047 is included in `supabase/GIGO_ONE_FILE_SETUP.sql`; canonical migration files remain the source of truth. The bundle must be tested against every canonical migration. Applying the SQL and configuring Whop/Apify are owner-side actions and have not been performed by this code change.
+Migration 0048 is included in `supabase/GIGO_ONE_FILE_SETUP.sql`; canonical migration files remain the source of truth. The bundle must be tested against every canonical migration. Applying the SQL and configuring Whop/Apify are owner-side actions and have not been performed by this code change.
