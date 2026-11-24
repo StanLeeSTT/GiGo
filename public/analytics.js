@@ -52,6 +52,33 @@ async function loadAnalytics(){
     moduleCard("Creative Studio",creative.length,"Briefs and production tracking","/creative"),
     moduleCard("Customer Success",support.length,"Internal cases and unsent response drafts","/customers")
   ].join("");
+
+  const whopStatus=document.querySelector("#whop-sales-status"),whopStats=document.querySelector("#whop-sales-stats"),whopPartners=document.querySelector("#whop-partner-sales");
+  try{
+    const report=await api.request("/api/v1/whop/sales");
+    const currencies=Array.isArray(report?.currencies)?report.currencies:[];
+    const partners=Array.isArray(report?.partner_sales)?report.partner_sales:[];
+    const totalPayments=currencies.reduce((sum,item)=>sum+Number(item.successful_payments||0),0);
+    const totalRefunds=currencies.reduce((sum,item)=>sum+Number(item.refunds||0),0);
+    const totalFailed=currencies.reduce((sum,item)=>sum+Number(item.failed_payments||0),0);
+    const totalDisputes=currencies.reduce((sum,item)=>sum+Number(item.disputes||0),0);
+    const amounts=currencies.map(item=>String(item.currency||"UNKNOWN")+" "+Number(item.observed_sales_amount||0).toLocaleString()).join(" · ")||"No sales recorded";
+    whopStats.innerHTML=[
+      countCard("Verified events",Number(report?.event_count||0),"Latest "+Number(report?.limited_to_latest||500)+" events"),
+      countCard("Successful payments",totalPayments,"Whop payment.succeeded events"),
+      countCard("Observed sales",amounts,"Grouped by currency; not net proceeds"),
+      countCard("Refund events",totalRefunds,"Observed refund.created events"),
+      countCard("Failed payments",totalFailed,"Whop payment.failed events"),
+      countCard("Disputes",totalDisputes,"Whop dispute.created events")
+    ].join("");
+    whopPartners.innerHTML=partners.length?partners.map(item=>moduleCard("Partner "+String(item.partner_id),Number(item.successful_payments||0)+" sales",String(item.currency||"UNKNOWN")+" "+Number(item.observed_sales_amount||0).toLocaleString()+" observed","/partners")).join(""):'<article class="module-card"><h3>Partner attribution</h3><p>No attributed partner sales have been received yet.</p></article>';
+    whopStatus.textContent=Number(report?.event_count||0)?"Read-only Whop event feed connected · "+partners.length+" attributed partner record(s).":"Webhook receiver is ready; no Whop payment events have been recorded yet.";
+  }catch(error){
+    whopStatus.textContent="Whop monitoring is not configured or the sales ledger is not available yet. "+String(error?.message||"");
+    whopStats.innerHTML="";
+    whopPartners.innerHTML="";
+  }
+
   const timestamp=new Date().toLocaleString();
   status.textContent="Snapshot refreshed "+timestamp+(failed.length?" · Some modules were unavailable; displayed counts may be incomplete.":" · All queried modules responded.");
 }
