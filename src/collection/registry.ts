@@ -143,11 +143,11 @@ const providers: readonly CollectionProviderDefinition[] = [
     category: "web_crawl",
     verification: "official_api",
     executionModes: ["batch_runner", "external_api"],
-    capabilities: ["web_fetch", "web_search", "web_crawl", "structured_extraction"],
+    capabilities: ["web_fetch"],
     platforms: ["web"],
     freeTier: "quota_limited",
     defaultEnabled: false,
-    notes: "Official scrape/search/map/crawl API. Every request must reserve against the owner's durable monthly request ceiling; service credentials remain in the trusted batch worker.",
+    notes: "Official Web Data API scraper adapter. Search/map/crawl endpoints remain future work; every scrape request reserves against the durable owner monthly request ceiling.",
     officialUrl: "https://decodo.com/web-data-api"
   },
   {
