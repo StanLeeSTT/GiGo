@@ -9,6 +9,7 @@ import { planCollectionProviders, type ConnectedCollectionProvider } from "./col
 import { listRegisteredCollectionAdapters } from "./collection/adapters";
 import { buildSafeHttpProviderRegistration, isSafeHttpProviderRegistrationRequest } from "./collection/onboarding";
 import { buildResearchDocumentIngestionPlan } from "./research/ingest";
+import { normalizeWhopSalesEvent, verifyWhopWebhook } from "./integrations/whop";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -28,6 +29,8 @@ export interface Env {
   CLOUDFLARE_AI_MODEL?: string;
   MAXUN_BASE_URL?: string;
   MAXUN_API_KEY?: string;
+  WHOP_WEBHOOK_SECRET?: string;
+  WHOP_OWNER_USER_ID?: string;
   ASSETS?: Fetcher;
   RESEARCH_FILES?: R2Bucket;
 }
@@ -1319,6 +1322,51 @@ export default {
       return new Response(null, { status: 204, headers });
     }
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
+
+
+    if (url.pathname === "/api/v1/webhooks/whop") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      const webhookSecret = env.WHOP_WEBHOOK_SECRET ?? "";
+      const ownerId = env.WHOP_OWNER_USER_ID ?? "";
+      if (!webhookSecret || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
+        return json({ error: { code: "WHOP_WEBHOOK_NOT_CONFIGURED", message: "Configure the Whop webhook secret and GiGo owner user ID as Worker secrets." } }, 503, headers);
+      }
+      const declaredLength = Number(request.headers.get("content-length") ?? "0");
+      if (declaredLength > 256 * 1024) return json({ error: { code: "WEBHOOK_TOO_LARGE", message: "Webhook payload exceeds the size limit." } }, 413, headers);
+      let rawBody = "";
+      try { rawBody = await request.text(); } catch { return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Could not read the webhook payload." } }, 400, headers); }
+      if (new TextEncoder().encode(rawBody).byteLength > 256 * 1024) return json({ error: { code: "WEBHOOK_TOO_LARGE", message: "Webhook payload exceeds the size limit." } }, 413, headers);
+      if (!await verifyWhopWebhook(request, rawBody, webhookSecret)) return json({ error: { code: "INVALID_WEBHOOK_SIGNATURE", message: "Webhook signature verification failed." } }, 401, headers);
+      let payload: unknown;
+      try { payload = JSON.parse(rawBody); } catch { return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Webhook payload must be valid JSON." } }, 400, headers); }
+      const eventId = request.headers.get("webhook-id") ?? "";
+      const event = normalizeWhopSalesEvent(eventId, payload);
+      if (!event) return new Response(null, { status: 204, headers });
+      try {
+        await serviceRest(env,
+          "/rest/v1/whop_payment_events?on_conflict=user_id%2Cwhop_event_id",
+          "POST",
+          {
+            user_id: ownerId,
+            whop_event_id: event.eventId,
+            event_type: event.eventType,
+            payment_id: event.paymentId,
+            product_id: event.productId,
+            plan_id: event.planId,
+            partner_id: event.partnerId,
+            amount: event.amount,
+            currency: event.currency,
+            payment_status: event.paymentStatus,
+            occurred_at: event.occurredAt,
+            safe_metadata: event.safeMetadata
+          },
+          "resolution=ignore-duplicates,return=minimal"
+        );
+        return new Response(null, { status: 204, headers });
+      } catch {
+        return json({ error: { code: "WHOP_EVENT_STORE_FAILED", message: "Verified Whop event could not be saved; the provider may retry delivery." } }, 503, headers);
+      }
+    }
 
     if (url.pathname === "/api/v1/collection/providers/register") {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
