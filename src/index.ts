@@ -1369,7 +1369,7 @@ export default {
       const webhookSecret = env.WHOP_WEBHOOK_SECRET ?? "";
       const ownerId = env.WHOP_OWNER_USER_ID ?? "";
       const expectedAccountId = env.WHOP_ACCOUNT_ID ?? "";
-      if (!webhookSecret || !expectedAccountId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
+      if (!webhookSecret || !/^biz_[A-Za-z0-9_-]{4,120}$/.test(expectedAccountId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
         return json({ error: { code: "WHOP_WEBHOOK_NOT_CONFIGURED", message: "Configure the Whop webhook secret, GiGo owner user ID and expected Whop account ID as Worker settings." } }, 503, headers);
       }
       const declaredLength = Number(request.headers.get("content-length") ?? "0");
