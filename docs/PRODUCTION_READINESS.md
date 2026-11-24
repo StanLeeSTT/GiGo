@@ -171,3 +171,13 @@ If the bucket or migration is missing, upload fails closed with a configuration/
 ## Outbound provider adapter readiness
 
 A guarded Resend adapter is implemented but remains unregistered and cannot be selected by the send path. It includes strict pre-send message checks, provider idempotency, a registered-contact restriction for the marketing channel, conservative handling of uncertain provider outcomes, and Svix HMAC verification. This is not permission to send: the durable worker, owner authorization, campaign eligibility and suppression rechecks, signed webhook route with replay/event deduplication, sender authentication and audit controls remain activation gates. Follow [OUTBOUND_PROVIDER_ADAPTER_READINESS.md](OUTBOUND_PROVIDER_ADAPTER_READINESS.md) before any future activation.
+
+## 12. Whop sales monitoring and Apify collection (migrations 0047)
+
+Whop integration now has a signed webhook receiver at `POST /api/v1/webhooks/whop`, an owner-only read endpoint at `GET /api/v1/whop/sales`, and a server-only event ledger in migration `0047_whop_readonly_sales_ledger.sql`. The receiver stores allow-listed payment/refund/dispute facts and deduplicates by webhook message ID. It does not store customer contact details or raw payloads. Configure `WHOP_WEBHOOK_SECRET` and `WHOP_OWNER_USER_ID` as Worker secrets/variables only after validating the webhook secret format against the endpoint created in the Whop dashboard. The database server secret must already be configured.
+
+Whop checkout and partner payouts remain outside GiGo. Do not request payout, withdrawal, transfer, balance-management or broad account-administration permissions. No 50/50 commission amount is reported until Whop's actual affiliate configuration, fee treatment, refund handling and gross-versus-net basis have been confirmed. The current sales report reflects webhook events only (latest 500), not a historical API reconciliation.
+
+An Apify adapter is implemented for the fixed `apify~web-scraper` Actor and listed as `integration_scaffold`. It is intentionally not registered in the batch worker. Before activation, implement an atomic monthly quota ledger and a hard owner-approved cost ceiling; per-run page limits do not cap Actor compute/proxy charges. Do not set `APIFY_API_TOKEN` on the active runner until this gate and the provider health review are complete.
+
+Migration 0047 is included in `supabase/GIGO_ONE_FILE_SETUP.sql`; canonical migration files remain the source of truth. The bundle must be tested against every canonical migration. Applying the SQL and configuring Whop/Apify are owner-side actions and have not been performed by this code change.
