@@ -31,6 +31,7 @@ export interface Env {
   MAXUN_API_KEY?: string;
   WHOP_WEBHOOK_SECRET?: string;
   WHOP_OWNER_USER_ID?: string;
+  WHOP_ACCOUNT_ID?: string;
   ASSETS?: Fetcher;
   RESEARCH_FILES?: R2Bucket;
 }
@@ -1367,8 +1368,9 @@ export default {
       if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
       const webhookSecret = env.WHOP_WEBHOOK_SECRET ?? "";
       const ownerId = env.WHOP_OWNER_USER_ID ?? "";
-      if (!webhookSecret || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
-        return json({ error: { code: "WHOP_WEBHOOK_NOT_CONFIGURED", message: "Configure the Whop webhook secret and GiGo owner user ID as Worker secrets." } }, 503, headers);
+      const expectedAccountId = env.WHOP_ACCOUNT_ID ?? "";
+      if (!webhookSecret || !expectedAccountId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
+        return json({ error: { code: "WHOP_WEBHOOK_NOT_CONFIGURED", message: "Configure the Whop webhook secret, GiGo owner user ID and expected Whop account ID as Worker settings." } }, 503, headers);
       }
       const declaredLength = Number(request.headers.get("content-length") ?? "0");
       if (declaredLength > 256 * 1024) return json({ error: { code: "WEBHOOK_TOO_LARGE", message: "Webhook payload exceeds the size limit." } }, 413, headers);
@@ -1379,6 +1381,11 @@ export default {
       let payload: unknown;
       try { payload = JSON.parse(rawBody); } catch { return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Webhook payload must be valid JSON." } }, 400, headers); }
       const eventId = request.headers.get("webhook-id") ?? "";
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Whop event envelope is invalid." } }, 400, headers);
+      const envelope = payload as JsonRecord;
+      if (typeof envelope.id !== "string" || envelope.id !== eventId) return json({ error: { code: "WEBHOOK_ID_MISMATCH", message: "Whop event ID does not match the signed delivery ID." } }, 401, headers);
+      const eventAccountId = typeof envelope.account_id === "string" ? envelope.account_id : typeof envelope.company_id === "string" ? envelope.company_id : "";
+      if (!eventAccountId || eventAccountId !== expectedAccountId) return json({ error: { code: "WHOP_ACCOUNT_MISMATCH", message: "This event does not belong to the configured Whop account." } }, 403, headers);
       const event = normalizeWhopSalesEvent(eventId, payload);
       if (!event) return new Response(null, { status: 204, headers });
       try {
