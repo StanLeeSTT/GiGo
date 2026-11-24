@@ -17,6 +17,7 @@ export interface Env {
   SUPABASE_SECRET_KEY?: string;
   WHOP_WEBHOOK_SECRET?: string;
   WHOP_OWNER_USER_ID?: string;
+  WHOP_ACCOUNT_ID?: string;
   ALLOWED_ORIGINS?: string;
   APP_ENV?: string;
   OWNER_EMAIL?: string;
