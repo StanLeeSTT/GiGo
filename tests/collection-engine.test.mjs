@@ -30,6 +30,14 @@ test("public page actor rejects unsafe or malformed URL inputs", () => {
   ]) assert.equal(actor.validateInput(input), false, JSON.stringify(input));
 });
 
+test("provider catalogue keys are unique and include separate Apify and Decodo adapters", () => {
+  const catalogue = listCollectionProviders();
+  const keys = catalogue.map(provider => provider.key);
+  assert.equal(new Set(keys).size, keys.length, "provider keys must not be duplicated");
+  assert.ok(catalogue.some(provider => provider.key === "apify"));
+  assert.ok(catalogue.some(provider => provider.key === "decodo"));
+});
+
 test("provider planner never marks unverified or scaffold providers ready", () => {
   const catalogue = listCollectionProviders();
   const connected = catalogue.map((provider, index) => ({
