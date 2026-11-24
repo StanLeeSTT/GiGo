@@ -74,7 +74,7 @@ For production, configure Worker variables/secrets using Cloudflare's dashboard 
 
 The canonical, versioned source of truth remains `supabase/migrations/`. Keep every individual migration file; do not delete or replace that history with a generated bundle.
 
-For the **existing GiGo Supabase project only**, a convenience one-file SQL bundle is available at `supabase/GIGO_ONE_FILE_SETUP.sql`. It includes idempotent repairs for migrations `0002` and `0003`, followed by canonical migrations `0010` through `0046` in order, inside one transaction with baseline preflight and postflight checks. It assumes the previously confirmed baseline (`0001`, `0004`–`0009`) is already installed and that `0010`–`0046` are still unapplied. The 0002/0003 repairs recreate their owner-check and conversation-recency triggers safely if missing.
+For the **existing GiGo Supabase project only**, a convenience one-file SQL bundle is available at `supabase/GIGO_ONE_FILE_SETUP.sql`. It includes idempotent repairs for migrations `0002` and `0003`, followed by canonical migrations `0010` through `0047` in order, inside one transaction with baseline preflight and postflight checks. It assumes the previously confirmed baseline (`0001`, `0004`–`0009`) is already installed and that `0010`–`0047` are still unapplied. The 0002/0003 repairs recreate their owner-check and conversation-recency triggers safely if missing.
 
 **Run the bundle once only, after checking the target project's migration history.** It is not a fresh-project bootstrap and must not be re-run after successful application. If any preflight check fails, stop and reconcile the database rather than removing the guard. Running SQL manually in the Supabase SQL Editor does not automatically record these versions in Supabase's migration ledger; before returning to Supabase CLI migrations, reconcile the ledger with the CLI migration-repair workflow after verifying the actual database state. Never blindly run `db push`.
 
@@ -111,3 +111,14 @@ GitHub Actions runs TypeScript typecheck, the Node test suite and browser JavaSc
 ## License and deployment
 
 No production deployment, third-party sender, or external social collector should be assumed from repository contents alone. Review each dependency's licence, current free-tier limits, privacy terms and acceptable-use policy before enabling it.
+
+
+## Whop sales monitoring (read-only)
+GiGo accepts signed Whop webhook events at `POST /api/webhooks/whop` and exposes the owner-scoped event ledger at `GET /api/v1/whop/events`. The receiver verifies Whop's raw-body HMAC signature, rejects stale/invalid deliveries, and deduplicates on the webhook event ID. It stores only reporting fields and selected attribution metadata, not full customer payloads.
+
+Configure `WHOP_WEBHOOK_SECRET` (the complete `ws_` secret, stored as a Cloudflare Worker secret) and `WHOP_OWNER_USER_ID` (the owner's Supabase Auth UUID) alongside the existing server-side Supabase service key. Create a Whop v1 webhook for `payment.succeeded`, `payment.failed`, `refund.created`, `refund.updated`, `dispute.created` and `dispute.updated`. Use the final deployed HTTPS endpoint directly; Whop does not follow redirects.
+
+**Permanent boundary:** GiGo must never receive Whop checkout-write, refund, payout, withdrawal, transfer, balance-management or account-administration permissions. Whop remains responsible for checkout and partner settlement. GiGo only records verified events and reports. The partnership policy in this project defines 50/50 of attributable net revenue after only direct costs approved and documented in advance; do not calculate or promise settlement until Whop's native affiliate configuration, fee/refund handling and attribution have been verified by the owner.
+
+## Apify Web Scraper (optional; not activated)
+The official Apify Web Scraper Actor adapter is implemented for explicitly supplied public HTTPS pages and restricted to the allow-listed `apify~web-scraper` Actor. It is listed in the provider catalogue but is not registered for execution yet. Do not enable it until a durable monthly usage/cost ceiling, provider health check, actor terms review and owner-approved account token are in place. Apify Actor pricing varies; a page/request count alone is not a reliable dollar-cost cap. Store any future `APIFY_API_TOKEN` only as a server-side secret.
