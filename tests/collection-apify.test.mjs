@@ -15,6 +15,7 @@ function context() {
       signal: new AbortController().signal,
       deadlineAt: new Date(Date.now() + 60000).toISOString(),
       checkpoint: {},
+      async reserveProviderUsage() { return { maxCostPerRunUsd: 0.025 }; },
       async reportProgress(value) { progress.push(value); },
       async emitItem(value) { emitted.push(value); }
     }
@@ -33,6 +34,8 @@ test("Apify adapter uses a fixed Actor, bounded inputs and bearer authentication
   const state = context();
   const result = await adapter.execute({}, { urls: ["https://example.com/page"], max_pages: 1 }, state.value);
   assert.equal(new URL(calledUrl).pathname, "/v2/acts/apify~web-scraper/run-sync-get-dataset-items");
+  assert.equal(new URL(calledUrl).searchParams.get("maxTotalChargeUsd"), "0.0250");
+  assert.equal(new URL(calledUrl).searchParams.get("maxItems"), "1");
   assert.equal(calledInit.headers.authorization, "Bearer test-token");
   assert.equal(JSON.parse(calledInit.body).maxPagesPerCrawl, 1);
   assert.equal(result.status, "completed");
@@ -81,4 +84,13 @@ test("Apify ignores malformed checkpoint entries and rejects non-string URLs", a
   const result = await adapter.execute({}, { urls: ["https://example.com/page"] }, state.value);
   assert.equal(result.status, "completed");
   await assert.rejects(() => adapter.execute({}, { urls: [{}] }, context().value));
+});
+
+test("Apify refuses to call the provider without a quota-derived per-run USD cap", async () => {
+  let calls = 0;
+  const adapter = createApifyAdapter({ apiToken: "test-token", fetcher: async () => { calls++; return new Response("[]"); } });
+  const state = context();
+  state.value.reserveProviderUsage = async () => ({ maxCostPerRunUsd: null });
+  await assert.rejects(() => adapter.execute({}, { urls: ["https://example.com/page"] }, state.value), /per-run USD ceiling/i);
+  assert.equal(calls, 0);
 });
