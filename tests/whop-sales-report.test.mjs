@@ -15,6 +15,7 @@ test("Whop webhook is signature-verified, idempotent and stores only allow-liste
   for (const required of ["WHOP_WEBHOOK_SECRET", "WHOP_OWNER_USER_ID", "WHOP_ACCOUNT_ID", "WHOP_ACCOUNT_MISMATCH", "eventData.company", "company.id", "verifyWhopWebhook", "normalizeWhopSalesEvent", "whop_payment_events", "resolution=ignore-duplicates"]) {
     assert.ok(route.includes(required), required);
   }
+  assert.match(route, /biz_/);
   assert.match(adapter, /webhook-timestamp/);
   assert.match(adapter, /webhook-signature/);
   assert.match(adapter, /Math\.abs\(nowMs \/ 1000 - timestamp\) > 300/);
@@ -36,7 +37,6 @@ test("Whop sales report is restricted to the configured owner and does not claim
   const route = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.match(route, /userId !== env\.WHOP_OWNER_USER_ID/);
-  assert.match(route, /biz_/);
   assert.match(route, /commission_calculation: "not_configured"/);
   assert.match(route, /limited_to_latest: 500/);
   assert.match(docs, /monthly usage ledger/);
