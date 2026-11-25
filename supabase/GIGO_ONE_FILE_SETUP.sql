@@ -1,16 +1,16 @@
 -- =============================================================================
 -- GiGo: ONE-FILE PENDING DATABASE SETUP
 -- =============================================================================
--- Scope: applies canonical migrations 0010 through 0047 in their exact order.
+-- Scope: applies canonical migrations 0010 through 0048 in their exact order.
 --
 -- IMPORTANT: This bundle is specifically for the existing GiGo Supabase
 -- project. The known baseline migrations 0001 and 0004-0009 are already
--- applied there. Migrations 0010-0047 are recorded in the repository as
+-- applied there. Migrations 0010-0048 are recorded in the repository as
 -- unapplied. The application status of 0002/0003 was uncertain; this bundle safely re-applies
 -- their idempotent trigger/function/index definitions before migrations 0010+.
 --
 -- Run this file ONCE in Supabase SQL Editor, against the intended GiGo
--- project, after confirming that migrations 0010-0047 have not already been
+-- project, after confirming that migrations 0010-0048 have not already been
 -- applied. Do not run it on a different/fresh project.
 --
 -- The canonical individual files in supabase/migrations/ are deliberately
