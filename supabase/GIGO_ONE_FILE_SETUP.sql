@@ -219,6 +219,8 @@ create table if not exists public.collection_items (
   content_hash text,
   created_at timestamptz not null default now(),
   unique (dataset_id, item_key),
+  -- Required by downstream composite foreign keys that verify item ownership and provenance.
+  unique (id, dataset_id, run_id, user_id),
   constraint collection_items_dataset_run_owner_fk
     foreign key (dataset_id, run_id, user_id)
     references public.collection_datasets(id, run_id, user_id)
