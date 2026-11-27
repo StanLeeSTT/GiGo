@@ -1516,7 +1516,7 @@ begin
       and ci.user_id = auth.uid();
 
   if safe_evidence_count <> cardinality(p_evidence_item_ids) then
-    raise exception 'evidence items must belong to this owner's dataset and run' using errcode = '42501';
+    raise exception 'evidence items must belong to this owner''s dataset and run' using errcode = '42501';
   end if;
 
   insert into public.collection_insights(
