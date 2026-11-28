@@ -1871,6 +1871,7 @@ create table if not exists public.outreach_messages (
     foreign key (campaign_id, user_id) references public.outreach_campaigns(id, user_id) on delete cascade,
   constraint outreach_messages_recipient_owner_fk
     foreign key (recipient_id, user_id) references public.outreach_recipients(id, user_id) on delete cascade,
+  unique (id, user_id),
   unique (recipient_id, sequence_number)
 );
 
