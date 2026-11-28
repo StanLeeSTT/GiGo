@@ -73,13 +73,13 @@ create policy collection_insight_evidence_owner_all on public.collection_insight
     user_id = auth.uid()
     and exists (
       select 1 from public.collection_insights i
-      where i.id = insight_id and i.run_id = run_id
-        and i.dataset_id = dataset_id and i.user_id = auth.uid()
+      where i.id = insight_id and i.run_id = collection_insight_evidence.run_id
+        and i.dataset_id = collection_insight_evidence.dataset_id and i.user_id = auth.uid()
     )
     and exists (
       select 1 from public.collection_items ci
-      where ci.id = item_id and ci.dataset_id = dataset_id
-        and ci.run_id = run_id and ci.user_id = auth.uid()
+      where ci.id = item_id and ci.dataset_id = collection_insight_evidence.dataset_id
+        and ci.run_id = collection_insight_evidence.run_id and ci.user_id = auth.uid()
     )
   );
 
