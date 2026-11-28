@@ -14,3 +14,7 @@ run_worker_first = ["/api/*", "/healthz"]
 
 [triggers]
 crons = ["* * * * *"]
+
+[[r2_buckets]]
+binding = "RESEARCH_FILES"
+bucket_name = "gigo-research-private"

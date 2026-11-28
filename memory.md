@@ -1,0 +1,1273 @@
+# GiGo Project Memory
+
+> **Living project handover.** Update this file in the same GitHub task/commit sequence whenever work is added, changed, tested, reverted, or its status changes. Record what changed, why, exact paths, commit(s), verification results, unapplied/deployment status, and the next concrete task. Never rely on conversation history alone.
+
+**Last updated:** 2026-11-23  
+**Repository:** `StanLeeSTT/GiGo`  
+**Active branch:** `feat/universal-collection-engine`  
+**Latest governance-schema commit:** `3b39983655f5bf880adfb8ba919d7ae07897f74b`  
+**Main branch:** do not merge into it unless explicitly requested.
+
+---
+
+## 1. Product purpose and operating rules
+
+GiGo is a private, single-user, cloud-first, mobile-first AI assistant and business operating system, inspired by a Jarvis-style assistant. It is intended to support both personal assistance and business discovery, creation, outreach, customer/partner management, marketing, research, analytics, reminders, and eventually voice conversations and proactive work.
+
+The current priority is to build a zero-budget foundation that can help discover business opportunities and generate income before expanding. The user works from Android and prefers direct implementation with simple, actionable instructions only when their action is actually required.
+
+### Non-negotiable constraints
+
+1. **Zero budget:** prefer free/open-source tools and free tiers. Never silently introduce paid dependencies or paid fallbacks.
+2. **Private and single-user for now:** all user data, jobs, leads, campaigns, events and evidence must be owner-scoped.
+3. **Security:** never commit secrets, ask the user to paste secrets into chat, expose service keys to the browser, or log credentials.
+4. **No false completion claims:** distinguish committed, tested, applied, deployed, connected and live states.
+5. **No external side effects without authorization:** sending messages, publishing, spending, contacting prospects, modifying external accounts or starting campaigns requires explicit approval. Campaign-level approval must bound sender, approved templates, recipients cap, schedule, follow-up policy and stop conditions.
+6. **Durable automation:** jobs must be owner-scoped, idempotent, resumable, observable, rate-limited, cancellable and safe after worker restarts.
+7. **Evidence before conclusions:** preserve source provenance and exact evidence. Do not fabricate follower counts, engagement, audience details, business claims or personalisation.
+8. **Platform compliance:** do not bypass login barriers, CAPTCHAs, access controls, platform rate limits, robots restrictions or terms through proxies, cookies, account rotation or other evasion.
+9. **Update this file after every meaningful GitHub task.** Include the exact commit and CI outcome, and leave the next task clear. If a task is still in progress, record that honestly.
+10. The user has repeatedly said “continue/go on” and asked not to be stopped with routine questions. Continue implementation autonomously where safe; ask only for essential decisions or explicit authorization for external side effects.
+
+---
+
+## 2. Infrastructure and current Git state
+
+- GitHub repository: `StanLeeSTT/GiGo`
+- Active branch: `feat/universal-collection-engine`
+- Branch URL: https://github.com/StanLeeSTT/GiGo/tree/feat/universal-collection-engine
+- Cloudflare Worker: `gigo-api`
+- Worker URL: https://gigo-api.thegreatmind601.workers.dev
+- Supabase project URL: https://evluebrvgleewebddhjl.supabase.co
+- A Supabase secret key with `sb_secret_` prefix is configured in Cloudflare server environment (never expose it).
+- GitHub Actions secrets for worker jobs are not confirmed configured.
+- Do not apply Supabase migrations, deploy, merge, create a PR, add secrets, or manually dispatch secret-dependent workflows unless the user explicitly asks.
+
+### Latest verified commit at this update
+
+`8bf7cee2678bceb5218e941c1aaaff4b25ba3875` — initial GiGo autonomy policy enforcement and financial hard-deny.
+
+Latest verified Actions run on that commit:
+- Typecheck: PASS
+- Collection engine tests: PASS
+- Run ID: `45103961661`
+- The test suite reported 75 tests, 75 passed, 0 failed.
+
+Earlier verification:
+- Commit `9138f95dff150942066be0491368618b25445bb5`: typecheck and collection engine tests PASS.
+- Commit `0b111333c665e1e028c33c93934bd738ff8ea189`: typecheck and collection engine tests PASS.
+- Some intermediate commits failed only in collection-engine test assertions; subsequent correction commits passed. Do not treat intermediate failures as current branch status.
+
+Always fetch latest branch HEAD and relevant file SHA before editing. Always specify `branch: "feat/universal-collection-engine"` when creating/updating files. A create-file call without branch may write to `main`.
+
+---
+
+## 3. GiGo architecture and long-term modules
+
+### Core platform
+- Authenticated API on Cloudflare Workers.
+- Supabase Postgres as durable data layer with RLS and owner scoping.
+- Durable scheduler and resumable worker jobs.
+- Multi-provider AI router.
+- Research and evidence store.
+- Collection/discovery engine.
+- CRM, offers, partner/product studio.
+- Outreach and inbox workflow.
+- Future marketing, business operations, voice, notifications and proactive assistant.
+
+### Master blueprint
+- `docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md`
+- Commit: `8b896f828bcc6cf16d09897b2a7c87c2fc59375a`
+- Includes full product scope, Monetise comparison, business modules, Iman Gadzhi-inspired creator qualification research, candidate collection tools, free/cloud-first constraints, provider router, memory, background jobs, approvals and future voice/proactive assistance.
+
+### Previously applied migrations (known)
+- `0001` initial schema.
+- `0004` AI usage ledger.
+- `0005` Research Engine.
+- `0006` Product/Partner Studio.
+- `0007` Leads/Offers.
+- `0008` Autonomous Operations.
+- `0009` Durable Job Scheduler.
+- `0002`/`0003` status uncertain.
+
+Migrations `0010` onward in this development stream are **not applied** unless separately verified. In particular, migrations `0010–0035` must be treated as committed code only, not live database state.
+
+---
+
+## 4. Research, business and scheduling foundation
+
+### Research Engine — migration 0005
+Tables:
+- `research_runs`
+- `research_sources`
+- `research_opportunities`
+
+Current capability includes Crossref/OpenAlex discovery and GDELT recent-news metadata. Still missing/unfinished: full-text evidence verification, PDF/HTML/CSV ingestion, vector search, citations, embeddings and exports. Research should consume accepted collection insights with provenance; do not convert every collected item automatically into an opportunity.
+
+### Product/Partner Studio — migration 0006
+- Products and partner candidates.
+- 100-point scoring with hard stops.
+- Manual evidence; no autonomous scraping/outreach by default.
+
+### Leads/Offers — migration 0007
+- CRM and do-not-contact foundation.
+- Offer/unit-economics support.
+
+### Autonomous Operations — migration 0008
+- Schedules, approvals, notifications and operation events.
+
+### Durable Scheduler — migration 0009
+- `gigo_dispatch_due_schedules`, `gigo_claim_due_jobs`.
+- Scheduled Cloudflare handler claims at most one job per minute.
+- Generic job types include `research_scan`, `business_review`, `daily_briefing`, `lead_review`, `custom`.
+- A custom job was tested successfully; do not assume research_scan has been tested.
+
+---
+
+## 5. Universal Collection Engine
+
+Migrations `0010–0019` build the collection foundation:
+
+- `0010`: owner-scoped provider/actor/run/dataset/item tables, RLS, cancel-run RPC.
+- `0011`: generic scheduler recovery and allowlist; excludes collection_run.
+- `0012`: collection-run creation RPC; currently only `public_page_metadata v1`.
+- `0013`: service-role collection-specific claim RPC.
+- `0014`: worker progress/item/finish/retry RPCs.
+- `0015`: worker health and provider-promotion RPC.
+- `0016`: heartbeat lease.
+- `0017`: cooperative cancellation.
+- `0018`: cumulative progress.
+- `0019`: evidence-backed `collection_insights` and `collection_insight_evidence`, confidence and review status. Insights default to `needs_review`; no automatic acceptance. Review status transitions still need implementation.
+
+### Collection TypeScript and worker
+- `src/collection/registry.ts`: static provider catalogue; typed capabilities/execution modes/verification status; disabled by default; free tiers unknown.
+- `src/collection/actors.ts`: `public_page_metadata` v1. Accepts 1–10 HTTPS URLs; validates domains/ports and rejects credentials, localhost/internal hosts, IP literals, malformed/duplicate URLs. Public-web-only policy; robots/terms required. URL validation alone is not full SSRF protection.
+- `src/collection/adapters.ts`: explicit adapter registry, initially empty.
+- `src/collection/planner.ts`: capability-based provider selection; only configured, healthy, granted and sufficiently verified providers can run. Blocks unverified/scaffold providers and disabled/quota-exhausted/permission-required/error states.
+- `scripts/collection-batch-worker.mjs`: native Node HTTPS collector. Resolves and pins checked IPv4, preserves TLS hostname/SNI, HTTPS 443 GET only, no cookies/auth, bounded bytes/time, validates redirects (max 3), checks robots for each destination, fails closed on unsupported robots syntax. Network/DNS/timeouts/429/5xx retry; permanent HTTP/policy blocks skip. One durable job maximum per invocation.
+- `--health-check` checks env/adapter/RPC/provider config and promotes provider using service_role, claims zero jobs.
+- `.github/workflows/collection-batch.yml` and `collection-provider-health.yml`: manual only, trusted feature branch only, Node 22, require GitHub secrets `SUPABASE_URL`, `SUPABASE_SECRET_KEY`; not triggered.
+
+### Social profiles and lead evidence — migration 0021
+- Owner-scoped social profile identities and lead qualification evidence linked to collection provenance.
+- Supported platforms: YouTube, Instagram, TikTok, Facebook, X, LinkedIn.
+- Metrics are nullable; never invent followers/views/engagement.
+- APIs:
+  - `GET/POST /api/v1/leads/{lead_id}/social-profiles`
+  - `GET/POST /api/v1/leads/{lead_id}/evidence`
+- URLs must be HTTPS.
+
+### Cross-platform limitations
+Do not claim universal scraping is ready. Current collector has only one public-page metadata actor. Platform APIs are restricted differently:
+- TikTok Research API is restricted.
+- Instagram API access is primarily for Professional Business/Creator accounts and permitted use cases.
+- YouTube public metadata is quota-limited.
+- Facebook public Page data requires permissions/feature approval.
+- LinkedIn is permission-based; scraping is prohibited.
+- X API access and pricing must be verified against current official policy before implementation.
+
+Build authorized platform-specific adapters and permissions. Never evade access controls.
+
+---
+
+## 6. Creator and partnership prospecting strategy
+
+The user wants an Iman Gadzhi-inspired creator/business prospecting and partnership model. This is a strategy reference, not an official relationship or permission to copy private methods.
+
+GiGo should eventually:
+- Find suitable creators, businesses and potential partners across relevant social platforms.
+- Evaluate niche, audience alignment, audience size/growth where authorized, typical views/engagement, credibility, consistency, offer/partnership fit, evidence quality/confidence, and red flags.
+- Score prospects using explainable, evidence-backed criteria.
+- Keep follower count from dominating the score.
+- Preserve URLs, timestamps, collection provenance and source excerpts.
+- Identify email/contact routes only where legitimately public/authorized.
+- Draft individually relevant partnership proposals from verified observations.
+- Use CRM pipeline stages and manage responses/follow-ups.
+- Stop immediately on reply, opt-out, hard bounce, complaint or suppression.
+- Never invent personalisation, claim relationships that do not exist, or send without authorization.
+
+---
+
+## 7. Outreach campaign system — migrations 0022–0035
+
+### Campaign foundations
+- `0022_outreach_campaigns.sql`: owner-scoped campaigns, recipients, messages, events, suppressions; RLS and statuses.
+- `0023_outreach_campaign_approval.sql`: `gigo_approve_outreach_campaign(...)`, explicit approval and validation of sender, recipient/message caps, follow-up settings, timezone, quiet hours and send windows. API approval endpoint.
+- `0024_outreach_recipient_guard.sql`: owner context, active campaign, suppression and recipient cap trigger.
+- `0025_outreach_templates.sql`: owner-scoped templates; initial sequence 0 and follow-ups 1–5; allowed personalization fields: `first_name`, `organisation`, `niche`, `specific_observation`, `offer_summary`.
+- `0026_outreach_template_approval_guard.sql`: campaign approval requires complete contiguous template sequence; sets template `approved_at`.
+- `0027_outreach_template_immutability.sql`: protects approved template content from insert/update/delete. Possible cascade-delete issue remains unreviewed; no delete API currently.
+- `0028_outreach_outbox_worker.sql`: message template ID, lease token/expiry, service-only claim/finish RPCs; uncertain outcomes fail closed; only confirmed safe pre-send failures retry.
+- `0029_outreach_campaign_window_guard.sql`: timezone, quiet-hour and send-window/follow-up validation.
+- `0030_outreach_sequence_preparation.sql`: prepares approved-template message snapshots into durable outbox. API route `POST /api/v1/outreach/campaigns/{campaign_id}/prepare`. Up to 25 recipients per request. Uses verified lead data; missing personalization causes skip, never fabrication. Preparation does not send.
+- `0031_outreach_inbound_event_safety.sql`: service-only event RPC for reply, bounce, unsubscribe, complaint. Stops queued follow-ups; hard bounce/unsubscribe/complaint create suppression. Original provider webhook signature verification was future work.
+- `0032_outreach_followup_clock.sql`: follow-up clock starts after previous message is provider-accepted (`sent_at`), not when sequence is prepared. Claim requires predecessor sent. Expired leases fail closed as uncertain; no blind retry. Service-role only.
+- `0033_outreach_contact_eligibility.sql`: recipient contact authorization status/basis/evidence/review time and marketing-contact registration. Sending gate requires approved contact basis, evidence and provider registration. Existing recipients remain unreviewed. API endpoint `POST /api/v1/outreach/recipients/{recipient_id}/eligibility`.
+- `0034_outreach_outbox_privilege_hardening.sql`: removes authenticated direct writes to `outreach_messages`; owners retain read-only access. Removes the authenticated preparation RPC and replaces it with service-role-only RPC. API verifies caller identity and performs owner-scoped reads with user's bearer token, then invokes RPC with server-side Supabase secret key and verified owner ID. Modern `sb_secret_` is sent as `apikey`; only legacy JWT-style service-role keys get bearer header. SQL rechecks ownership, approval, recipient eligibility, suppression, template sequence and idempotency.
+- `0035_outreach_inbound_event_idempotency.sql`: dedicated provider, provider-account and provider-event ID columns on events; unique index on that triple; service-only inbound RPC reserves unique event identity before applying effects, making concurrent duplicate delivery race-safe.
+
+### Outreach APIs and tests
+Current routes are in `src/index.ts` for campaigns, recipients, templates, approval, preparation and eligibility.
+Test suite: `tests/outreach-api.test.mjs` includes API and SQL safety assertions for preparation, inbound events, follow-up timing, provider policy, eligibility and migrations 0034/0035.
+
+### Critical remaining outreach risks before any sending
+1. **Approved-template rendering integrity is now implemented in migration 0036.** The API can no longer submit message copy; the service-only SQL function renders from approved immutable templates and owner-scoped stored data/evidence. This migration is committed but unapplied. The future sender must still perform a separate immediate pre-network-send recheck to close the claim-to-send suppression race.
+2. Review RLS and all status-transition paths for `outreach_messages`, not only direct authenticated message table writes.
+3. Provider adapters are empty. No provider API key, sender, verified domain, webhook or sender integration is configured.
+4. Inbound webhook must verify raw-body signature, expected provider account and message/recipient correlation before service-role RPC call.
+5. Re-check suppressions and eligibility immediately before provider send, including events arriving while a message is in-flight.
+6. Add safe unsubscribe links/footer and opt-out processing.
+7. Provider acceptable-use terms, local law, lawful basis, sender authentication and provider audience rules must be assessed before any outreach. This is not legal advice.
+8. Do not use transactional email endpoints to disguise marketing or partnership outreach.
+
+---
+
+## 8. Email provider research and policy
+
+Research checked 2026-11-22:
+
+### Resend
+- Free tier researched: 3,000 emails/month, 100/day.
+- Marketing broadcasts separate from transactional API and limited to existing contacts.
+- Official pages:
+  - https://resend.com/pricing
+  - https://resend.com/features/email-api
+  - https://www.resend.com/blog/engineering-idempotency-keys
+  - https://resend.com/features/webhooks
+
+### Brevo
+- Free tier researched: 300 sends/day, up to 100k contacts, branding footer; marketing and transactional are distinct.
+- Official pages:
+  - https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan
+  - https://help.brevo.com/hc/en-us/articles/208589409-About-Brevo-s-pricing-plans
+  - https://developers.brevo.com/reference/create-email-campaign
+  - https://developers.brevo.com/docs/send-a-transactional-email
+  - https://developers.brevo.com/docs/transactional-webhooks
+  - https://developers.brevo.com/docs/secured-webhooks
+
+### Other
+- Gmail API/account quotas were checked; do not assume Gmail is an appropriate marketing sender.
+- Marketing/relationship outreach must use an approved marketing channel and current provider rules; both researched providers require registered contacts for their marketing channels.
+- `src/outreach/providers.ts` defines provider-neutral contract, provider catalogue, channel selection, stable idempotency key and conservative retry logic. `OUTBOUND_PROVIDER_ADAPTERS` is empty.
+- Resend idempotency key window researched as 24 hours; same key must be reused with same payload. Unknown/ambiguous outcomes are never automatically retried.
+
+---
+
+## 9. AI provider router
+
+`src/assistant/providers.ts` includes Gemini, Groq, OpenRouter, GLM, NVIDIA NIM and Cloudflare Workers AI.
+- User has API keys for Gemini, Groq, OpenRouter, GLM and NVIDIA; do not assume every provider is configured or tested.
+- Groq successfully tested once; others unconfirmed.
+- Cloudflare default Workers AI model: `@cf/zai-org/glm-4.7-flash`; free allocation researched at 10k Neurons/day, excess fails on Free.
+- No paid fallback.
+
+---
+
+## 10. Immediate next tasks (continue in order)
+
+### Task A — outreach security audit before any send path — COMPLETED IN CODE (migration 0036)
+- Audited migrations 0022–0035, outreach RLS, grants, triggers, APIs and message status transitions.
+- Replaced caller-supplied message content with database-side rendering from approved templates and owner-scoped recipient/profile/evidence records.
+- Revoked authenticated/PUBLIC direct outbox writes and reset message privileges to read-only for authenticated owners.
+- Closed direct campaign-row approval forgery: direct campaign UPDATE is revoked; inserts must be draft/unapproved; approval uses a SECURITY DEFINER RPC with explicit auth.uid() ownership check.
+- Final queued-to-sending trigger rechecks campaign approval/revocation, recipient authorization, provider registration, suppression, approved template identity, recipient sequence state, schedule and quiet hours.
+- Added tests for API identifier-only preparation, SQL-bound rendering, client read-only access, final guard and campaign approval bypass.
+- CI PASS on commit 029c4f656a6f18913600d016df0261a1e528a94b: typecheck PASS; 68/68 tests PASS; Actions run 45103534399.
+- Migration 0036 is committed but NOT applied. SQL was not executed against Supabase/Postgres in this task; CI tests are source-level/static tests plus TypeScript/unit checks, not a live migration validation.
+- No provider adapter, webhook endpoint, send worker, sender credential or live send is enabled.
+- Remaining send-specific gap: future worker must call a separate service-only just-in-time authorization/suppression check immediately before the provider network request, since a new suppression can arrive after claim but before send.
+
+### Task A2 — central GiGo autonomy and permission engine — INITIAL V1 COMPLETED IN CODE
+- Added src/assistant/autonomy.ts with action classification, default observe/analyse/draft/internal_execute scopes, approval-gated external execution, unknown-tool fail-closed behavior and a non-overridable financial hard deny.
+- Integrated authorizeToolAction into src/assistant/runtime.ts before every model-requested tool execution.
+- Exposed current policy summary through src/assistant/registry.ts capability reporting.
+- Added tests/autonomy-policy.test.mjs for internal scopes, external approval, financial hard deny, unknown tools and runtime enforcement.
+- Updated docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md.
+- CI PASS on commit 8bf7cee2678bceb5218e941c1aaaff4b25ba3875: typecheck PASS; 75/75 tests PASS; Actions run 45103961661.
+- Limitations: policy scopes are currently code-defaults, not yet stored as owner-configurable settings. External approval is represented by a policy evaluator input but no durable approval workflow is wired to it. No action audit table, pause/stop UI, or financial-data connections exist.
+
+### Task A3 — durable owner-configurable autonomy policies and action audit — NEXT
+- Add owner-scoped policy records and audit events with migration(s), RLS and service/API access.
+- Preserve non-overridable financial hard deny in code and SQL; never make financial execution a configurable scope.
+- Persist explicit approval records with bounded action, target, schedule, expiry, limits and revocation.
+- Add pause/stop controls and audit every decision/result; unknown tools remain denied.
+- No money-moving integration or external action activation.
+
+### Task B — provider-neutral inbox correlation
+- Map provider account, provider message ID, GiGo message ID, recipient and campaign.
+- Inbound event mapping must verify account and provider signature before processing.
+- Store only necessary metadata; avoid unnecessary full email bodies.
+- Reply stops follow-ups; bounce/unsubscribe/complaint suppresses as applicable.
+- Add tests for spoofed account, mismatched recipient, duplicate and concurrent duplicate webhook events.
+
+### Task C — provider adapter dry-run only
+- Build a provider-neutral adapter with mock/dry-run implementation first.
+- Evaluate Brevo marketing campaign path against registered-contact and unsubscribe rules. Resend is another possible option; verify current official policy before implementing.
+- No live sending until explicit user approval and sender/legal/provider prerequisites are complete.
+
+### Task D — cross-platform prospect discovery
+- Implement capability/permission model first; do not pretend all platforms are available.
+- Build one authorized adapter at a time, based on official API/permission routes.
+- Add evidence-backed creator qualification and explainable score.
+- Preserve platform limits, quotas, user authorization and provenance.
+
+### Task E — business operations
+- CRM pipeline, offer/product workflows, campaign analytics, reply management, customer onboarding/support, scheduled business reviews, content operations, proactive reports and voice assistant.
+- All external actions remain bounded by explicit approvals.
+
+---
+
+## 11. File and change ledger
+
+| Date | Change | Files / migrations | Verification / state |
+|---|---|---|---|
+| 2026-11-22 | Message preparation engine | migration 0030; API route; tests/docs | Prepared only; no send |
+| 2026-11-22 | Inbound event handling and follow-up cancellation | migration 0031; tests/docs | Service-role RPC; webhook not active |
+| 2026-11-22 | Follow-up timing correction | migration 0032; tests/docs | Delay starts after provider acceptance |
+| 2026-11-22 | Provider policy contract and research | `src/outreach/providers.ts`; tests/docs | No adapters or credentials |
+| 2026-11-22 | Contact authorization and marketing registration gate | migration 0033; API route; tests/docs | Existing recipients unreviewed |
+| 2026-11-23 | Outbox privilege hardening | migration 0034; `src/index.ts`; `tests/outreach-api.test.mjs`; `docs/UNIVERSAL_COLLECTION_ENGINE.md` | Commit chain culminated in 9138f95; typecheck/tests PASS |
+| 2026-11-23 | Atomic inbound webhook deduplication | migration 0035; tests; docs | Commit 9f91d26; typecheck/tests PASS |
+| 2026-11-23 | Outreach security audit and database-side rendering | migration 0036; src/index.ts; tests/outreach-api.test.mjs; docs/UNIVERSAL_COLLECTION_ENGINE.md | Commits 4c6fecb, 51d7881, 3563e31, 1ec5b2e, c5c34bc, 2b4caf7, 5ebe257, 802ec66, fb863f0, 029c4f6; final CI PASS run 45103534399; migration unapplied |
+| 2026-11-23 | Central autonomy policy V1 | src/assistant/autonomy.ts; src/assistant/runtime.ts; src/assistant/registry.ts; tests/autonomy-policy.test.mjs; docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md | Commits 01c4c75, 5a1b170, 0b92f49, 36d47b9, dc218be, 16b5c33, 8bf7cee; typecheck PASS and 75/75 tests PASS; Actions run 45103961661 |
+| 2026-11-23 | Create living project memory | `memory.md` | Commit `0524db569ad0e90d23b919360f5930aa5cd3af3d`; documentation-only commit; no new Actions run was triggered. Earlier code verification on `9f91d26` remains PASS. |
+
+**Important:** this ledger records code committed to the feature branch. Migrations 0030–0035 are not applied to Supabase, and none of the email provider/webhook/send functionality is live.
+
+---
+
+## 12. How to continue this project in a fresh conversation
+
+1. Read this `memory.md` first.
+2. Fetch current branch HEAD from GitHub; do not assume the last recorded commit is still latest.
+3. Inspect the exact current file(s) and SHA before edits.
+4. Continue from **Task A: outreach security audit and approved-template rendering integrity**.
+5. After each task, update this file in the same branch with:
+   - date and purpose;
+   - exact files and migrations changed;
+   - security/architecture decisions;
+   - commit SHA(s);
+   - tests run and exact outcomes;
+   - unapplied/deployment status;
+   - remaining risks and next task.
+6. If any test fails, record it, diagnose and fix it before describing the work as complete.
+7. Never say a migration was applied, a worker deployed, an email sent, or an integration connected unless directly verified.
+
+This file is the durable project handover, but it is not a substitute for checking live GitHub state, CI, Cloudflare or Supabase before making operational claims.
+
+
+---
+
+## 13. Product direction update — broad GiGo autonomy, human retains monetary authority (2026-11-23)
+
+The user is considering giving GiGo broad capabilities across the personal-assistant and business-operating-system vision, with the monetary part remaining under the user's personal control. Treat this as a core product direction for future architecture.
+
+### Design interpretation
+- GiGo should be designed as a capable operating agent, not merely a chatbot or a dashboard of manual tools.
+- It should be able to research, reason, plan, create and maintain work, coordinate workflows, monitor progress, manage internal records, prepare business operations, and report outcomes across the approved modules.
+- The user retains control of money and financial commitments. GiGo must not independently initiate or approve money movement, purchases, paid subscriptions, paid API/service upgrades, investments/trades, loans, payouts, transfers, or other actions that create a financial obligation.
+- GiGo may prepare financial information (budgets, forecasts, comparisons, cost estimates, invoices, payment instructions and decision briefs) for the user, but preparation is not authorization to pay or commit funds.
+- Do not give GiGo bank/payment credentials or payment execution capability as part of the default architecture. Any future read-only financial-data connection would require a separate explicit decision and least-privilege design.
+- Preserve an auditable approval boundary for all external side effects. The user has expressed a broad autonomy goal, but has not yet explicitly defined which non-financial external actions GiGo may execute without per-action approval. Until a configurable permission model is implemented and approved, keep existing approval gates for sending, publishing, contacting people, changing external accounts and other consequential external actions.
+- Implement autonomy as explicit capability scopes and policies: observe/read, analyse, draft/prepare, execute, and spend. Spending/financial execution remains disabled and human-controlled.
+- Record each delegated action, policy basis, result, timestamps and any approval. Provide pause/stop controls and a clear activity log.
+
+### Architecture implications
+- Add a central autonomy/permission policy layer rather than scattering ad hoc confirmation checks across modules.
+- Separate financial data preparation from payment execution; no money-moving tool should be exposed to the general agent tool registry.
+- Add a hard-deny financial action category that cannot be overridden by ordinary task instructions or a general autonomy toggle.
+- Add configurable per-module scopes for non-financial actions, with least privilege, bounded limits, revocation, audit logging and safe failure.
+- Future agent planning must identify actions that incur cost or financial liability before attempting them. Free-tier quota exhaustion must stop safely rather than silently falling back to paid services.
+
+### Status
+This is a product/architecture decision recorded from the user's stated direction; no new autonomy code, financial integration, payment permission or external-action authorization has been implemented by this note.
+
+### Next implementation sequence
+1. Outreach security audit is complete in code (Task A); do not activate any sender or apply migration 0036 without separate approval.
+2. Initial central autonomy policy V1 is implemented and tested (Task A2), including the non-overridable financial hard-deny.
+3. Next build durable owner-configurable scopes, approval records, audit events and pause/stop controls (Task A3).
+4. Then continue provider-neutral inbox/webhook work and dry-run adapters.
+
+
+---
+
+## 14. Outreach security audit completion — migration 0036 (2026-11-23)
+
+### Exact changes
+- supabase/migrations/0036_outreach_database_rendering_and_final_guard.sql
+- src/index.ts
+- tests/outreach-api.test.mjs
+- docs/UNIVERSAL_COLLECTION_ENGINE.md
+
+### Security changes
+1. Database-side template rendering: API preparation accepts only optional recipient_id; subject/body/template/evidence cannot be supplied by the client or API caller. A service-role-only RPC receives verified owner, campaign and recipient IDs and renders from approved template rows inside Postgres.
+2. Trusted personalization provenance: rendering reads recipient name/organisation, campaign offer summary, the selected owner's social profile niche and selected lead-evidence excerpt. It permits only first_name, organisation, niche, specific_observation, offer_summary; requires each placeholder to be declared in the approved template's personalization fields and rejects missing, undeclared, unknown or unresolved placeholders. Evidence references for niche and specific observation are stored with the message.
+3. Outbox privileges: direct PUBLIC, anon and authenticated privileges on outreach_messages are revoked; authenticated owners receive SELECT only. The service-only preparation RPC is the only queue insertion path.
+4. Campaign approval boundary: direct campaign UPDATE privileges are revoked from PUBLIC/anon/authenticated. Owners can read/create/delete their campaigns; insert policy only accepts draft/unapproved records with no sender/approval caps enabled. Campaign approval is performed by the authenticated owner RPC, now SECURITY DEFINER with explicit auth.uid() owner verification and bounded input validation.
+5. Final claim-time guard: the queued-to-sending trigger rechecks campaign active/approved/not revoked, recipient contact authorization and review evidence, provider marketing registration, matching email, suppression list, approved template identity, sequence state, send window, quiet hours and due time.
+
+### Commit chain
+- 4c6fecbb399c3d2558a1634d0eb5187b748629f8 — initial migration 0036.
+- 51d78813ff6fe862f5581105cba18f31b64f63c7 — API now delegates rendering to trusted SQL.
+- 3563e31c7b50d04f7ba6d2557d3099d6ad642a06 — rendering and guard tests.
+- 1ec5b2e2396f57c7c1cc65b96f27563fd9e79555 — SQL regex escaping and independent row-found checks.
+- c5c34bc6b06e21cc3beb042d8f0a37348ffaf0fb — prevent direct campaign approval mutation; secure approval RPC.
+- 2b4caf78445043ca22044a518622d17bd89f181d — campaign approval bypass test.
+- 5ebe257d5bf0681c2c3acaddab0aa3540bb9b653 — constrain direct campaign creation to draft/unapproved.
+- 802ec6666641cc1784fd4842c744b16f161062ba — corrected suppression test assertion; 68/68 tests PASS and typecheck PASS.
+- fb863f024b88cd4be27c0e190b17bd81d4a60024 — documentation update; CI PASS.
+- 029c4f656a6f18913600d016df0261a1e528a94b — explicit SQL expression grouping; typecheck PASS and 68/68 tests PASS; Actions run 45103534399.
+
+### Verification and deployment state
+- Latest branch HEAD when recorded: 029c4f656a6f18913600d016df0261a1e528a94b.
+- Actions run 45103534399: TypeScript typecheck PASS; test suite 68 passed, 0 failed.
+- SQL migration has not been applied or executed against Supabase/Postgres. Static SQL-source assertions are not a substitute for live migration validation.
+- No worker deployed, provider connected, webhook activated, or email sent.
+- Future sender still requires a service-only just-in-time eligibility/suppression recheck immediately before network send to close the in-flight suppression race.
+
+### Next task
+Implement Task A3 — durable owner-configurable autonomy policies and action audit. Preserve the non-overridable financial hard deny and keep consequential external actions gated until bounded permissions are explicitly designed.
+
+
+---
+
+## 15. Central GiGo autonomy policy V1 (2026-11-23)
+
+### Implemented files
+- src/assistant/autonomy.ts — central action classification, default scopes, policy evaluation and financial hard deny.
+- src/assistant/runtime.ts — every model-requested tool call is authorized before executeTool is called.
+- src/assistant/registry.ts — current autonomy policy summary is exposed in capability reporting.
+- tests/autonomy-policy.test.mjs — policy and runtime enforcement tests.
+- docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md — architecture and owner financial-control boundary.
+
+### Current V1 rules
+- Default allowed scopes: observe, analyse, draft and internal_execute.
+- External execution is disabled by default. Even if the external scope is enabled, explicit approval is required by the default policy.
+- Financial execution is a hard deny and is not an available policy scope. It cannot be overridden by an ordinary approval boolean or broader non-financial scope list.
+- Unknown tool names fail closed.
+- Current registered internal tools are explicitly classified; any new tool must be classified before it can run.
+
+### Verification
+- Commit 8bf7cee2678bceb5218e941c1aaaff4b25ba3875.
+- GitHub Actions run 45103961661: TypeScript typecheck PASS; 75 tests PASS; 0 failures.
+- Current feature branch head at the time of this memory update is being advanced by documentation-only commits; the latest code-verified commit remains 8bf7cee.
+- No deployment or database migration was performed.
+
+### Not yet implemented
+- Durable owner-configurable permission settings.
+- Persisted approval records and bounded approval scopes.
+- Owner-scoped autonomy audit event table and API.
+- Global pause/stop controls or UI.
+- Any payment, bank, wallet or money-moving integration.
+
+### Next task
+Task A3: implement durable owner-configurable autonomy policies and action audit, preserving the hard financial deny in both runtime and database policy design.
+
+
+## 16. User clarification — concise automatic messaging policy (2026-11-23)
+
+The user explicitly permits GiGo to send messages automatically, provided outbound messages are very short, structured, simple and direct. This is a narrow messaging permission, not blanket permission for all external actions.
+
+### Product requirements
+- GiGo may automatically send eligible messages after the relevant campaign/template and recipient scope have been explicitly approved and all runtime safety checks pass.
+- Message format should be compact and predictable: brief greeting (when appropriate), one verified reason for contact, one concise value proposition or useful point, and at most one clear next step.
+- Default content limits for the first implementation: subject up to 80 characters; plain-text body up to 500 characters. No attachments, long introductions, multiple topics, excessive claims, pressure tactics or invented personalization.
+- Use approved, immutable templates and evidence-backed personalization only. If required facts are missing, do not send.
+- Automatic send remains bounded by campaign approval, recipient cap, contact authorization/registered-contact requirements, suppression and opt-out checks, quiet hours/send windows, provider rules, rate limits, idempotency and audit logging.
+- A reply, unsubscribe, complaint, hard bounce, revoked campaign approval or global pause must stop subsequent sends/follow-ups.
+- This permission does not authorize arbitrary cold messaging, bulk unsolicited messages, social DMs or bypassing platform restrictions. Each channel requires its own lawful/authorized eligibility checks.
+- External publishing, account changes, commitments and other external actions remain separately gated.
+- Financial actions remain permanently hard-denied.
+
+### Implementation impact
+- Task A3 durable autonomy policy must model a narrowly scoped message_send permission separately from generic external_execute; it may support auto-send only for a pre-approved campaign and bounded recipients/templates/window/caps.
+- The database and runtime must reject any attempt to broaden message permission beyond that campaign's immutable approval.
+- Add tests for message length/structure, approval binding, opt-out/suppression, campaign revocation, pause, quotas and no arbitrary external-send bypass.
+- No provider adapter, webhook or live sender is configured. No messages have been sent by this code.
+
+
+## 2026-11-23 — concise automatic messaging and mandatory sender signature
+
+User clarified outbound messaging behavior:
+- GiGo may automatically send messages within an explicitly authorized, bounded campaign; it does not need per-message approval once the campaign-level authorization and all policy checks are satisfied.
+- Outbound messages must be short, structured and direct. Default structure: brief greeting (when appropriate), one specific reason for contact, one concise value proposition, and one simple next step.
+- Default limits: subject at most 80 characters; body at most 500 characters, including the sender signature. Avoid long introductions, unnecessary explanations, multiple topics and attachments by default.
+- **Every outbound message must end with the owner's confirmed name as the writer/sender**, especially partnership messages, and this applies to other message types too. The signature is mandatory and must be appended by the trusted message-rendering layer, not left to the language model to remember. The actual signature name has not been confirmed by the owner; do not infer it from an account/profile name or hardcode a guess. Store the owner's confirmed display/signature name in owner-controlled profile settings. Until configured, external message rendering/sending must fail closed rather than omit or invent the signature. The signature counts toward the body character limit.
+- These rules do not weaken recipient authorization, consent/contact eligibility, suppression/opt-out, provider/platform compliance, approved-template, schedule, rate-limit, audit, campaign-boundary or pause controls. Do not send arbitrary unsolicited messages or bypass restrictions.
+- Financial execution remains permanently hard-denied.
+
+Implementation status: requirement recorded in project handover and product blueprint; not yet implemented in the message-rendering code. The next outreach implementation must make the signature deterministic and test that every rendered message ends with the configured owner signature, including partnership templates and short-message length enforcement. No database migration was applied and no deployment or live sending occurred.
+
+
+## 17. Task A3 — durable autonomy governance schema (2026-11-23)
+
+### Committed
+- `supabase/migrations/0037_durable_autonomy_governance.sql`
+- `docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md`
+
+### Database structures
+- `autonomy_control_state`: one owner-scoped global pause state. A missing row must be interpreted as paused/fail-closed by the runtime integration.
+- `autonomy_policies`: owner-scoped non-financial scopes only: observe, analyse, draft, internal_execute, external_execute. Financial is absent from the SQL allowlist. Generic external execution must always require approval.
+- `autonomy_approvals`: expiring approval bound to exact tool name, target reference, SHA-256 canonical-parameter hash and max action count; includes owner revocation RPC.
+- `autonomy_audit_events`: owner-readable, service-written audit log with a per-owner idempotency-key unique index.
+
+### Security
+- RLS enabled on all four tables.
+- Authenticated owners have read-only table access. Policy/pause/approval changes use SECURITY DEFINER RPCs deriving the owner from `auth.uid()`.
+- Authenticated clients cannot directly write pause, policy, approval or audit rows.
+- Audit events are not updateable/deletable by authenticated users; service role receives only SELECT/INSERT.
+- SQL rejects financial scope configuration and rejects financial-looking tool names when creating an approval. This is defense in depth; the TypeScript financial hard deny must remain first and non-overridable.
+- No generic message_send scope was added. The user's automatic short-message permission must remain tied to separately approved outreach campaigns, exact eligible recipients/templates and provider checks—not a broad external-execution toggle.
+
+### Commits
+- `184ed3537f232abb261472089054bf8762f6ddfa` — initial migration 0037.
+- `3b39983655f5bf880adfb8ba919d7ae07897f74b` — harden audit grants, add approval revocation and tighten financial tool-name boundary.
+- Blueprint documentation commit is the immediately preceding commit in this branch sequence; fetch branch HEAD to obtain its SHA before future edits.
+
+### Verification and status
+- Migration is committed only; it has NOT been applied to Supabase.
+- No runtime policy lookup, pause enforcement, approval consumption, audit event emission, API endpoints or UI are wired yet.
+- No deployment or live test.
+- This schema milestone is not permission to send messages. Outreach still has no provider adapter or live sender.
+- Automated CI for the latest commits has not yet been checked in this task.
+
+### Sender signature requirement (pending owner display-name confirmation)
+- Every outbound message must end with the owner's name on a separate final line, particularly partnership messages.
+- Signature must be appended by trusted rendering code and included within the 500-character body limit.
+- Do not hardcode a guessed account/profile name. Store the owner's confirmed signature/display name in owner-controlled profile settings. Until configured, external message rendering/sending must fail closed rather than omit or invent the signature.
+- Short message defaults remain subject <=80 characters and plain-text body <=500 characters including signature.
+- No message has been sent.
+
+### Next implementation slice
+1. Add owner signature/display-name setting with a safe update path and test validation.
+2. Wire policy and pause reads into runtime; fail closed on missing/unavailable policy storage.
+3. Add service-only approval consumption and audit RPCs with atomic quota/idempotency enforcement.
+4. Add owner API endpoints for policy, pause, approval and audit reads.
+5. Add integration tests for owner isolation, forged rows, pause, expiry, revocation, quotas, fail-closed DB outage and immutable financial hard deny.
+6. Keep the message_send grant campaign-bound and do not enable any sender until provider/webhook/pre-send suppression controls are implemented.
+
+
+## 18. Partnership commercial offer requirement (2026-11-23)
+
+The user requires every partnership message/proposal generated by GiGo to include a **50/50 deal offer**, so the partner and the owner's side can both earn from the partnership.
+
+### Default offer definition
+- Default wording: propose that each party receives 50% of **net revenue attributable to the agreed partnership, after only direct costs that both parties agreed and documented in advance**.
+- Do not leave "50/50" ambiguous: before a deal is finalized, specify included revenue, attribution/tracking, agreed deductible direct costs, each party's responsibilities, payment timing/records, duration, refunds/chargebacks and exit terms.
+- This is a proposal, not accepted terms, guaranteed income, a claim of prospect agreement or a promise of results.
+- GiGo must not invent projected earnings or claim that either party will definitely make money.
+- GiGo may present the standard offer in an owner-approved partnership campaign. It must not accept counteroffers, negotiate binding terms, sign contracts, grant exclusivity or make financial commitments for the owner. Final agreement and material changes require explicit owner approval.
+- Keep partnership messages concise and within existing limits: subject <=80 characters, body <=500 characters including the mandatory owner signature.
+- All partnership messages end with the owner's confirmed signature, appended by trusted rendering code. Until the owner confirms/configures the signature name, external sending fails closed.
+- Existing contact authorization, provider marketing registration, opt-out/suppression, approved campaign/template, schedule, rate limits, pause and audit safeguards remain mandatory.
+
+### Files and commit
+- Updated `docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md` with the partnership revenue-share standard.
+- Blueprint commit: `1ec1e6f9cbede3024f07784a58e35f6b87f4c091`.
+- Updated `memory.md` in the following commit to preserve this requirement.
+- This is a product requirement/documentation milestone; it does not activate a sender or create a legally binding offer. No migration applied, no deployment and no message sent.
+
+
+## 2026-11-23 — Task: deterministic outbound signature and partnership terms
+
+- Added `supabase/migrations/0038_outreach_signature_and_partnership_terms.sql` (migration commit `2e3cdc9d71fc15a6e06852640c7bab2c764bc219`).
+- Added `tests/outreach-signature-partnership.test.mjs` (test commit `0401d2036f62492bf3240c3ff69095aee10eb4d0`).
+- The migration creates owner-scoped `owner_message_settings`; the owner sets the exact signature through `gigo_set_owner_message_signature(text)`. No signature is assumed or prefilled. Queued/sending/sent message persistence fails closed until a valid signature exists.
+- Adds `campaign_kind` (general/partnership) and owner-only `gigo_set_outreach_campaign_kind(uuid,text)`, editable only while the campaign remains draft and not approved.
+- Trusted database trigger appends the signature as the final line; enforces subject <=80 chars and body <=500 chars including signature; partnership campaigns receive deterministic 50/50 language over net revenue attributable to that partnership, less only direct costs agreed in writing in advance. Unsupported earnings guarantees/projections are rejected.
+- Trigger runs on insert and relevant updates, so later status transitions cannot bypass the rule. This is a content guard, not a provider sender; it does not send or enable messages.
+- **Not applied/deployed:** migration 0038 is committed only. No provider adapter, webhook, send worker or live campaign is enabled. Signature remains unset pending the owner's exact chosen display name. CI has not yet been checked for these two commits.
+- Important remaining partnership terms for a binding agreement: define included revenue, attribution/tracking, mutually approved direct costs, responsibilities, payment timing/records, refunds/chargebacks, duration and exit. GiGo must not accept counteroffers, sign or bind the owner; material changes/final agreements require explicit owner approval.
+- Next: verify CI and static SQL tests; inspect and wire campaign-kind and signature settings into the owner UI/API; implement bounded automatic campaign sending only after contact/provider compliance, campaign approval, stop controls, pause/audit and final owner policy checks are complete. Continue durable autonomy runtime integration. Financial actions remain hard-denied.
+
+
+## 2026-11-23 — Signature confirmed and authenticated settings API
+
+- Owner explicitly confirmed the outbound sender signature as `STANLEE`.
+- Added authenticated `GET/POST /api/v1/settings/message-signature` in `src/index.ts` (commit `6d8d1e1e4cc5c2cb252614bbb6c307c9da36adaa`). GET reads only the verified owner's setting; POST accepts only a plain-text signature name and calls the owner-authenticated `gigo_set_owner_message_signature` RPC. It never trusts a caller-supplied owner ID.
+- Added API assertions in `tests/outreach-api.test.mjs` (commit `367a56dbc2df712c086743964a1abd6982b998e9`).
+- The owner's exact confirmed value is `STANLEE`. The API endpoint is ready in source, but it has not been called against production because migration 0038 is not applied and deployment was not authorized. Do not claim the database profile is populated yet.
+- Migration 0038 remains unapplied; no provider sender or live campaign is enabled. The existing database trigger remains the final fail-closed signature/length/partnership guard.
+- Next: expose campaign-kind selection via authenticated API; inspect and wire UI; then verify CI. Continue durable autonomy persistence/runtime and the remaining GiGo workflows. Keep financial hard deny and campaign-level external-action boundaries intact.
+
+
+## 2026-11-23 — CI investigation and autonomy test correction
+
+- The earlier CI run `45107401543` failed in one pre-existing governance test, not the new partnership tests. The assertion incorrectly prohibited every `INSERT INTO autonomy_control_state`, although the migration correctly uses an owner-authenticated pause RPC upsert; it did not distinguish a dangerous global seed from a user-triggered pause update.
+- Corrected `tests/autonomy-governance-sql.test.mjs` to reject a global seed before the owner RPC definitions while explicitly requiring the owner RPC upsert (commit `21f3dcb18bb3b372544c23b61790b3f38510f655`).
+- Signature settings API and test commits: `6d8d1e1e4cc5c2cb252614bbb6c307c9da36adaa`, `367a56dbc2df712c086743964a1abd6982b998e9`. CI on the latter was still in progress at the time of this note.
+- Signature value confirmed as `STANLEE`; API not yet invoked and migration 0038 not applied. No deployment or live sending.
+- Next: verify latest CI; continue campaign-kind API/UI and durable autonomy runtime integration. Do not treat the corrected test as proof that the SQL migration is deployed or runtime governance is integrated.
+
+## 2026-11-23 — Campaign-kind API integration
+
+- Added authenticated POST /api/v1/outreach/campaigns/{campaign_id}/kind in src/index.ts (commit 49b9d58c3a9de86e34997beec42e4646cecabf06).
+- The route verifies the bearer session with Supabase, accepts only campaign_kind: general or partnership, rejects extra fields, and invokes gigo_set_outreach_campaign_kind using the caller's authenticated JWT. It does not accept an owner ID or use service-role credentials.
+- The database RPC in migration 0038 remains the authority: it only changes campaigns owned by the caller while draft and not approved/rejected as allowed by the migration.
+- Added source-level API tests in tests/outreach-api.test.mjs (commit 6f94aaa66596aadb70979795f1ee44745b1522cf).
+- CI for these commits has not yet been checked. Migration 0038 remains committed but unapplied; no API deployment or campaign change has occurred.
+- Next: check CI; inspect the actual UI structure and wire signature/campaign kind controls where a secure authenticated UI exists. Continue durable autonomy enforcement: fail-closed pause/policy reads before every tool execution, exact-bound approval consumption, audit logging and owner endpoints. Then continue remaining research/lead/business workflows. No paid services, live sending, payment execution or deployment without explicit owner authorization.
+
+## 2026-11-23 — Campaign settings, SQL repair and signature UI
+
+- Added authenticated POST /api/v1/outreach/campaigns/{campaign_id}/kind (commit 49b9d58c3a9de86e34997beec42e4646cecabf06) and source-level tests (6f94aaa66596aadb70979795f1ee44745b1522cf). The route verifies the owner session and calls the owner-authenticated migration 0038 RPC; only general/partnership values are accepted. No owner ID is trusted from the request.
+- CI exposed an invalid regular-expression literal in the new route. Fixed it in commit 1f500b4ebb3dad170944a474ca2fd2053478fa0b. The earlier CI failures on commits 49b9d58 and 6f94aaa are therefore known syntax failures, not successful verification; check the post-fix run.
+- Audited migration 0037 and found its final function/grant section contained literal escaped newline text and an invalid dollar-quote delimiter. Rewrote that tail with actual SQL line breaks and a valid $$ function body in commit 7b673cb7d84ae0ed14dd03be21ca0ffcc5ec6687. Added a regression test in commit 15e157e5459a1dd5f64d506667e22279f6299500. The earlier run on 7b673cb was checked out before the route regex fix and failed on the same index.ts parse error; the SQL regression test is awaiting CI.
+- Added owner signature controls to public/settings.html and connected public/settings.js to GET/POST /api/v1/settings/message-signature (commits cab5a50944c9b715607083088c5aa3875bc39fc7 and 5628a284940a6da121515037ad6a4403054ab77c). The field defaults to the user-confirmed STANLEE value, but the UI reports database state accurately and only confirms saved after the API succeeds. This is not yet live because migration 0038 remains unapplied and no deployment occurred.
+- Current latest commits include 15e157e5459a1dd5f64d506667e22279f6299500; CI runs for the regex fix and later UI/test commits were queued or in progress at last check. Do not claim pass until confirmed.
+- Remaining major work is substantial: durable autonomy runtime must read pause and policy state before every tool, fail closed on missing/unavailable state, atomically consume exact target/parameter approvals, and write audit events; add owner APIs/UI; complete research ingestion/evidence verification; authorized platform discovery; CRM/offers/marketing/launch/customer/analytics/learning workflows; and production operations. Existing module placeholder pages are not complete implementations.
+- No migrations applied, no Worker deployment, no live outreach, no external campaigns and no payment execution. Financial actions remain permanently hard-denied. Preserve zero-budget constraints and update this memory after each meaningful implementation task.
+## 2026-11-23 — Durable autonomy runtime and owner controls
+
+- Added migration 0039_autonomy_initialization_and_approval_consumption.sql (commit 4f4f326a1a3056f3ef84ab9fe8f663898c28814d). Owner initialization creates safe default scopes but starts the global pause enabled and external execution disabled. A service-role-only RPC atomically consumes one approval only when owner, tool, target, parameter SHA-256, expiry, revocation state and remaining quota all match.
+- Repaired the malformed SQL tail in migration 0037 (commit 7b673cb7d84ae0ed14dd03be21ca0ffcc5ec6687). Its prior generated tail contained literal backslash-n text and an invalid dollar-quote delimiter. A regression test was added and its assertion corrected in commit d2eb8a78bf5b6b63591e833beaee68e34b861266. CI for d2eb8a78 is still in progress at this note.
+- Runtime now classifies financial/unknown actions before database access; for known tools it reads owner-scoped global pause and scope policy before execution, treats missing/unavailable state as denied, and records a service-role audit decision before allowing execution. It records a result event afterward. If the required pre-execution audit cannot be written, the tool is not executed. Runtime commits: 3d26931d793ddf642220beb6986fee24a1ab4b2d and 543ce7bc8c9598ecc8e043df3464c357d98222cb.
+- Added owner APIs GET /api/v1/autonomy, POST /api/v1/autonomy/initialize, POST /api/v1/autonomy/pause and POST /api/v1/autonomy/policies in commit bddb97bd13340398e04e61bb4082217d6fee0a3e. These use the verified owner's JWT and owner-authenticated RPCs; no caller-supplied owner ID.
+- Added settings UI for global pause, safe initialization and toggling only the four internal scopes; external execution is explicitly shown as blocked. Commits f75c518ec1a84605ce9e9e170e26769dcd73aa2b and a6b6a48eddd5b2045125f122d246d33047dd65cf. Added API/UI tests in 26505c061b34d7c381ed36b21f2f2cd27faa619d.
+- The previous CI failures were due to: (1) the campaign-kind route regex escaping, now corrected in 1f500b4ebb3dad170944a474ca2fd2053478fa0b; (2) the new SQL regression test using over-escaped regex assertions, now corrected in d2eb8a78bf5b6b63591e833beaee68e34b861266. Do not report success until the latest run is green.
+- Security boundary: external execution still has no approval consumption wired into the runtime and remains denied regardless of policy settings. Financial execution remains permanently hard-denied. Global pause row missing means paused. Missing policy or audit credentials means tool execution fails closed. This means after deployment, migration 0037/0039 and the Worker secret must be present before assistant tools can execute; do not apply/deploy without explicit owner authorization.
+- Signature UI is also in place (commits cab5a50944c9b715607083088c5aa3875bc39fc7 and 5628a284940a6da121515037ad6a4403054ab77c), using the confirmed STANLEE signature, but migration 0038 and deployment remain pending.
+- Next: verify latest CI; add owner audit-log and approval management endpoints/UI; add runtime integration tests and DB-failure tests; then build actual outreach campaign UI/provider-safe dry-run/webhook path. Broader incomplete modules remain research full-text/evidence, authorized cross-platform discovery, business launch, commerce (financial execution prohibited), creative, customer, analytics, learning, scheduler operations and voice. No migrations applied, no Worker deployment, no live sends.
+
+## 2026-11-23 — CI repair and current continuation checkpoint
+
+- Re-checked the branch rather than relying on the previous handover: the authenticated campaign-kind endpoint already exists in `src/index.ts` at `POST /api/v1/outreach/campaigns/{id}/kind`, wrapping the owner-authenticated `gigo_set_outreach_campaign_kind` RPC. It validates the verified session, accepts only `general` or `partnership`, and relies on the database RPC to restrict changes to an editable owner draft. Do not duplicate this endpoint.
+- Durable autonomy work is also further along than the earlier checkpoint: migration 0039 initializes safe scopes with global pause enabled and external execution disabled; it adds service-role-only atomic exact-approval consumption. Runtime reads pause and scope policy before each known internal tool, writes a service-role audit decision before execution and a result event afterward, and denies when policy/pause/audit is unavailable. External execution remains blocked in runtime; financial and unknown actions are hard-denied.
+- Verified CI run `45108569479` on commit `4a56827ba99cdd6667e213b02c2a9ca7ec6c52c5`: TypeScript typecheck passed; tests failed 1/94. The sole failure was a bad test expectation in `tests/autonomy-governance-sql.test.mjs`: it expected the SQL function terminator `$;` although migration 0037 correctly uses PostgreSQL `$$;`. This was a test assertion defect, not a typecheck or SQL runtime verification.
+- Corrected the assertion to expect the complete `end;\\n$$;` delimiter in commit `ce02007f954675dcbb24d55995dc26d61aa72360`. The preceding attempt `720e14d` did not change the file because JavaScript replacement-string escaping collapsed `$$`; the successful correction uses a replacement callback. Await and inspect CI for `ce02007f...` before declaring green.
+- The current `public/outreach.html` is still a placeholder and does not expose campaign creation, campaign kind, recipient review, template management, approval, or outbox state. The API and database layers exist, but the owner-facing Outreach Studio remains unfinished. Do not represent it as a complete UI.
+- Signature settings UI and autonomy pause/policy settings UI already exist in `public/settings.html` / `public/settings.js`; the owner-confirmed signature is `STANLEE`. Database migration 0038 is still not applied, so the setting is not yet live.
+- No migrations have been applied, no Worker deployment has been performed, and no live messages have been sent. Do not apply migrations or deploy without explicit owner authorization. Financial execution remains permanently denied.
+- Next sequence: (1) verify CI after commit `ce02007f...`; (2) implement actual owner-facing Outreach Studio against the existing authenticated campaign/recipient/template/eligibility/prepare/approve APIs, including campaign-kind selection and clear status; (3) add owner audit/approval visibility and runtime failure tests; (4) complete provider-neutral dry-run sender and signed webhook only after verifying provider compliance and never enable live sending without explicit approval; (5) audit Research Engine, Universal Collection Engine, CRM, offers, product/partner workflows, scheduler, and module pages against real end-to-end capability; remove misleading placeholders or implement them; (6) document all remaining external prerequisites, then ask for explicit authorization before applying migrations or deploying.
+
+## 2026-11-23 — Autonomy approvals and audit visibility
+
+- Fixed the SQL regression test to assert complete PostgreSQL dollar-quote delimiters. The previous failure at migration test line 56 was a test expectation bug: the migration correctly ends the function with `$$;`, while the test expected `$;`. Fix commit: 64f89aec47dfec0672bd6edfb1ac707081967635. CI for that commit is queued/in progress and must be checked.
+- Added owner-scoped GET /api/v1/autonomy/audit, GET/POST /api/v1/autonomy/approvals and POST /api/v1/autonomy/approvals/{id}/revoke in src/index.ts (commit 2a66cc8ba80792ec4513b1c50a9b3ee89d5ca14a). Every route verifies the Supabase session; approval creation is exact-tool/target/parameter-hash bound, limited to 1–1000 actions and expires within 30 days; the database RPC rejects financial-looking tools. Revocation uses the owner-authenticated RPC.
+- Added a recent audit history panel to Settings (commits d0a5e27014839d798b17a4334c81689c2b855e93 and 9d295dda4b46da9b3da72d89dcedfcf2643b1ba4) and API/UI tests (commit 41963442f36ba2e68b0b2e28a089b0d0404f3b58).
+- Durable runtime remains fail-closed: it does not yet consume approvals for external tools; all external execution is denied even if a row is approved. The atomic service-only consumption RPC exists in migration 0039 but is not wired to any external sender. Financial actions remain hard-denied.
+- The latest successful CI has not yet been established for the new commits. No migrations applied or Worker deployed. Migration 0037/0038/0039 remain code only. Settings UI can only become functional after the corresponding migrations are applied and Worker deployment occurs.
+## 2026-11-23 — Blueprint synchronization
+
+- Updated docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md with the durable autonomy runtime, owner API/UI, safe initialization, exact approval consumption, audit history, campaign-kind API and current unapplied/deployment status (commit ce310f72caf010b5719a2e34ca8ea9bf9ae4a1e2).
+- Confirmed CI run 45108697698 on commit 41963442f36ba2e68b0b2e28a089b0d0404f3b58 passed typecheck and the complete collection-engine test workflow. Subsequent audit/approval and blueprint commits are awaiting their own run completion.
+- Current implementation is materially safer but not production-live: migrations 0037–0039 are not applied, Worker not deployed, and no external sender exists. Do not claim the app is complete. External execution stays blocked; financial execution is permanently denied.
+
+## 2026-11-23 — Outreach Studio owner workflow implementation
+
+- Replaced placeholder `public/outreach.html` with a working owner-facing campaign workspace (commit `876d15f050f8551566bd1f25202962d114cb0d02`). It includes campaign creation/listing, general vs partnership type, recipient entry and eligibility review, template authoring, bounded campaign-policy approval and queue preparation. It prominently states that no message is sent from this interface.
+- Added `public/outreach.js` (commit `741c8390178d8d160dc60d83f8be1ff93a94b03a`) using the existing authenticated `GIGO_API` client. It connects to the existing owner-authenticated campaign, recipient, eligibility, template, approval, prepare and campaign-kind APIs. Eligibility approval requires the owner to enter a documented basis and HTTPS evidence URL and explicitly confirm provider marketing-audience registration. Blocking a contact remains available.
+- Updated the campaign list query in `src/index.ts` to return `campaign_kind` (commit `d3e27a709b953b1c444146402444b26331e62f82`).
+- Added a regression test for the Outreach Studio UI and its no-live-delivery boundary in `tests/outreach-api.test.mjs` (commit `ee88db5ba23944cf0e47cf9ae7640e9404ab66eb`).
+- Important: the page only prepares database-rendered messages. No outbound provider adapter, live sender or delivery confirmation is connected. The UI's policy approval is not a legal determination that the contact is lawful; owner must independently verify consent/lawful basis, local law, provider terms and sender authentication. Migration 0038 signature enforcement remains unapplied, and migrations 0022–0039 are still code only unless separately verified.
+- CI after these commits must be checked before claiming tests pass. No deployment, migration application or live send occurred.
+
+## 2026-11-23 — Outreach Studio UI completion checkpoint
+
+- Outreach Studio is no longer a placeholder: commit 876d15f050f8551566bd1f25202962d114cb0d02 created the campaign workspace; commit 741c8390178d8d160dc60d83f8be1ff93a94b03 connected forms to the authenticated APIs; commit d3e27a709b953b1c444146402444b26331e62f82 added campaign kind to the list query.
+- The page supports draft campaigns, recipient entry, manual eligibility review with documented basis/evidence and provider registration attestation, template authoring (initial + follow-up sequence), campaign policy approval, campaign type selection (general/partnership) and database-only queue preparation. It explicitly states no messages are sent. No sender adapter or webhook is connected.
+- Tightened template UI constraints to subject <=80 and body template <=340 before placeholder expansion/signature/partnership terms (commit 1ba8e465a1b026f612123dc5516ca4086aa077a5). The database remains the final 500-character rendered-body guard.
+- Added tests/outreach-ui.test.mjs (commit 4bebb63c8795054079ad0077d5920360384986bd). CI for that commit failed only because a separate existing outreach-api assertion used lowercase text while the UI correctly used capitalized 'Provider send performed: no'. Fixed the assertion in commit 0470f18a85c9b78929b875a4845155e4d75d510e; its CI run is still in progress.
+- The UI's owner confirmation for provider marketing registration is an attestation, not an automatic provider-side verification. The owner must independently verify contact eligibility, lawful basis, provider marketing registration, sender authentication and applicable rules.
+- No migration application, deployment, external send or financial execution occurred. Migrations 0022–0039 remain code-only unless separately verified. External execution remains disabled.
+- Synchronized the master blueprint with the actual Outreach Studio workflow and the no-live-delivery boundary (commit e9658368ad20262c9513a86cdbe6192c7598b2fb).
+
+## 2026-11-23 — Research evidence assessment controls
+
+- Added owner-facing evidence assessment controls in public/research.js (commit 011cfbe325bceb4be9fe6d7e060be1bc0afac548). For each saved source the owner can label it unreviewed, supports, contradicts, context or rejected through the existing owner-authenticated PATCH API. The UI explicitly explains that this is a human review label, not automatic fact-checking.
+- Added tests/research-evidence-ui.test.mjs (commit 489c33e6bd557c83f1a9b1e4f137caf280f87b0a) to assert the accepted evidence states, PATCH path and non-verification wording.
+- Research Engine still stores source metadata/excerpts and manually reviewed evidence. It does not yet ingest PDFs/HTML/CSV, extract page/line citations, perform robust full-text claim verification, index semantic/vector embeddings or export complete research reports. Do not claim those features exist.
+- Outreach Studio workflow test initially failed only because the expected phrase capitalization differed from the UI string; corrected in commit 0470f18a85c9b78929b875a4845155e4d75d510e, whose CI run completed successfully. The UI build, JS wiring and campaign kind API had their own successful runs. The newer research evidence UI/test run is still pending and must be checked.
+- No migrations applied, no Worker deployment, no sender adapter, no live delivery. Financial execution remains permanently denied. Continue with provider-safe dry-run design, platform-authorized collection and module-by-module audit; never claim a placeholder page is a completed workflow.
+
+## 2026-11-23 — Research evidence regression-test correction
+
+- Research evidence UI commit 011cfbe passed CI (run 45108915723). The follow-up test file initially failed because its static regex omitted the actual `resource === "research_sources"` qualifier in the API guard. Corrected the test to match the implementation in commit 901685f082358e3ef46c5c39e302632ea413fd18.
+- The latest run for 901685f is in progress at this note. Previous failed runs 45108928175, 45108963144 and 45108967275 all trace to that same assertion failure; the UI code and typecheck were successful on run 45108915723. Verify the new run before reporting all tests green.
+
+## 2026-11-23 — Evidence-based Analytics dashboard
+
+- Replaced the Analytics placeholder with a live read-only workspace snapshot in public/analytics.html and public/analytics.js (commits 315e7ed616fffd3977eeda5660bc4b4125e6463b and e57970f640136ca2000d6ee1b69b6430bc930a6f). It queries saved projects, tasks, research briefs, partner candidates, leads, offers and outreach campaigns through the authenticated API client, then derives simple counts and links back to each module.
+- The dashboard explicitly does not invent revenue, profit, conversion rates or ROI because transaction data is not connected. It reports incomplete module queries rather than fabricating counts.
+- Added tests/analytics-ui.test.mjs (commit 671c887249df4ebead8c3c12d595d2aec175bfca). CI for these changes is pending.
+- Other current branch work also added owner evidence-status assessment controls in Research Studio (commit 011cfbe...; its CI passed) and Outreach Studio UI is now connected to existing campaign APIs. No migrations or deployment occurred.
+- Updated docs/GIGO_MASTER_PRODUCT_BLUEPRINT.md with the read-only Analytics snapshot and its no-invented-financial-metrics boundary (commit db6410aa5c0e9e1a1d57a9a906ab36f8930ec34b).
+
+## 2026-11-23 — Launch Planner implementation
+
+- Replaced the Launch Planner placeholder with a functional internal project/milestone workspace (public/launch.html commit 785d9ebcfb1fa6537fbde23df6605b2d968afabe; public/launch.js commit 0400d9b9fae938264d1b7596f740b33b0ee19713). It creates launch projects, selects existing projects, adds a standard launch checklist, adds custom milestones and updates task statuses through the existing owner-scoped Projects/Tasks APIs.
+- The standard checklist covers customer problem validation, offer/economics review, product completion, sales assets, launch content, authorized distribution/partner planning, customer support and post-launch measurement. It creates internal tasks only; it does not publish, send, purchase or pay.
+- Added tests/launch-ui.test.mjs (commit d66a3defa61d171c94f532fc5bfbea617c7d6888). CI pending.
+- Analytics dashboard has also been implemented as a read-only count snapshot (commits 315e7ed..., e57970f..., test 671c887...). It deliberately does not invent revenue/ROI.
+- Updated the master blueprint with the Launch Planner checklist and its internal-only execution boundary (commit 214d6f84ecd9425385bf04fe7d5bd095ad567e2c).
+
+## 2026-11-23 — Analytics, Launch Planner and Marketing Studio
+
+- Analytics dashboard is implemented in public/analytics.html and public/analytics.js. It reads owner-scoped project, task, research, partner, lead, offer and outreach records and shows record counts/status only. It does not invent revenue/profit/ROI. Tests: tests/analytics.test.mjs. CI run 45109041932 for commit 147662c5ac61d46b3e1f2a774b43af1a2b89efe2 passed.
+- Launch Planner now uses existing owner-scoped Projects and Tasks APIs for launch project creation, standard checklist generation, custom milestones and task status tracking. UI/JS commits: 0400d9b9fae938264d1b7596f740b33b0ee19713 and tests/launch.test.mjs commit d66a3defa61d171c94f532fc5bfbea617c7d6888. Blueprint synchronization commit 216a532312390f99e5094ae64edcfe64a21fd700. These are internal tasks only; no publishing, outreach, purchases or payments.
+- Marketing Studio draft storage added with migration 0040_marketing_assets.sql (commit 729e84783f9b7ad05a4caf6daeaa85923ff38bc0). It creates an owner-scoped RLS table for content drafts and status. API resource /api/v1/marketing/assets added to src/index.ts (commit 398564bca241fc54632241f61d1b94ca94ea65c0).
+- Replaced public/marketing.html placeholder with a content draft form/list (commit d9c1a0a92d6841eddd0f4568a1e5853d5873c097); added public/marketing.js to create, list and update internal review status (commit d6f6ca7f337d045c855b5cc3979d4bced72a36c8); added tests/marketing-assets.test.mjs (commit 1c455659709149838cc30a4232ef6ff1d35d8af7). UI and API commit CI runs passed; test commit run 45109173405 is still in progress at this note.
+- Marketing asset approval is internal review status only. No social publishing, ad purchasing, email sending or external distribution is connected. Migration 0040 is committed only and has not been applied.
+- Research evidence review test fix 901685f082358e3ef46c5c39e302632ea413fd18 passed CI (run 45108993026).
+- No Worker deployment or database migration application occurred. Financial execution remains hard-denied. Continue with Customer Success, Creative Studio and Learning modules, then collection/research full-text and external provider integration only within documented platform rules.
+
+## 2026-11-23 — Marketing Studio draft workflow
+
+- Added migration 0040_marketing_assets.sql (commit 729e847...) for owner-private marketing asset drafts with types social post, email copy, landing page, advertisement, video script, blog article and other; status is draft/review/approved/archived. The table stores copy and metadata only; it does not publish or send.
+- Added /api/v1/marketing/assets through the owner-scoped business-resource handler (commit 398564b...). Hardened validation in src/index.ts to require title, supported asset type and content on create, bound optional text fields, validate metadata as an object and restrict statuses (commit b455b33b616478ecc1a0cea900a270482bc5c8b6).
+- Replaced Marketing Studio placeholder with a draft editor and saved-asset review/status UI in public/marketing.html and public/marketing.js (commits d9c1a0a... and d6f6ca7...). It clearly states draft storage only; internal approval does not publish.
+- Added/extended tests/marketing-assets.test.mjs (commit 9cf95aaa54e81c743576c0319accb818ec4e68f9) for owner scope, draft-only boundary and field validation. CI is pending.
+- Migration 0040 remains unapplied. No social publisher, email delivery, ad-buying or external campaign execution is connected.
+- Synchronized the master blueprint with Marketing Studio draft storage and its no-publishing boundary (commit 794acb443055c201030d0788d05f84403558b66c).
+
+## 2026-11-23 — Customer Success support-case workflow
+
+- The branch now contains migration 0041_customer_support_cases.sql and a Customer Success UI/API workflow using the customer_support_cases table. It stores owner-private support cases, priority/status, internal notes and response drafts; no customer messages are sent and no refunds/payments/account changes are executed.
+- public/customers.html and public/customers.js provide case creation, queue listing, status updates, response-draft editing and internal notes. src/index.ts exposes /api/v1/customers/cases through the owner-scoped business resource handler. tests/customer-support.test.mjs covers owner scope and the no-delivery boundary.
+- I initially created a separate customer_feedback migration with the same 0041 version prefix while another task was creating customer_support_cases. To avoid duplicate Supabase migration versions, I deleted my redundant customer_feedback migration (deletion commit 8636d17690343e42d4054e75b4dff36de2f158da) and removed its unused API validation branch. Corrected customer support email validation in commit c9a7e2117b56f60de57ad766ac98a83a3f2ffc26.
+- Migration 0041_customer_support_cases.sql remains the single 0041 migration. It is not applied; no deployment or customer contact occurred. CI for the latest integration is pending.
+- Synchronized the master blueprint with Customer Success support-case tracking and its no-send/no-payment boundary (commit c6e9bafeff46e498ab23ee8128a2c30c8097108f).
+
+- Follow-up compile check found one stale defaulting line for the discarded customer_feedback table. Removed it from src/index.ts in commit 1cc0bf8270b5623ea38fddb9c6882a4922b8d215. Customer Success now uses only customer_support_cases; re-check CI on the corrected head.
+
+## 2026-11-23 — Creative Studio brief and output tracking
+
+- Added migration 0042_creative_briefs.sql (commit b2870ad2d3b3b8616fcd2d7d848d90a2b849fa6f) for owner-private image/video/audio/brand/presentation briefs, prompts, HTTPS references, status, output URL and notes.
+- Added /api/v1/creative/briefs through the owner-scoped business resource handler in src/index.ts (commits f550fb3416a5b32fa32fdad1634dbf508449c878 and c4820e08336906cc59be4c1858ef9c2cbc079273). Validation restricts asset type, status, text lengths and HTTPS reference/output URLs.
+- Replaced the Creative Studio placeholder with a brief editor and production board in public/creative.html (the page was updated by the parallel branch workflow) and public/creative.js (commit ce693770543ad49543792f3e171aece6efd02149). Owners can save briefs and prompts, manage production status, add output links and notes. The UI explicitly says it does not generate or publish media.
+- Added tests/creative-studio.test.mjs (commit 4bf0df5308e2d8bfdcb0176e30eb134061a2e953). CI pending. Migration 0042 remains unapplied; no paid media generation or external publishing is connected.
+- Synchronized the master blueprint with Creative Studio brief storage and its no-generation/no-publishing boundary (commit 75dca425842211661438f3889be732c229bac1af).
+
+## 2026-11-23 — Learning Planner and Commerce Planning
+
+- Replaced Learning & Accountability placeholder with a usable Learning Planner using existing owner-scoped Projects and Tasks APIs. Owners can create Learning: projects, generate an eight-step study path, add custom milestones and track task status. UI: public/learning.html and public/learning.js. Tests: tests/learning.test.mjs; CI run 45109516981 passed. Automatic reminders, course enrollment and adaptive learning integrations are not connected.
+- Replaced Commerce & Fulfilment placeholder with a financial planning view over saved products and offers (public/commerce.html and public/commerce.js). It shows saved price/cost assumptions and indicative net-before-tax estimates only. It explicitly preserves the permanent financial hard deny: no payments, refunds, transfers, purchases, subscriptions, investments or other financial execution. Commerce UI test commit 6c79796cd93fe21b0b43db66c8b85cc1df45c2b9 is still running CI.
+- Customer Success code and UI are in place, with migration 0041 and API/UI/tests. The earlier failures were due to an invalid email-validation escape and a stale customer_feedback branch/default. The stale branch was removed in commit 1cc0bf8270b5623ea38fddb9c6882a4922b8d215; Customer Success uses only customer_support_cases. Re-check the latest CI head before reporting it green.
+- Creative Studio migration 0042, owner API, brief UI, production status, HTTPS output URL and notes are implemented. Tests 4bf0df5308e2d8bfdcb0176e30eb134061a2e953 and a7a181162af89dc5e1d12f3e61efabd2383bea44 passed their runs. It does not generate media or publish assets.
+- No migrations 0040–0042 have been applied. No Worker deployment, external publishing, customer messages or financial actions occurred.
+
+## 2026-11-23 — Workspace module verification update
+
+- Commerce Planning dashboard test passed CI run 45109704229. It reads existing product and offer assumptions only and keeps all money movement/financial commitments hard-denied.
+- Creative Studio output tracking test passed CI run 45109682373; the UI now records HTTPS output URLs and production notes alongside owner-private briefs.
+- Customer Success stale feedback-schema default was removed in commit 1cc0bf8270b5623ea38fddb9c6882a4922b8d215; CI run 45109491884 passed. Customer Success uses only migration 0041_customer_support_cases.sql and the customer_support_cases API resource.
+- Learning Planner UI/test passed CI run 45109516981. Marketing draft UI/test passed CI run 45109173405. Research evidence UI test passed CI run 45108993026. Analytics dashboard test passed CI run 45109041932. Launch Planner test passed CI run 45109122940.
+- The latest memory/blueprint synchronization commits are 33defa86f4593d371c85c41e1651e9b53d3c9692 and 7e6ad8ef9ddc4dfcf8f4edc1faf06cde74e22c03; their CI runs are in progress at this checkpoint.
+- No migrations 0040–0042 were applied and no Worker deployment occurred. No external send/publish or money movement occurred.
+
+## 2026-11-23 — Autonomy approval-consumption hardening
+
+- Hardened migration 0039 so the atomic service-role approval consumption RPC also refuses to consume any approval if the owner's global pause row is missing/paused, if external_execute policy is missing/disabled/not approval-required, or if the tool name matches the permanent financial deny patterns. Tool/target lengths are bounded.
+- The initializer now returns the actual persisted pause state on repeated calls rather than always claiming paused=true. It still never unpauses or enables external execution.
+- Added regression assertions in tests/autonomy-governance-sql.test.mjs (commit 81ac42f3e95507753bc5a73be314b73cf1a45427); SQL hardening commit 85a5abd764ee763cfb822ebeae22af25ebe57ea3. CI pending.
+- Runtime continues to block external tools entirely until a sender-specific path consumes an exact approval and performs immediate pre-side-effect policy, recipient, suppression, provider and pause rechecks.
+- Updated the master blueprint with the approval-consumption pause/policy/financial hard-deny checks (commit 2e4f216e036570071a3faee119dc58324f977be8).
+
+## 2026-11-23 — Assistant Marketing Studio tools
+
+- Added assistant tools marketing_list_assets and marketing_create_asset in src/assistant/runtime.ts (commit eaf07b4cebf555b4268e972daf42417da45199e3). The assistant can read owner-private marketing drafts and save new draft copy with bounded type/field validation. The create result explicitly returns published=false and sent=false.
+- Registered the tools as observe/draft in src/assistant/autonomy.ts (commit 256e4be7401f8d415635af7d0b5929a4f88c4d49) and marked Marketing Studio tools available in src/assistant/registry.ts (commit 54d6c92a88c4a6aeb9c598abc379a6901d9e4e04). Added autonomy/runtime regression coverage in tests/autonomy-policy.test.mjs (commit 041caf4ce6e56ba47a1b12a55f826d14f6163091).
+- This adds internal draft creation only; no publishing, email sending, ad buying or external side effects are exposed. Migration 0040 remains unapplied. CI pending.
+- Updated the master blueprint with the new Assistant Marketing draft tools and no-publishing boundary (commit 76e696ca916ae3aba364ff35d861e7cb763fbe2a).
+
+## 2026-11-23 — Assistant Customer Success tools
+
+- Added assistant tools customers_list_cases, customers_create_case and customers_update_case in src/assistant/runtime.ts (commit 3cfc1bda137057bec8c7626865b1470be0d55ba8). They read owner-private support cases, create internal cases and update status/response drafts/notes. Results explicitly state customer_contacted=false and response_sent=false.
+- Registered the tools as observe/draft/internal_execute in src/assistant/autonomy.ts (commit 7adbc996b1736cdd30ae11e2b6c6fd6fbf02df9b) and marked Customer Success tools available in src/assistant/registry.ts (commit b5333bcfde980a0f6891f0f67365dba8e572f004). Added tests in tests/autonomy-policy.test.mjs (commit df913cb1e664396c67006f754aa9e8d89065bc6b).
+- This enables internal support workflow only. No outbound customer messages, refunds, account changes or payments are possible. Migration 0041 remains unapplied; CI pending.
+- Updated the master blueprint with Assistant Customer Success case tools and the no-contact/no-payment boundary (commit 3408d0dbddaad6a3723bb0dc83b15817cd9a32a0).
+
+## 2026-11-23 — Assistant Creative Studio tools
+
+- Added creative_list_briefs, creative_create_brief and creative_update_brief to src/assistant/runtime.ts (commit e946e6fafc3453f186dab5c61f82baafa145c76e). GiGo can read owner-private briefs, save a new brief/prompt with up to 20 HTTPS references, and update production status/output URL/notes.
+- Registered observe/draft/internal_execute scope classifications in src/assistant/autonomy.ts (commit abd555b53a99f2af64aa093164d1ec35c59369cc) and marked the tools available in src/assistant/registry.ts (commit 7e3e34ea853923fe9515ea386b42f2dc5cd39dc0). Added tests in tests/autonomy-policy.test.mjs (commit 66658a05da127fdb1c30f4d71eb3ddf01ccf479a).
+- Tools explicitly report media_generated=false and published=false. This is brief/prompt/output tracking only, not an image/video generation integration. Migration 0042 remains unapplied; CI pending.
+- Updated the master blueprint with Assistant Creative Studio brief tools and the no-generation/no-publishing boundary (commit 6b4eec3f6a5822646bb012af6858dbbdecc5ab1a).
+
+## 2026-11-23 — Research URL hardening and Customer Success assistant tools
+
+- Research source creation and edits now require valid HTTPS URLs without embedded credentials in src/index.ts (commit 59ca3d378f058d7f930573b84eb340e7775443fb). public/research.js also validates stored source links before rendering; unsafe legacy URLs fall back to a non-navigating placeholder (commit 7127a795470f624675523f0a099434f9e4051eb9). The source-security test was corrected to inspect the HTML form rather than JS in commit d1fd983ca437dc252d20f2b33cdcd1632d5eef33; latest security test run is pending.
+- Migration 0039 had become malformed during a previous patch (an unterminated regex and duplicated SQL tail). Replaced it with a single valid gigo_consume_autonomy_approval definition, complete parameter validation, global-pause and external-policy checks, exact target/hash/quota matching, and permanent financial-action rejection (commit 8832d2e0d8829c913e14e3dc716f0787e2955a7e). Expanded financial deny patterns (commit 5c5f23c7a89898a1d086581ccc120303c47fd30c). CI for the repaired SQL passed run 45109951260; a later function-count test needed regex escaping correction (commit 4e61eb75e863fc2b42657f1e12bb63aee1296473), and its CI is pending.
+- Added GiGo Assistant internal Customer Success tools to list, create and update support cases/response drafts. They use the authenticated owner database context, restrict update fields/statuses, and explicitly return customer_contacted=false / response_sent=false. Runtime tool handlers, registry and autonomy mapping are in src/assistant/runtime.ts, src/assistant/registry.ts and src/assistant/autonomy.ts. Removed duplicate handler/definition/autonomy entries created during parallel edits. Regression test tests/assistant-customer-support.test.mjs was added in commit 286b61becb1b802b67153f66bca557516848fee0; CI is pending.
+- No support response is sent, no refund/payment/account change is made. Migration 0041 remains unapplied. Runtime external execution remains blocked.
+
+## 2026-11-23 — Assistant module integration and CI reconciliation
+
+- The assistant now has registered Marketing draft tools and Customer Success case tools. Creative Studio tools were added in src/assistant/runtime.ts, autonomy.ts and registry.ts; they list, save and update owner-private creative briefs without generating or publishing media.
+- Concurrent branch work briefly duplicated Customer Success tool names/classifications, causing TypeScript duplicate-property failures. The current source has unique tool definitions and one autonomy classification per tool. The registry now exposes customers.list_cases, customers.create_case and customers.update_case. The test assertion was aligned to those split IDs in commit f9ea22d49c17d04edb82d3590fac9a5541f7d675.
+- Creative Studio and Customer Success assistant tool test runs before duplicate cleanup failed due those transient duplicate classifications/definitions. The corrected current head's CI is still in progress; do not report green until verified.
+- Research source URLs are now restricted to valid HTTPS links without embedded credentials; safe rendering of stored source links and tests were added by concurrent work. The earlier URL test expected the wrong page source and was corrected in a later commit; check the latest run.
+## 2026-11-23 — Assistant Learning and Analytics capabilities
+
+- Added Assistant tools to list/create Learning: projects, list/add/update study milestones, and read an Analytics snapshot from owner-scoped projects, tasks, research, partner, lead, offer, outreach, marketing, creative and support records. Tool definitions, runtime handlers, registry entries and autonomy classifications are in src/assistant/runtime.ts, src/assistant/registry.ts and src/assistant/autonomy.ts.
+- Learning tools use observe/draft/internal_execute scopes only. They create internal project/task records; no course enrollment, paid subscriptions or reminders are executed. Analytics is read-only and explicitly does not infer revenue/profit without transaction data.
+- Added tests/assistant-learning-analytics.test.mjs (commit ad7989c5985c96972a3ae86850e5f275399b977c); full CI run 45110368203 passed. Subsequent refinement discloses that each table count is capped at 1,000 and may be truncated (runtime commit 39661aa4590fc2d7b5d510733f4d65faee86370b; test commit 6edc0117d04d55b4f856cb31f262340cd11cea30, CI pending).
+- Research HTTPS source URL security test passed run 45109904453. Autonomy SQL repair/function-count test passed run 45109988281. Customer Success Assistant split-registry test passed run 45110281627. The complete suite passed on commit ad7989c; newer count-limit test is pending.
+- No external actions enabled. Migration 0039 remains code-only; no database migration was applied and no deployment occurred.
+
+## 2026-11-23 — Assistant Outreach preparation tools
+
+- Added outreach_list_campaigns, outreach_create_campaign, outreach_add_recipient, outreach_add_template and outreach_prepare_campaign in src/assistant/runtime.ts (commits 325ba7ea559275e3c7d5007f0d759f4412acc7e6 and 0e2ae0a03928f251c5d883e7f39edc00e47d045d). The assistant can create draft campaigns, add unreviewed recipients, save unapproved templates and prepare database-rendered message drafts for an already owner-approved active campaign.
+- Partnership campaign creation calls the owner-authenticated gigo_set_outreach_campaign_kind RPC; if migration 0038 is not applied, the tool reports campaign_kind_set=false rather than pretending the deal type was saved.
+- Preparation is capped at 25 eligible recipients per call and requires campaign active/approved plus recipient contact_authorization_status=approved and marketing_contact_registered=true. It uses the service-only sequence-rendering RPC. Every result explicitly says provider_send_performed=false.
+- Registered tool scopes in src/assistant/autonomy.ts (commit 3c08668c50d140bfa4e4d4ec288303a451c2064f), updated src/assistant/registry.ts (commit f81129136767274185b4dd2d731b719bac8e7a13), and added tests/autonomy-policy.test.mjs coverage (commit 5322e1eb76a71605a6e8ed78a734ac8674551b0a).
+- No tool exists for approving a campaign, marking contact eligibility, sending messages, accepting deals or signing agreements. Owner must perform campaign and contact approvals in Outreach Studio. No provider sender/webhook is connected; nothing was sent. CI pending.
+- Updated the master blueprint with Assistant Outreach draft/preparation tools and mandatory owner approval/no-send boundaries (commit b3708495183f6b0c2e1543fe3e645092c7337412).
+
+- Tightened Assistant outreach template creation to subject <=80 and body <=340 characters before trusted signature/partnership additions, with a regression assertion (runtime commit 7c4c05189f44823c4be39c4fab85f7c082300e6b; test commit 5390b632849070e1f9a7817b4b616eced0768238). This aligns the assistant tool with the owner's concise-message requirement and DB final <=500-character guard.
+
+- Synchronized the master blueprint with Assistant outreach subject/body length limits (commit df16a2804e1e54d856b9a13a5fe4aa4e05fd0449).
+
+## 2026-11-23 — Assistant tool integration CI verified
+
+- CI run 45110626222 on commit 3b890a2 passed all workflow steps: TypeScript typecheck, browser JavaScript syntax check and collection-engine tests. This run includes the current Assistant Marketing, Customer Success, Creative Studio, Learning/Analytics and Outreach preparation tool integrations up to that commit.
+- The Outreach Assistant registry test was corrected to use the actual singular ID outreach.prepare_campaign. The current Assistant tool definitions and autonomy classifications have no duplicate names; the app-wide browser syntax check passes.
+- Subsequent commits df16a28 and c760223 update the blueprint and memory only; the verified code commit remains 3b890a2. Re-run CI after any further source changes.
+- Major remaining production gates: apply outstanding migrations in a verified order; deploy the Cloudflare Worker; configure and test provider sender/webhook only after owner authorization and provider policy checks; finish authorized platform-specific collection adapters; expand full-text/PDF/HTML evidence ingestion and claim verification; verify scheduler and resumability in the deployed environment; validate all owner workflows end-to-end; add onboarding and final operational runbooks.
+- Do not call the project fully live or production-ready. No outstanding migrations have been applied in this task, no Worker deployment occurred, no external messages were sent, and no money movement is enabled. Financial actions remain permanently hard-denied.
+## Browser runtime and CI hardening — 2026-11-23
+
+- Found and fixed a duplicate top-level `const authTabs` declaration in `public/app.js` that prevented the browser application script from parsing. Fix commit: `7c19473924f1906e54f8909b4d37d24f41019465`.
+- Expanded `.github/workflows/typecheck.yml` to syntax-check every `public/*.js` file with Node after TypeScript typecheck and the existing Node test suite. Workflow commit: `1f648d2d194f0f09767adef39dbbbddadcda2022`.
+- Verified workflow run `45110662642` completed successfully on commit `1f648d2d194f0f09767adef39dbbbddadcda2022`; typecheck, full tests and all browser JavaScript syntax checks passed.
+- An earlier outreach assistant test failure was caused by a stale plural registry ID in the assertion; the current test now matches the actual singular `outreach.prepare_campaign` registry ID (commit `3b890a25c0c12d281d6a67fe289cbca05a8715b2`; CI run `45110626222` succeeded).
+- This verifies source-level checks only. No migration has been applied, no Worker deployment occurred, and no outbound message was sent.
+
+- Synchronized the master blueprint with the verified Assistant integration milestone and outstanding production gates (commit 0c4b17c82eaebc20924400f63e4a32fecb757202).
+
+
+## 2026-11-23 — Assistant Outreach Studio integration and CI cleanup
+
+- The Assistant now has registered, autonomy-classified tools to list outreach campaigns, create draft campaigns (including partnership campaign kind), add recipients, save unapproved templates and prepare message drafts only for owner-approved active campaigns. Runtime handlers require eligible, owner-reviewed contacts and provider marketing registration before database queue preparation; they explicitly report that no provider send was performed. There is no outreach-send tool.
+- Updated registry entries from planned to available for these preparation-only capabilities in src/assistant/registry.ts (commit 06c4eb43ebd3a2247d7e82d7b3aeda7c4aa2b96f); added regression coverage in tests/assistant-outreach.test.mjs (commit f184bf84857c191a0e93aeb24467df0bc3c2ded0). Other branch commits updated template length limits and blueprint documentation.
+- Reconciled a stale test expecting old plural registry ID outreach.prepare_campaigns; current registered ID is outreach.prepare_campaign. Test updated in tests/autonomy-policy.test.mjs (commit 3b890a25c0c12d281d6a67fe289cbca05a8715b2), and CI run 45110626222 passed.
+- Previous outreach integration CI runs failed on that stale test assertion; do not treat those as current code failures. Latest browser JavaScript syntax workflow run 45110662642 was still in progress at last check. Recheck newest full CI before declaring green.
+- Outreach Studio UI exposes campaign creation, campaign type (general/partnership), recipient eligibility review, template drafting and owner campaign approval. It clearly states no message delivery is connected. No external message has been sent.
+- Universal Collection Engine has actor validation, provider planning, a bounded/cancellable runner, durable worker/store interfaces and SQL worker RPCs, but no adapter is registered in src/collection/adapters.ts. The collection worker intentionally skips rather than crawling. Do not claim cross-platform collection is live; only approved official APIs or a verified public-web adapter with DNS/IP and redirect protections may be enabled.
+- Signature STANLEE and durable autonomy controls remain not live until required migrations are applied and owner endpoints successfully exercised. Migrations 0038–0042 remain code-only; do not apply or deploy without explicit instruction.
+
+## 2026-11-23 — Outreach assistant and browser syntax verification
+
+- Assistant outreach tools create/list campaign drafts, add unreviewed recipients, save unapproved templates and prepare DB-rendered message drafts only for owner-approved active campaigns and approved/registered recipients. No tool approves campaigns, overrides contact eligibility or sends messages. Partnership kind setting uses the owner-authenticated RPC; migration 0038 must be applied for persistence.
+- Assistant template creation enforces subject <=80 and body <=340 before DB signature/partnership additions. Database remains the final guard at <=500 characters including signature.
+- CI now syntax-checks every browser JavaScript module. Latest run 45110662642 on commit 1f648d2d194f0f09767adef39dbbbddadcda2022 passed, including the full test suite and browser JS syntax checks. Earlier outreach tests failed only due plural/singular registry ID assertion and were corrected in commit 3b890a25c0c12d281d6a67fe289cbca05a8715b2.
+- Outreach still has no provider sender adapter or verified webhook. Assistant preparation never transmits messages. Owner remains responsible for explicit campaign approval and contact eligibility review.
+- No migrations applied and no Worker deployment occurred. STANLEE signature is not live until migration 0038 is applied and the authenticated signature settings API is called.
+
+## 2026-11-23 — Expanded Analytics dashboard
+
+- Expanded `public/analytics.js` to include Marketing assets, Creative Studio briefs and Customer Success cases alongside projects, tasks, research, partners, leads, offers and outreach campaigns (commit `c594a923315ffd78a38dee53918e2dfc3602fdfb`).
+- Corrected the Analytics page intro and disclaimer in `public/analytics.html`: it reports saved workspace activity only, not unsupported revenue, profit, conversion, cost or ROI metrics; financial execution remains unavailable (commit `1259bbd38ccba3837dab37c199d7f9f38f406293`).
+- Added `tests/analytics-dashboard.test.mjs` to verify all 10 source modules, the new cards and the no-fabricated-financial-reporting language (commit `666306523498c4674688074d7091b2f1a34841d3`).
+- API route checks confirmed the three added endpoints exist in `src/index.ts`. CI for the Analytics expansion is queued/in progress at the time of this note; verify before calling it passed.
+- No database migration was applied and no deployment occurred. Counts are based on records returned by each module and may be capped by API pagination.
+
+## Project-wide implementation status review — 2026-11-23
+
+- Re-audited the current Assistant registry. The only remaining registry entries explicitly marked planned are external outreach sending, external launch publishing, and commerce/payment integration. The commerce/payment entry must remain unavailable because the owner has reserved all monetary actions for themselves and GiGo's financial hard deny is permanent.
+- Internal owner-facing workflows now exist for research briefs/evidence review, Product/Partner Studio, Leads/Offers, Marketing drafts, Outreach campaign preparation, Launch planning, Commerce planning (non-transactional estimates only), Creative briefs, Customer Support cases, Learning plans, Analytics snapshots, Operations, and Settings.
+- Research Engine currently discovers/stores Crossref/OpenAlex and best-effort GDELT metadata/abstracts as unreviewed sources; owner evidence labels are available. Full PDF/HTML/CSV ingestion, line/page citations, vector search, claim-level verification and broad exports remain unimplemented and must not be represented as complete.
+- Universal Collection Engine has a bounded public HTTPS metadata actor, DNS/IP pinning, redirect revalidation, robots checks, byte/time/page caps, resumable worker leases, database persistence RPCs, and a manual GitHub Actions batch workflow. It is not enabled by default; it needs the collection schema/provider record and GitHub Actions secrets, then a deliberate health check and manual batch dispatch. Do not enable authenticated scraping or bypass access controls.
+- Latest source-level verification: CI run 45110662642 succeeded on 1f648d2d194f0f09767adef39dbbbddadcda2022, including TypeScript typecheck, all Node tests and syntax checks for all public JavaScript modules. Browser duplicate declaration fixed in public/app.js.
+- No migration beyond the previously confirmed baseline has been applied. Migrations 0010–0042 remain code-only (0002/0003 status remains uncertain). No deployment, no external message sending, no social publishing and no money movement occurred.
+- Before any production claim: reconcile migration history, apply migrations in order with owner-controlled Supabase access, save STANLEE through Settings after migration 0038, initialize autonomy with its default global pause, configure only free provider keys in Cloudflare Worker secrets, deploy the trusted branch deliberately, verify health and UI flows, and keep external sending/publishing blocked until a lawful provider integration and explicit owner approval are completed.
+
+- Follow-up CI found one pre-existing Analytics UI test still asserted the previous disclaimer wording after the dashboard copy was corrected. Updated `tests/analytics-ui.test.mjs` to match the current accurate statement and expanded it to cover all 10 dashboard data routes (commit `24942ed2da6ccfbcc55aa571ef90883391acb9cf`; concurrent test synchronization commit `1bb5948483da6aed0c3e635eab1d1da695019b93`). The latest full workflow is run `45110832295` on commit `0d1722eba56f65e5d8ec878ca784bfc658fa9166`, still in progress at the time of this note; do not report it green until completion.
+
+- CI follow-up verified: run `45110832295` completed successfully on commit `0d1722eba56f65e5d8ec878ca784bfc658fa9166`. TypeScript typecheck, browser JavaScript syntax checks and the full collection/Node test suite all passed. This includes the Analytics dashboard expansion and corrected Analytics regression tests. The earlier pending status above is superseded by this successful result.
+
+- Analytics dashboard regression assertions were reconciled with the current UI wording (pagination caveat and no revenue/profit/conversion/cost/ROI claims). The stale assertion failure on an earlier intermediate commit was corrected; the follow-up full CI run 45110832295 passed.
+- A newer run for the consolidated project-status memory update is still in progress; retain the last confirmed green code verification (run 45110662642) until the newer run completes.
+
+
+## 2026-11-23 — Production handover documentation and setup guide refresh
+
+- Replaced the obsolete initialization-only README with a current architecture/module overview, local setup, migration cautions, CI description and production-readiness gates (commit 1a1b4a5f0629118b83f408a4c6f5046c9dad14e3). Added required `OWNER_EMAIL` to its local configuration sample (commit 913b7c194b755159ac2d62ceb46b7e3f85539174).
+- Updated `.env.example` with `SUPABASE_SECRET_KEY`, owner-only `OWNER_EMAIL`, exact allowed-origin guidance and optional provider-secret names (commit b48e74dbe4ee4bf7ef231f1fd01302a5b277288e).
+- Added `docs/PRODUCTION_READINESS.md` covering migration reconciliation (0001–0042), owner isolation, Worker configuration, autonomy initialization, STANLEE signature, workflow smoke tests, collection health/batch dispatch, outreach constraints, deployment and rollback (commit a0cbb5778883829aa8c69ef2e7fbb385a7cc90f2).
+- Rewrote `docs/ACCOUNT_SETUP.md` and `docs/LOCAL_DEVELOPMENT.md` because they still described the repository as an initial shell and contradicted current implementation (commits 451b3884bafa63d2877b396909fedddf8d517e30 and 791892c7992353d2f1646ad220ed7e2bde6e3e79).
+- CI run 45110911522 passed on commit 30d9042c80871bb60a7a8c81fead7fe6bbcd5113, including corrected Analytics tests. Docs/setup changes trigger their own CI; latest observed runs 45111023333 and 45111027530 were still in progress at last check. The latest README owner-email commit's workflow run was not yet visible.
+- Clarification to the earlier collection note: `src/collection/adapters.ts` is an explicit runtime registry, but the reviewed `gigo_safe_http_batch` adapter is registered by `scripts/collection-batch-worker.mjs` for the manual GitHub Actions runner. The script implements pinned public IPv4 DNS, private/reserved IPv4 rejection, redirect revalidation, robots checks and byte/time/page/redirect bounds. The provider remains disabled until the correct owner provider row, collection migrations and GitHub Actions secrets are present and the manual health check passes. It is a public HTTPS metadata collector, not a general social scraper.
+- Migrations beyond the confirmed baseline remain unapplied/unverified; no latest Worker deployment, provider health promotion, live outbound delivery, social publishing or money movement has been performed.
+
+
+## CI follow-up — 2026-11-23
+
+- Production handover runbook CI passed: run 45110982686 (commit a0cbb5778883829aa8c69ef2e7fbb385a7cc90f2).
+- Owner environment template CI passed: run 45110978827 (commit b48e74dbe4ee4bf7ef231f1fd01302a5b277288e).
+- Updated account setup CI passed: run 45111023333 (commit 451b3884bafa63d2877b396909fedddf8d517e30).
+- Updated local development guide CI passed: run 45111027530 (commit 791892c7992353d2f1646ad220ed7e2bde6e3e79).
+- README owner email configuration CI passed: run 45111042378 (commit 913b7c194b755159ac2d62ceb46b7e3f85539174).
+- Memory/blueprint synchronization commits c87f8483e1361359ea5f5294d709696abef3b83f and ab36530f1e104b09c2c33c96f5ac9659eae8e323 were queued/in progress at last check. The last full source suite was green on run 45110911522; documentation-only commits above also passed their own CI.
+
+
+## Research evidence traceability — 2026-11-23
+
+- Added migration `0043_research_evidence_traceability.sql` (commit `a11e37ffd4b76da41367567844f0e24c78b32ae7`). It adds owner-scoped exact evidence passages with page/paragraph/section/timestamp/row/cell locators, optional SHA-256 source-content hash, extraction method and explicit review state.
+- Added atomic research claims with default `unverified` status, plus claim-to-passage relationships marked supports/contradicts/context. Database triggers enforce that source passages, claims and linked evidence belong to the same owner and research run. RLS is enabled on all three tables.
+- Added `tests/research-evidence-traceability.test.mjs` (commit `d32f034885b71500228327d9ebecdb93ad348325`) to assert locator/hash constraints, unverified defaults, owner/run matching and RLS.
+- This is the database foundation only. No PDF/HTML/CSV upload, extraction worker, API/UI route, OCR, semantic index or automatic claim verification has been implemented by this task. A stored excerpt is not proof that a claim is true; review remains explicit.
+- CI run `45113531641` was queued for migration commit `a11e37f` at the time of writing; the separate test commit also needs its own CI result checked. Migration 0043 is committed and unapplied.
+
+- Documentation updated in commits `c8a098f42b42d7062d7c63e5fe627de3acd1e73b` (master blueprint) and `72c3f70010df06f0a5b17e52a014b4e68c16e349` (production runbook). No migration applied or deployment performed.
+
+- First test run for the new traceability test (`45113533938`, commit `d32f034`) found one test-regex bug: the SHA-256 SQL assertion did not escape regex metacharacters. Typecheck and browser syntax checks passed; 136/137 tests passed. Corrected the assertion in commit `8a795d5ff53c8da6f44151595cfc38f712af1c30`. New CI must be checked before marking this milestone green.
+- Blueprint and production runbook updates: `c8a098f42b42d7062d7c63e5fe627de3acd1e73b` and `72c3f70010df06f0a5b17e52a014b4e68c16e349`. Memory updated in this commit. No migration applied, no worker deployed, and no live integration enabled.
+
+
+## 2026-11-23 — Research evidence traceability test correction
+
+- The new migration 0043 itself passed CI on run 45113531641, but the initial traceability test assertion used an over-escaped regular expression and failed on the SQL SHA-256 constraint text. This was a test bug, not a migration or typecheck failure.
+- Corrected `tests/research-evidence-traceability.test.mjs` so the regex matches the literal SQL pattern `^[0-9a-f]{64}$` (commit `e05beff54c75897631cc229e078adab0f82c9810`).
+- Verified GitHub Actions run `45122170974` on that commit completed successfully. The workflow's typecheck job includes TypeScript checking, browser JavaScript syntax checks and the complete Node test suite; job conclusion: success.
+- Current feature branch HEAD at this note: `e05beff54c75897631cc229e078adab0f82c9810`.
+- Migration 0043 remains committed but unapplied. No extraction worker, file upload, claim CRUD API or claim-review UI was delivered by this correction. No deployment or live integration occurred.
+- Next implementation priority: complete research evidence ingestion and claim workflows in small, tested increments, then reconcile the full production migration chain. Do not describe GiGo as production-finished while migrations, Worker deployment, owner setup and integration checks remain outstanding.
+
+
+## 2026-11-23 — Bounded research text extraction foundation
+
+- Added `src/research/extract.ts` with bounded plain-text, HTML and CSV extraction into exact reviewable passage drafts. HTML extraction removes script/style/noscript/svg/template content and markup; CSV parsing preserves quoted commas and row locators. Input is capped at 500,000 characters, passage size at 12,000 characters and output at 50 passages.
+- Binary PDF extraction is explicitly rejected with a clear `PDF_TEXT_EXTRACTION_UNAVAILABLE` error; no fake PDF parsing or OCR claim is made. Unsupported MIME types and malformed CSV fail closed. Extracted passages are evidence candidates only and never auto-verify claims.
+- Added `tests/research-extraction.test.mjs` for text, HTML, CSV, PDF/unsupported-type rejection, oversized input and malformed CSV.
+- Commits: source `96ab264f21a5e84e5e7a1353a114cd719a781df6`; tests `bd6f7dabd53b6d437c58a7a52336dcf3e72100c6`.
+- CI runs `45122270722` (source commit) and `45122273645` (test commit) were still in progress at this note. Do not mark this task verified until both are complete; fix any failures before proceeding.
+- This is an extraction utility only: no file upload endpoint/storage, PDF parser/OCR, passage persistence API, claim CRUD/review API or claim UI has been completed. Migration 0043 remains unapplied. No Worker deploy or production change occurred.
+
+
+### Research extraction CI result
+
+- Source commit `96ab264f21a5e84e5e7a1353a114cd719a781df6`: Actions run `45122270722` passed.
+- Test commit `bd6f7dabd53b6d437c58a7a52336dcf3e72100c6`: Actions run `45122273645` passed; 142 tests passed, 0 failed. TypeScript typecheck and browser JavaScript syntax checks also passed.
+- The memory update commit `177586d54dae198bca73fac2f01ff611c1b4b54a` is a documentation-only follow-up; verify its own run before treating the branch's very latest commit as green.
+
+
+## 2026-11-23 — Research claims and evidence API/UI milestone
+
+### Implemented
+- Extended `ResearchResource` in `src/index.ts` with owner-authenticated, RLS-backed resources for `research_evidence_passages`, `research_claims` and `research_claim_evidence`.
+- Added routes: `GET/POST/PATCH /api/v1/research/evidence-passages`, `GET/POST/PATCH /api/v1/research/claims`, and `GET/POST/PATCH /api/v1/research/claim-evidence`. Writes set `user_id` from the verified session, not request input. Resource fields are allowlisted; linked IDs are UUID-validated; passage and claim lengths and all review/verification/relationship enums are bounded. The database migration 0043 triggers/RLS enforce same-owner and same-run relationships.
+- Extended `public/research.html` and `public/research.js` with exact passage entry/review display, atomic claim creation, manual verification/confidence review, and claim-to-passage links. New claims are explicitly created as `unverified`; no automatic truth-verification is implied.
+- Added `tests/research-evidence-api.test.mjs` and extended `tests/research-evidence-ui.test.mjs`.
+
+### Commits and CI
+- API resource definitions and validation: `567a89a89b989cd48978f0337f987d4f2d0defd5` and `7d1122b04cb5104d8b3118146c7e8d7d6bbefe1b`.
+- API routes: `6624a3d3e4a30d1a8379b543a5c7980b0e9ac94c`.
+- API tests: `d4566427dc71ca1e3605a4572152cf33beb633ca`. Its first CI run `45122430327` failed because the test commit landed before the route-registration commit; this was a commit-order race, not a failing final implementation. Subsequent full CI passed.
+- UI: `475f3ea0873fc8e18c44cf20e6216c9050c0f040`, `fc722cc26db3fb27295a9fd3163117a9255e50ad`, `779c1e094ece8e1338a561abc05c4c7307857353`.
+- Full CI run `45122507415` (API routes + UI implementation) passed. Final UI/test commit run `45122521775` passed with 146 tests, 0 failures; TypeScript typecheck and browser JavaScript syntax checks passed.
+
+### Limits and next tasks
+- Migration 0043 is still committed but unapplied; endpoints will return storage errors until schema is applied. No production database or Worker was changed.
+- Research upload/storage is not implemented. Current extractor accepts already-decoded text only; PDF binary parsing/OCR is deliberately unsupported. Next: a safe, owner-scoped file ingestion/storage design (strict MIME/size limits, malware/untrusted document handling, signed private storage URLs, cleanup/retention) and then PDF text extraction worker if a free compatible runtime is available.
+- Add server-side extraction-to-passage persistence orchestration and richer claim/evidence report rendering/export. Claims remain owner-reviewed; no AI model should be able to mark them verified without an explicit review workflow.
+- Current feature branch HEAD at this note is `779c1e094ece8e1338a561abc05c4c7307857353`; this memory update itself will create a newer commit and must have its CI checked.
+- No migration applied, no Cloudflare Worker deployed, no email provider configured, no messages sent, no social posts published and no money movement performed.
+
+
+## 2026-11-23 — Research reports and private document storage
+
+### Evidence-backed report export
+- Added authenticated `GET /api/v1/research/report?research_run_id=<uuid>` in `src/index.ts`. It verifies the session, uses the user's JWT/RLS for all six data sets, requires the owner-scoped research run, and returns run metadata, sources, opportunities, exact passages, claims, claim/evidence relationships and an explicit verification disclaimer.
+- Added Markdown report export in `public/research.html` and `public/research.js`, including claim review labels, evidence relationships, source URLs, exact passages and opportunity notes.
+- Added `tests/research-report.test.mjs`. Endpoint and UI implementation CI runs `45123429754`, `45123457260`, `45123462551` and `45123477953` passed. The report test suite passed on run `45123477953` (full workflow green).
+
+### Private research document storage
+- Added migration `0044_private_research_documents.sql` (commit `5f8631c18b3f1c0544ff9073c200f7ec7bbd2090`) for private owner/run-scoped document metadata, SHA-256, size/type checks, RLS and ownership trigger.
+- Added Cloudflare R2 binding `RESEARCH_FILES` for bucket `gigo-research-private` in `wrangler.toml` (commit `43c46b3aab45e327275d247e83f2d8e1a289a6dd`). The bucket must be created manually in Cloudflare and must remain private.
+- Added authenticated `GET/POST /api/v1/research/documents` for listing/upload and `GET /api/v1/research/documents?id=<uuid>` for private authenticated download. Upload verifies owner and research-run access, limits files to 5 MiB, permits only matching TXT/HTML/CSV/PDF extension+MIME pairs, checks PDF signature, hashes bytes with SHA-256, stores in owner/run/document-scoped R2 key, and compensates by attempting R2 deletion if metadata insert fails. It never returns the object key or a public URL.
+- Added private upload/list UI and multipart support in `public/shared.js`; JSON content type is no longer incorrectly applied to FormData. Added `tests/research-documents.test.mjs`.
+- CI runs `45123561257` (migration), `45123598461` (storage API), `45123613269` (R2 binding), `45123617731` (upload UI), `45123647925` (multipart helper), `45123665783` (document UI wiring), `45123679606` (document tests), `45123703474` (production guide), and `45123707309` (.env guide) passed. Run `45123765106` is still in progress after adding MIME/extension and PDF signature validation; its outcome must be checked. Test assertion was extended in commit `4451b597d96425b646d64eef57bcebf671689c16`; its CI run is not yet verified.
+- Updated README research capability statement (commit `992ad5af843b9e4497728daa621ec62dec74ac92`, CI passed) and production migration inventory through 0044 (commit `8ab286239645728c968555eb197b4311717a28e7`, CI pending).
+
+### Important remaining limitations
+- Migration 0044 and all migrations after the previously confirmed applied baseline remain committed but unapplied/unverified. No Supabase schema was modified.
+- R2 bucket `gigo-research-private` has not been created or bound in the live Cloudflare account. No live uploads/downloads have been run. PDF is stored and signature-checked, but no PDF text extraction/OCR is implemented. TXT/HTML/CSV uploads are stored; the separate extraction helper still accepts decoded text only and is not yet wired to upload processing or passage persistence.
+- Research report export is a Markdown artifact; no PDF renderer or public share link is provided.
+- No live Worker deploy, migration application, email provider activation, social publishing, external messaging or financial actions occurred.
+- Latest code changes before this note: MIME/extension and PDF signature guard commit `e3006787024a5709650c39de90f413b7474580b3`; test coverage commit `4451b597d96425b646d64eef57bcebf671689c16`. Check CI for both and for this memory/documentation update.
+
+
+### Final CI verification for the 2026-11-23 research/storage batch
+
+- Upload MIME/extension and PDF magic-byte validation commit `e3006787024a5709650c39de90f413b7474580b3`: workflow run `45123765106` passed.
+- Research document tests commit `4451b597d96425b646d64eef57bcebf671689c16`: workflow run `45123774311` passed.
+- Production migration inventory update commit `8ab286239645728c968555eb197b4311717a28e7`: workflow run `45123796075` passed.
+- README commit `992ad5af843b9e4497728daa621ec62dec74ac92`, environment guide commit `342bae2dd0ccbb39d33f96332b4ecc5b60f6b4b4`, production guide commit `d2d90b80f6564affc242e3d7cebc3382c8bae798`, upload UI tests commit `d9ef03b03abbd208df0c759493a308488153e8c4`, and preceding API/UI changes also passed their individual workflows.
+- Latest confirmed feature code and docs are green through commit `8ab286239645728c968555eb197b4311717a28e7`. This memory update is the next commit and must also be checked.
+- Current source tree includes migrations through 0044. None of 0010–0044 has been confirmed applied to the live Supabase project; no R2 bucket has been created in the Cloudflare account, and no Worker deployment has been performed.
+
+
+### Integration handoff — draft pull request opened
+
+- Opened draft PR #1: `Complete GiGo research evidence and private document workflows`, from `feat/universal-collection-engine` into `main`: https://github.com/StanLeeSTT/GiGo/pull/1.
+- PR head `04c6a4b97fe5d64a0060de8f48bf0ad263936f03`; base at creation `1301083a3aad27868305ae938f93b646cc611757`. GitHub later reported mergeable=true, but PR is deliberately draft and not merged. It contains 534 commits / 122 changed files, so review the accumulated branch carefully before merge.
+- Latest feature-branch CI run `45123863116` on PR head completed successfully. No deployment or database migration was run. The PR's main-branch pull_request workflow checks should be reviewed before any merge.
+- User request "finish everything" has been fulfilled for additional repository implementation work, but production activation remains blocked on live Supabase migration reconciliation/application, private R2 bucket creation, Cloudflare Worker binding/secrets, deployment and authenticated end-to-end smoke tests. These cannot be truthfully marked complete from GitHub-only access.
+
+- Final handover-memory commit `f71748a3bd14f646becb5757665faf1c7ec8e57f` passed feature-branch CI run `45123974008` (typecheck, browser JavaScript syntax, full Node test suite). PR workflow run `45123943301` passed and run `45123943305` passed. Draft PR #1 remains open, mergeable and unmerged.
+
+
+## 2026-11-23 — Private research document extraction pipeline
+
+### Implemented
+- Added `src/research/ingest.ts` to turn already-authorized UTF-8 TXT/HTML/CSV document text into a provenance-bearing research source plus exact passage records. It preserves the original document SHA-256, document ID, extraction method, passage count and truncation status. Passages and source are explicitly unreviewed; claims are never automatically verified.
+- Added authenticated `POST /api/v1/research/documents/extract` in `src/index.ts`. It verifies the owner session, loads document metadata through the user's JWT/RLS, reads only the private R2 object, rechecks byte size and SHA-256 against stored metadata, strictly decodes UTF-8, and rejects unsupported formats. It creates/upserts a `gigo://research-document/<id>` source, upserts passages by document/locator, and updates ingestion status. It does not use a service-role key.
+- Added `research_document_id` to evidence passage API fields/columns and Markdown report exports.
+- Added migration `0045_research_document_passage_provenance.sql`: document foreign key, owner/run/source URL integrity trigger, RLS policy extension, unique document/locator index for idempotent retries, and a column-level update grant limited to `ingestion_status`.
+- Stable paragraph chunk locators now distinguish chunks of long paragraphs. CSV rows already have stable row locators.
+- Added a one-click **Extract evidence** control to private document cards in `public/research.js`. Unsupported PDF extraction remains disabled in the UI. No unauthenticated direct-download link is exposed.
+- Updated `README.md` and `docs/PRODUCTION_READINESS.md` for migration 0045 and supported extraction behavior.
+
+### Files
+- `src/research/ingest.ts`
+- `src/research/extract.ts`
+- `src/index.ts`
+- `public/research.js`
+- `public/research.html`
+- `supabase/migrations/0045_research_document_passage_provenance.sql`
+- `tests/research-document-ingestion.test.mjs`
+- `tests/research-document-provenance.test.mjs`
+- `tests/research-documents.test.mjs`
+- `docs/PRODUCTION_READINESS.md`
+- `README.md`
+
+### Commits
+- `e9f748951c2851791f7bd4f4d5fb109e1df8f122` — ingestion planner.
+- `dfd5e5b1f187f5f3b9dea7956f3a2f93802fc26a` — planner tests.
+- `d967df9ee7ae96d3d9ade1dc68af41d24e1d5abd` — attach document IDs to passages.
+- `f893b64aaf5012d6e50ba85ec576bf966f0336a7` — initial migration 0045.
+- `9268f0b70885979b1a96541aa9667923cff58a1f` — provenance tests.
+- `22b5656bfa8feb11c9492c62a917fcd5998fb830` — authenticated extraction API.
+- `fa04222634bc49d39e4fa9c3f84689413bae33e4` — stable passage locators.
+- `762a078a69b43dcfa087e9f9ed2c7f925d4c23bf` — idempotent locator index.
+- `bab1336f941c3851146d3ba84f4b3749b0858eb5` — extraction API tests.
+- `3fe56569d247830d8a2a2d18ffc3f99b18a76b11` — extraction UI.
+- `a28b3e563dd3989c2d7e3d13523623cc3bc69fa7` — repair SQL line breaks.
+- `ae2ffbad48b92bf8f369820fb300c3b3e364ad67` — report provenance.
+- `63b5b8c38bc3949067f9cf92cc0995ba7615b0a7` — keep downloads authenticated.
+- `18c59ba3b87f133ce903ccea9e3ff9c8cc2dde25` — UI/API test coverage.
+- `0b1df525bf33b1baaa995ee8122961f3a731aa08` — unique locator test.
+- `a299f09e316e0c44bd969e98525037b88f6be4e3` — production guide.
+- `030f47c548f6dcc580eb0dca6a1b30d8f9f4af77` — README.
+- `349e8599e04ee61170cc9b9d8d07ef9198367073` — explicit .ts import for Node native tests.
+- `108d590b83b38dbb48f96f6bd26873c5ed3f23e0` — narrow document status update grant.
+- `96d7702df7bae0a5a0dc3d1a4de8b9f0a635d9a3` — privilege regression test.
+
+### Verification and limitations
+- Added unit and source-level API/SQL/UI tests for extraction planning, TXT/HTML/CSV parsing, invalid hash/IDs, oversized text, R2 integrity verification, owner session, source/passage persistence, idempotent upsert and limited database privileges.
+- GitHub push workflow results for this newest batch have not yet been surfaced through the available commit-workflow lookup; do not claim CI green until a matching run/check is visible. Earlier branch baseline run `45124049614` (typecheck) and `45124049626` (GiGo checks) passed on commit `e0d7f73367adc3b055f4565b6c7ad70f1a8e7e73`, before this extraction work.
+- TXT/HTML/CSV extraction is bounded to 500,000 decoded characters and 50 passages. PDF files remain stored and signature-checked but binary PDF extraction/OCR is not implemented.
+- Migration 0045 and earlier unverified migrations remain committed but unapplied. R2 bucket/binding, Worker deployment and live authenticated integration are not verified.
+- No outbound messaging, social publishing, payment or financial action was enabled or performed.
+
+### Next
+1. Verify CI on the current branch head and repair any type/test failures.
+2. Review migration 0045 against 0043/0044 ordering and test the RLS/trigger behavior in a disposable database before live application.
+3. Add PDF text extraction only if a free, bounded, trustworthy Worker-compatible library/runtime can be validated; do not silently use paid services.
+4. Continue durable autonomy runtime wiring and owner audit/pause enforcement; keep financial hard deny and all outreach controls intact.
+
+
+### CI follow-up and idempotency correction — 2026-11-23
+
+- A first full test run on commit `7fcef40f9e597e770bd5a1066cd8937c8bfcc96d` exposed one stale assertion in `tests/research-evidence-api.test.mjs`: the expected passage field list did not include the newly added `research_document_id`. TypeScript typecheck and browser syntax passed on that run; 158/159 tests passed.
+- Corrected the assertion in commit `e1be7472ebd89c6a3de00250120f21d1f4274bc2`.
+- During SQL review, removed the partial predicate from the unique document-locator index so PostgreSQL can infer the exact `ON CONFLICT (research_document_id, locator_type, locator_value)` target used by PostgREST upserts. The document ID remains nullable, so standard PostgreSQL unique semantics still permit multiple non-document passages with NULL document IDs. Migration correction commit: `d8297faee551d06d8ed0a3c11bf912d77552dcf7`.
+- Final CI on latest code commit `e1be7472ebd89c6a3de00250120f21d1f4274bc2`:
+  - GitHub Actions run `45131513517` — GiGo checks PASS.
+  - GitHub Actions run `45131513507` — TypeScript typecheck, browser JavaScript syntax and full collection/test workflow PASS.
+- PR #1 remains draft, open, mergeable and unmerged. Latest observed head: `e1be7472ebd89c6a3de00250120f21d1f4274bc2`.
+- No migrations were applied, no R2 bucket was created, no Worker deployment was performed, and no live Supabase/R2 integration test or external sending was performed.
+
+### Private document extraction hardening — 2026-11-23 (continued)
+
+- Corrected the ingestion planner so every extracted passage now carries research_document_id directly, in addition to its source metadata, SHA-256 and unreviewed status. This was an important provenance gap found during review.
+- Migration 0045 now recreates research_passages_owner_check so the owner/run/source/document consistency trigger also fires when research_document_id is updated, not only on inserts or changes to the other provenance columns.
+- Extraction API now requires PostgREST to acknowledge exactly the number of passage upserts submitted; a partial/empty response fails closed with DOCUMENT_PASSAGE_COUNT_MISMATCH rather than reporting success.
+- Added regression tests for direct passage document provenance, all-passage write acknowledgement, and provenance checks on document reassignment.
+- Updated docs/PRODUCTION_READINESS.md and README to describe the stronger provenance and narrow lifecycle update grant.
+- Latest feature branch / PR #1 head: 070533a52921b26b1c61be7d51edfdf7c8722c08.
+- CI on this exact head:
+  - TypeScript/browser syntax/full test workflow run 45132316354 — SUCCESS.
+  - GiGo checks run 45132316422 — SUCCESS.
+- Relevant commits in this hardening batch:
+  - e1cc4b8ee2d478841e77f794770c9d8ae9b4d498 — add document ID to passage plan.
+  - 4951829cea98a56e101a680d4bc7acacc91d5158 — recheck provenance on document reassignment.
+  - 300e13d6094e5eb808d0d6ef2b67a68fcd64900b — require complete passage-upsert acknowledgement.
+  - e6b05b7c1672c8928799340f6088485bf52b5a74 — assert document provenance in ingestion test.
+  - 333c9bd386673a3f94605c4999e4700013e58ea9 — test passage write acknowledgement.
+  - 3ff8d7455c5df3a706e1be35a65e267490b0a663 — test provenance reassignment guard.
+  - 8c7a1de21a264714c8e3ff988613a2e9b4ac0801 — update production readiness docs.
+  - 070533a52921b26b1c61be7d51edfdf7c8722c08 — README provenance note and verified CI head.
+- PR #1 remains draft/open/unmerged. Current branch has 571 commits and 126 changed files against main; this is a large accumulated feature branch and still needs careful scope/rebase review before any merge decision.
+- Cloudflare's automatic PR preview bot reported failed preview builds for earlier commits (latest observed failing preview comment referenced 3ddbf48). These are preview build failures, not evidence of a production deployment. Logs need review before relying on preview environments.
+- No migration has been applied, no R2 bucket has been created/verified, no Worker has been manually deployed, and no live Supabase/R2 integration test or external sending has been performed.
+### Private document download and autonomy approval controls — 2026-11-23
+
+- Restored a working private research-document download control in the Research workspace. A plain anchor could not attach GiGo's bearer token, so the shared API client now performs authenticated fetch, retries once after session refresh, downloads via a temporary Blob URL, sanitizes the filename and revokes the temporary URL.
+- Research document cards now expose both Download file and Extract evidence actions. The private download endpoint remains authenticated and returns private/no-store content; no public object URL was introduced.
+- Added owner-visible autonomy approval history in Settings. It shows exact tool/action, target, abbreviated parameter hash, use count and expiry, and allows revoking an active approval through the owner-authenticated revoke API.
+- The approval panel explicitly states that external execution is still blocked until sender/provider controls are implemented. This UI does not enable sending, publishing, payments or any other external side effect.
+- Added regression tests for authenticated download/session refresh, research download/extraction buttons, approval history and revocation controls.
+- CI on feature head 8a36854d28951b9e63f5dcc19aa3f6f44dbe4197:
+  - TypeScript typecheck + browser JS syntax + full Node test suite run 45132962942 — SUCCESS.
+  - GiGo checks run 45132962883 — SUCCESS.
+- A prior intermediate run on c7dde50 failed one overly specific test assertion about filename-sanitization source text; the assertion was simplified in b6109b9 and the full CI on the later head passed.
+- Commits in this batch:
+  - 7b2d73099c949d4c33cf140f83955c6acbd5c3e3 — authenticated download helper.
+  - b133b1b25b7f1cddbd70b8677fbbfe1e363fafbf — download button in Research UI.
+  - 5b0e3dbae46a6bb7b1ac7a4e5b6c9e15398cdc78 — initial download tests.
+  - c7dde50b48f98464d944761e97de5191be29a1b9 — download listener wiring.
+  - b6109b9d160fae7209d46eb71c79d1a4c63365a7 — stable filename test assertion.
+  - ff09ff72e86c1e3f059ad088b82122cb92e963e0 — approval panel markup.
+  - 77c18dd2bd6ec86a9558c2fb95f7cc6b15058c87 — approval list and revoke behavior.
+  - 8a36854d28951b9e63f5dcc19aa3f6f44dbe4197 — approval UI regression tests and verified CI head.
+- PR #1 remains draft/open/unmerged. Mergeability was true on the verified head, but the accumulated branch still has 572 commits and 126 changed files against main; do not merge without a deliberate scope/rebase review.
+- No migration application, R2 bucket creation, Worker deployment, live Supabase/R2 test, outbound send or financial action was performed.
+### Final storage and provenance hardening in this continuation — 2026-11-23
+
+- Hardened private document upload cleanup: if the R2 object is written but the metadata insert does not succeed, the catch path now attempts to delete the orphaned object. Once metadata is persisted, it is retained even if later response parsing fails.
+- Hardened migration 0045 so a passage whose source URL uses the internal gigo://research-document/ scheme cannot be detached from its research_document_id. The provenance trigger already checks same owner, same run, exact source URL and document ID; it now rejects attempts to set the document reference to NULL for these passages.
+- Added tests for orphaned R2 object cleanup and non-detachable document provenance.
+- CI on current code head 9955f0a05423920a58181e9107e67e6a399d53af:
+  - TypeScript typecheck, browser JavaScript syntax and full Node test suite run 45133204711 — SUCCESS.
+  - GiGo checks run 45133204697 — SUCCESS.
+- Additional commits:
+  - 28c878620ea5bcb389ca32c33e06195a6c886cba — clean up R2 objects when metadata save fails.
+  - b4bf3541ad59c2519e6e32686eb3969a95b585e7 — upload cleanup regression test.
+  - 09fe60d3b4fab8c1c22b11b16053a7f38af9447d — prevent document passages from losing provenance.
+  - 9955f0a05423920a58181e9107e67e6a399d53af — non-detachable provenance regression test; latest verified code head.
+- PR #1 remains draft/open/unmerged and was mergeable on this verified head. It currently spans 585 commits and 127 changed files against main; careful scope/rebase review remains required.
+- No production migration, R2 bucket creation, Worker deploy, live integration test, outbound send or financial action was performed.
+### Guarded Resend adapter foundation — 2026-11-23
+
+- Added a Resend email adapter factory in src/outreach/providers.ts. It is intentionally NOT registered in OUTBOUND_PROVIDER_ADAPTERS, and no send worker or webhook route calls it.
+- Adapter validates UUID identities, recipient/sender/reply-to email addresses, subject <=80 characters, body <=500 characters, exact final — STANLEE signature and message-specific idempotency key before network access.
+- It enforces purpose/channel separation: marketing and relationship outreach cannot be sent through the transactional API path, and marketing channel use requires a provider-registered contact. This does not replace campaign consent, suppression or final database eligibility guards.
+- Resend requests use the provider API key server-side, an idempotency header and a bounded timeout. Explicit 429 pre-acceptance rejections are marked retryable; 4xx validation rejections are non-retryable; network and 5xx uncertain outcomes are marked unknown and must not be automatically retried.
+- Added Svix HMAC webhook signature verification with timestamp tolerance and raw-body signing. It is not wired to an inbound webhook endpoint; downstream event idempotency/account correlation are still required.
+- Added tests for successful adapter calls, strict message validation, idempotency, registered-contact marketing restriction, rate-limit/unknown outcomes, webhook HMAC/timestamp verification and empty active adapter registry.
+- Documentation now states the adapter is code-only/unregistered and outbound sending remains disabled until durable worker, authenticated sender identity, current provider terms, final eligibility/suppression checks, inbound webhook correlation, rate limits, audit and owner activation are complete.
+- CI on latest branch head 8bde0609928cf8bab43daf4101d93fd217e0c94d:
+  - TypeScript typecheck, browser JavaScript syntax and full Node test suite run 45133876690 — SUCCESS.
+  - GiGo checks run 45133876607 — SUCCESS.
+- Intermediate issues were corrected before the green head: the first typecheck found a Web Crypto BufferSource typing mismatch, fixed by copying the HMAC secret into a fresh ArrayBuffer; the next test run found double-escaped email/header validation regexes, corrected in 8bde060.
+- Adapter batch commits:
+  - b9bfc7749619de21df1ba02d984107f33916f762 — initial guarded Resend adapter and Svix verification.
+  - e906011a7d4e9e16ff76b231fbbae79f316ad43f — adapter behavior tests.
+  - d3f89ba36a61702b4aabd8a8b5aa405d27f8896a — require message purpose and provider contact registration status.
+  - 26e9020ebb2b93ef9732a44ecec2aee1d6d4bbc5 — test marketing registration enforcement.
+  - 73e33b410af7e321f223a42019a8c5e51a74cbc2 — fix HMAC ArrayBuffer compatibility.
+  - 9d3bf15f451145514b7ae3ac3036d65acac8af90 — production readiness docs.
+  - 9d42a5f54b925fb447f5332651f7c94713036722 — README disabled-adapter note.
+  - 8bde0609928cf8bab43daf4101d93fd217e0c94d — fix email/header regexes; latest verified adapter code head.
+- PR #1 remains draft/open/unmerged. It currently contains 595 commits and 128 changed files against main. It is mergeable on the latest observed head, but the accumulated scope still requires deliberate rebase/scope review before merge.
+- No Resend API key, sender domain, live send, webhook endpoint, worker activation, migration application, R2 bucket creation, Worker deployment or financial action was performed.
+### CI confirmation for the provider adapter documentation head — 2026-11-23
+
+- Latest PR head after updating the provider-readiness documentation: d8bd0a9fa7ecabdd8f9eb247dbc66379d9147344.
+- CI on that exact head:
+  - TypeScript typecheck, browser JavaScript syntax and full Node test suite run 45134003546 — SUCCESS.
+  - GiGo checks run 45134003601 — SUCCESS.
+- PR #1 remains draft/open/unmerged and mergeable on the latest observed head. Current accumulated branch size: 597 commits / 128 changed files against main.
+- The Resend adapter is still code-only and unregistered; no credentials, sender worker, webhook route or external sending are active.
+### Outbound provider readiness documentation — 2026-11-23
+
+- Added `docs/OUTBOUND_PROVIDER_ADAPTER_READINESS.md` describing the unregistered Resend adapter, safeguards, current non-activation state, and the complete owner/engineering activation checklist.
+- Linked the guide from README outreach controls and `docs/PRODUCTION_READINESS.md`.
+- The guide explicitly distinguishes provider-registered marketing contacts from lawful consent/suppression eligibility; neither public email visibility nor provider contact registration is permission to send.
+- It documents that signed Svix verification is only a primitive: a replay-resistant inbound webhook route, durable event deduplication/correlation, outbox worker, owner pause/approval, final suppression checks, sender-domain authentication and audit are still required.
+- Documentation commits: c59667ecd8c63a5244f650901424d6b162fc85ff (new guide), a30ed891ea6dd81127f10d01c81d034403749c54 (README link), 9edcd52d05b7eca9e39aa69cc1baeb39836fabd8 (production readiness update).
+- CI for latest docs head 9edcd52d05b7eca9e39aa69cc1baeb39836fabd8 was queued/not yet returned when this memory update was written. The immediately preceding head d8bd0a9fa7ecabdd8f9eb247dbc66379d9147344 had typecheck/browser syntax/full tests run 45134003546 SUCCESS and GiGo checks run 45134003601 SUCCESS.
+- PR #1 remains draft/open/unmerged; latest observed head 9edcd52d05b7eca9e39aa69cc1baeb39836fabd8, mergeable=true, 601 commits / 129 changed files. It still needs scope/rebase review before any merge.
+- No API credentials, sender domain, worker activation, inbound webhook route, live message send, migration application, R2 bucket creation or Worker deployment was performed.
+### Outbound provider readiness runbook — 2026-11-23
+
+- Added docs/OUTBOUND_PROVIDER_ADAPTER_READINESS.md. It clearly separates the guarded Resend transport code from authorization and documents every activation blocker: provider terms, domain authentication, Worker secrets, registered sender, durable outbox worker, last-moment campaign/recipient/suppression checks, idempotent outcome persistence, signed raw-body webhook route, event replay/deduplication, pause/kill switch, dry run and explicit owner approval.
+- docs/PRODUCTION_READINESS.md now points to the outbound readiness runbook and states that the adapter is not registered or invokable by a send worker.
+- Latest PR head 9edcd52d05b7eca9e39aa69cc1baeb39836fabd8 CI:
+  - TypeScript/browser syntax/full Node test suite run 45134201840 — SUCCESS.
+  - GiGo checks run 45134202052 — SUCCESS.
+- PR #1 remains draft/open/unmerged and mergeable on this head. Current accumulated branch size: 601 commits / 129 changed files against main. Review the oversized branch before any merge.
+- No sender credentials, live send, webhook endpoint, durable send worker, production deployment, migration application or financial action was performed.
+### CI verification after outbound provider runbook — 2026-11-23
+
+- The memory/PR documentation commit 2f67b163fbd004f901e1a51edaa4f18a68a35743 passed TypeScript, browser syntax and full Node test workflow run 45134252867; GiGo checks run 45134252828 — both SUCCESS.
+- The subsequent latest branch head 7380773c0fd7abd09fdf273efdb4f3d10dc711db also passed CI: TypeScript/browser syntax/full Node test run 45134302327 — SUCCESS; GiGo checks run 45134302329 — SUCCESS.
+- PR #1 remains draft/open/unmerged and mergeable on head 7380773c0fd7abd09fdf273efdb4f3d10dc711db; 603 commits / 129 changed files against main. The large accumulated branch still needs deliberate review/rebase before merge.
+- The outbound provider runbook is committed and the adapter remains unregistered. No production sender, webhook endpoint, migration application, R2 setup, Worker deployment or financial action was performed.
+
+### One-file Supabase setup bundle — 2026-11-23
+
+- Added `supabase/GIGO_ONE_FILE_SETUP.sql`, a convenience bundle containing the exact canonical SQL for migrations `0010` through `0045` (36 migrations, 211,699 characters), in numeric order.
+- The bundle was assembled from the individual repository migration files, with explicit per-migration boundaries. Static structure check confirmed all 36 migration markers are present, with one outer `BEGIN;` and one `COMMIT;`; the source migrations contain no standalone transaction-control statements.
+- Added a fail-closed preflight requiring the known baseline objects `public.jobs` and `public.set_updated_at()`, and refusing to run if `public.collection_providers` already exists. Added postflight checks for representative collection, outreach, marketing, customer-support, creative-brief and private-research-document tables.
+- The bundle is deliberately scoped to the existing GiGo Supabase project: known baseline migrations `0001`, `0004`–`0009` are assumed already applied; `0010`–`0045` are treated as unapplied. The status of `0002`/`0003` remains uncertain and they are not replayed.
+- **Do not delete the canonical files in `supabase/migrations/`.** They remain the migration source of truth. The bundle is a one-time SQL Editor convenience only, not a fresh-project bootstrap and not safe to re-run. Manual SQL Editor execution does not automatically update Supabase's migration ledger; reconcile with the Supabase CLI migration-repair workflow before later using `db push`.
+- Updated README.md database instructions to explain scope, preflight, one-time execution, retained migration history and CLI-ledger caveat.
+- Verification performed: fetched the committed bundle back from GitHub and confirmed 36 canonical migration markers, first `0010_universal_collection_engine.sql`, last `0045_research_document_passage_provenance.sql`, one outer transaction and both preflight/postflight blocks.
+- SQL has **not** been executed against Supabase; no live database state was changed. No migrations were applied, no Worker deployed, no R2 bucket configured, and no outbound sending enabled.
+- Commits in this task:
+  - `33d315291bce2da4c9818227c8a379b1201538a3` — add one-file SQL bundle.
+  - `bcd3eba7cf541e35ae0a237e7577b543807a9828` — document one-file setup in README.
+- CI on the SQL bundle/README commits is pending verification; do not claim this new head green until Actions results are checked.
+- PR #1 remains draft/open/unmerged. Do not merge or deploy as part of this task.
+- Next: verify CI on the latest memory commit, then provide the user with the exact Supabase SQL Editor steps and wait for their execution/results before attempting production integration.
+
+
+### Consolidated SQL bundle parity test and CI — 2026-11-23
+
+- Added `tests/supabase-one-file-bundle.test.mjs`. It checks that all 36 canonical migration files from 0010–0045 appear exactly once, in order, and byte-for-byte unchanged inside `supabase/GIGO_ONE_FILE_SETUP.sql`; it also checks the transaction guards and that the canonical migrations remain present.
+- The first test commit used an overly strict phrase assertion that did not match the SQL header wording. The CI failure was isolated to that assertion (all earlier bundle-content/order/parity assertions passed). Corrected the assertion to match the actual fail-closed wording.
+- Latest test-fix commit: `620aefe253cac35b2ce744e38330081b93e3eaae`.
+- CI on that exact head:
+  - TypeScript typecheck run `45137049859` — SUCCESS.
+  - GiGo checks run `45137049858` — SUCCESS.
+  - Earlier failed test-only run `45136967259` belongs to the superseded pre-fix commit `729fff075ddc6e8a5e9c25b434b75f57b2b76732`; it is not the current result.
+- SQL bundle has not been run against Supabase. The project migration history has not been queried live, and no database changes were made.
+- Current known feature branch code/test head before this memory update: `620aefe253cac35b2ce744e38330081b93e3eaae`. PR #1 remains draft/open/unmerged. Do not merge or deploy.
+
+
+### Final CI and PR confirmation for the one-file setup task — 2026-11-23
+
+- Documentation/memory head `d47971ef3c42e4f67f0f52108d32eb424ff06055` passed all current GitHub Actions checks:
+  - TypeScript run `45137184811` — SUCCESS.
+  - GiGo checks run `45137185258` — SUCCESS.
+  - Duplicate TypeScript run `45137177445` — SUCCESS.
+- The preceding SQL bundle parity test head `620aefe253cac35b2ce744e38330081b93e3eaae` also passed TypeScript run `45137049859` and GiGo checks run `45137049858`.
+- PR #1 description updated to include the one-file Supabase setup and its limits. PR remains draft/open/unmerged.
+- The one-file SQL file is committed and parity-tested, but has not been executed against Supabase. Do not describe GiGo as fully running/production-ready until the user runs the SQL after confirming migration history, then R2/Cloudflare configuration, Worker deployment and live owner-isolation checks are completed.
+
+
+### Decodo Web Data API integration scaffold — 2026-11-23
+
+- Researched Decodo's official Web Data API. Unified API base: https://data.decodo.com/v1 with Bearer API-key authentication. Official endpoints: /scrape, /search, /map and asynchronous /crawl. Decodo advertises up to 10,000 free monthly requests; usage is request/page based and crawl pages consume requests.
+- Added src/collection/decodo.ts with official Bearer-authenticated /scrape client, public-HTTPS-only page adapter, bounded text extraction, provenance metadata, cancellation checks and retryable rate-limit failures. The client helper exposes all four endpoint paths, but current collection actor integration executes only the reviewed public_page_metadata scrape path; search/map/crawl are not yet wired to separate actors.
+- Added Decodo as an opt-in provider catalogue entry and integrated adapter registration into the trusted collection batch worker only when DECODO_API_KEY is present. API key must be a GitHub Actions/worker secret, never a database configuration value or client-side setting.
+- Added migration 0046_decodo_web_data_api.sql to allow decodo as a provider for the existing public-page metadata run RPC. Updated the one-file SQL bundle to include migration 0046 and updated its parity test.
+- Added tests/collection-decodo.test.mjs for bearer auth, content extraction, public URL validation and HTTP 429 handling.
+- Important limitation: a hard monthly 10,000-request quota ledger is not yet implemented in GiGo. Monitor Decodo usage and do not enable autonomous jobs until internal quota accounting, provider setup and a full worker integration test are complete.
+- Decodo remains opt-in; no API key has been added, no real request sent, no Supabase migration applied, no worker deployed and no external scraping enabled. Confirm free-plan eligibility and usage in the user's Decodo dashboard.
+- Existing one-file SQL bundle remains scoped to the existing database baseline: 0010–0046 pending only; do not delete original migration files. It is a one-time SQL Editor convenience, not a fresh-install bootstrap or safe-to-rerun script. SQL Editor execution does not update Supabase migration ledger.
+
+
+### Decodo adapter and SQL bundle verification — 2026-11-23
+
+- Latest Decodo/SQL setup implementation commit before this memory update: 3f5ae6d5453ff65c7fd57d3e5683d086e4970e96.
+- Verified the one-file SQL bundle contains exactly one canonical migration 0046 block and that its SQL body matches supabase/migrations/0046_decodo_web_data_api.sql byte-for-byte. Outer preflight/transaction/postflight guards remain present.
+- GitHub Actions on 3f5ae6d5453ff65c7fd57d3e5683d086e4970e96: GiGo checks run 45230743771 — SUCCESS; TypeScript runs 45230731070 and 45230743555 — SUCCESS. Earlier intermediate failures were caused by the temporary migration 0046 wrapper/dollar-quote mismatch and were superseded by this corrected head.
+- Decodo adapter is code-integrated and tested, but it is not live: DECODO_API_KEY is not configured; provider row is not configured/healthy; no Decodo request was sent. Only the public_page_metadata actor's /scrape route is wired. /search, /map and /crawl helper paths are available but not yet exposed as dedicated GiGo actors or research tools.
+- No internal monthly Decodo quota ledger is implemented yet. The provider advertises 10K monthly requests, but GiGo must not assume the free quota is enforced by the adapter. Monitor the Decodo dashboard; do not enable automated collection until internal quota accounting and provider health/configuration are completed.
+- Supabase one-file setup now includes migrations 0010–0046, 37 canonical migrations. The bundle remains a one-time incremental setup for the existing database baseline; do not delete canonical migration files, do not run on a clean/new project, and do not rerun after successful application. SQL Editor execution does not update the Supabase migration ledger.
+- No SQL was run, no Supabase state changed, no Cloudflare Worker deployed, no secrets configured, no provider activated, and no outbound sending or financial actions enabled.
+- Branch head at time of this note: 3f5ae6d5453ff65c7fd57d3e5683d086e4970e96. PR #1 remains draft/open/unmerged.
+
+
+### One-file SQL baseline repair refinement — 2026-11-23
+
+- The one-file bundle now safely re-applies the idempotent SQL definitions from migrations 0002 and 0003 before canonical migrations 0010–0046. This resolves the previously uncertain application state of 0002/0003 without replaying data migrations or deleting history.
+- Added preflight checks that projects, tasks, assistant_conversations and assistant_messages exist before the baseline repair SQL runs. Existing 0001 and 0004–0009 baseline remains assumed applied.
+- Bundle now contains 37 canonical migration blocks (0010–0046) plus idempotent baseline repair SQL for 0002/0003. Original migration files remain canonical and must not be deleted.
+- Updated tests to verify the 0002/0003 repair SQL is included and that all canonical migration blocks remain byte-for-byte identical.
+- This remains a one-time incremental SQL Editor bundle for the existing GiGo database, not a clean-install bootstrap. It must not be re-run; SQL Editor does not update Supabase migration history.
+- Current branch code includes Decodo optional adapter; no provider key or live request is configured. Hard monthly quota ledger remains a known follow-up before automated Decodo collection is enabled.

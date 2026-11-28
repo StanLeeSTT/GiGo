@@ -3,6 +3,13 @@ import { getAssistantCapabilities } from "./assistant/registry";
 import { handleAssistantChat } from "./assistant/runtime";
 import { providerPoolStatus } from "./assistant/providers";
 import { handleMaxunRequest } from "./integrations/maxun";
+import { listCollectionProviders, getCollectionProviderVerificationSummary } from "./collection/registry";
+import { listCollectionActors, getCollectionActor } from "./collection/actors";
+import { planCollectionProviders, type ConnectedCollectionProvider } from "./collection/planner";
+import { listRegisteredCollectionAdapters } from "./collection/adapters";
+import { buildSafeHttpProviderRegistration, isSafeHttpProviderRegistrationRequest } from "./collection/onboarding";
+import { buildResearchDocumentIngestionPlan } from "./research/ingest";
+import { normalizeWhopSalesEvent, verifyWhopWebhook } from "./integrations/whop";
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
@@ -22,7 +29,11 @@ export interface Env {
   CLOUDFLARE_AI_MODEL?: string;
   MAXUN_BASE_URL?: string;
   MAXUN_API_KEY?: string;
+  WHOP_WEBHOOK_SECRET?: string;
+  WHOP_OWNER_USER_ID?: string;
+  WHOP_ACCOUNT_ID?: string;
   ASSETS?: Fetcher;
+  RESEARCH_FILES?: R2Bucket;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -258,16 +269,243 @@ async function handleResource(request: Request, env: Env, headers: Headers, reso
 
 
 
-type ResearchResource = "research_runs" | "research_sources" | "research_opportunities";
+
+
+async function handleResearchDocuments(request: Request, env: Env, headers: Headers): Promise<Response> {
+  let pendingObjectKey: string | null = null;
+  let metadataPersisted = false;
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  if (!env.RESEARCH_FILES) return json({ error: { code: "PRIVATE_STORAGE_NOT_CONFIGURED", message: "Create and bind the private GiGo research R2 bucket before uploading files." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage research documents." } }, 401, headers);
+  try {
+    const ownerId = await verifiedUserId(token, env);
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const url = new URL(request.url);
+    const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+    if (request.method === "GET") {
+      const id = url.searchParams.get("id");
+      if (id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return json({ error: { code: "INVALID_ID", message: "Invalid document ID." } }, 400, headers);
+      const runId = url.searchParams.get("research_run_id");
+      if (!id && (!runId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId))) return json({ error: { code: "INVALID_RESEARCH_RUN_ID", message: "A valid research run ID is required." } }, 400, headers);
+      const filter = id ? "id=eq."+id : "research_run_id=eq."+runId;
+      const result = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,ingestion_status,created_at,object_key&"+filter+"&limit=100", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+      if (!result.ok) return json({ error: { code: "DOCUMENT_READ_FAILED", message: "Could not read document metadata. Confirm migration 0044 is applied." } }, 502, headers);
+      const rows = await result.json() as Array<JsonRecord>;
+      if (id) {
+        if (!rows.length) return json({ error: { code: "DOCUMENT_NOT_FOUND", message: "Document not found." } }, 404, headers);
+        const object = await env.RESEARCH_FILES.get(String(rows[0].object_key));
+        if (!object) return json({ error: { code: "DOCUMENT_OBJECT_MISSING", message: "The private document object is missing." } }, 404, headers);
+        const safeName = String(rows[0].original_filename).replace(/[\r\n"\\]/g,"_");
+        const responseHeaders = new Headers(headers);
+        responseHeaders.set("content-type", String(rows[0].content_type));
+        responseHeaders.set("content-length", String(rows[0].byte_size));
+        responseHeaders.set("content-disposition", "attachment; filename=\""+safeName+"\"");
+        responseHeaders.set("x-content-type-options","nosniff");
+        responseHeaders.set("cache-control","private, no-store");
+        return new Response(object.body,{status:200,headers:responseHeaders});
+      }
+      return json({ data: rows.map(({object_key: _privateKey,...row})=>row) },200,headers);
+    }
+    if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST." } },405,headers);
+    const form = await request.formData();
+    const runId = String(form.get("research_run_id")||"");
+    const file = form.get("file");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(runId) || !(file instanceof File)) return json({ error: { code: "INVALID_UPLOAD", message: "Provide a research_run_id and one file." } },400,headers);
+    if (file.size<1 || file.size>5*1024*1024) return json({ error: { code: "FILE_TOO_LARGE", message: "Research files must be between 1 byte and 5 MiB." } },413,headers);
+    const allowedTypes = ["text/plain","text/html","text/csv","application/pdf"];
+    const type = file.type.toLowerCase().split(";")[0].trim();
+    const extension = file.name.toLowerCase().split(".").pop() || "";
+    const expectedExtensions: Record<string,string[]> = { "text/plain":["txt"], "text/html":["html","htm"], "text/csv":["csv"], "application/pdf":["pdf"] };
+    if (!allowedTypes.includes(type) || !expectedExtensions[type]?.includes(extension)) return json({ error: { code: "UNSUPPORTED_FILE_TYPE", message: "File extension and MIME type must match. Only TXT, HTML, CSV and PDF files are accepted." } },415,headers);
+    if (type === "application/pdf") {
+      const signature = new Uint8Array(await file.slice(0,5).arrayBuffer());
+      if (new TextDecoder().decode(signature) !== "%PDF-") return json({ error: { code: "INVALID_FILE_SIGNATURE", message: "The PDF file signature is invalid." } },415,headers);
+    }
+    const runResponse = await fetch(new URL("/rest/v1/research_runs?select=id&id=eq."+runId+"&limit=1",env.SUPABASE_URL!),{headers:dbHeaders,signal:AbortSignal.timeout(10000)});
+    if (!runResponse.ok) return json({ error: { code: "RESEARCH_RUN_CHECK_FAILED", message: "Could not verify research brief ownership." } },502,headers);
+    const runs = await runResponse.json() as Array<JsonRecord>;
+    if (!runs.length) return json({ error: { code: "RESEARCH_RUN_NOT_FOUND", message: "Research brief not found in your workspace." } },404,headers);
+    const bytes = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256",bytes);
+    const hash = Array.from(new Uint8Array(digest)).map(value=>value.toString(16).padStart(2,"0")).join("");
+    const id = crypto.randomUUID();
+    const originalName = file.name.replace(/[\\/\r\n\0]/g,"_").slice(0,255) || "research-upload";
+    const objectKey = ownerId+"/"+runId+"/"+id;
+    pendingObjectKey = objectKey;
+    await env.RESEARCH_FILES.put(objectKey,bytes,{httpMetadata:{contentType:type},customMetadata:{owner_id:ownerId,research_run_id:runId,document_id:id,sha256:hash}});
+    const record = {id,user_id:ownerId,research_run_id:runId,object_key:objectKey,original_filename:originalName,content_type:type,byte_size:file.size,content_sha256:hash,ingestion_status:"uploaded"};
+    const saved = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,ingestion_status,created_at",env.SUPABASE_URL!),{method:"POST",headers:{...dbHeaders,prefer:"return=representation"},body:JSON.stringify(record),signal:AbortSignal.timeout(10000)});
+    if (!saved.ok) {
+      await env.RESEARCH_FILES.delete(objectKey).catch(()=>undefined);
+      pendingObjectKey = null;
+      return json({ error: { code: "DOCUMENT_METADATA_SAVE_FAILED", message: "The file was not registered. Confirm migration 0044 is applied; temporary object cleanup was attempted." } },502,headers);
+    }
+    metadataPersisted = true;
+    const rows = await saved.json();
+    return json({data:Array.isArray(rows)?rows[0]:rows},201,headers);
+  } catch {
+    if (pendingObjectKey && !metadataPersisted) await env.RESEARCH_FILES?.delete(pendingObjectKey).catch(()=>undefined);
+    return json({ error: { code: "DOCUMENT_STORAGE_FAILED", message: "Could not safely store the private research document. Temporary object cleanup was attempted when metadata was not saved." } },502,headers);
+  }
+}
+
+
+async function handleResearchDocumentExtraction(request: Request, env: Env, headers: Headers): Promise<Response> {
+  if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST to extract a private research document." } }, 405, headers);
+  if (!configured(env) || !env.RESEARCH_FILES) return json({ error: { code: "PRIVATE_STORAGE_NOT_CONFIGURED", message: "Research database and private R2 storage must be configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to extract research documents." } }, 401, headers);
+  const body = await readJson(request);
+  const documentId = typeof body?.document_id === "string" ? body.document_id : "";
+  if (!body || Object.keys(body).some(key => key !== "document_id") || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(documentId)) {
+    return json({ error: { code: "INVALID_DOCUMENT_ID", message: "Provide one valid document_id." } }, 400, headers);
+  }
+  try {
+    const ownerId = await verifiedUserId(token, env);
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+    const lookup = await fetch(new URL("/rest/v1/research_documents?select=id,research_run_id,original_filename,content_type,byte_size,content_sha256,object_key,ingestion_status&id=eq." + documentId + "&limit=1", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+    if (!lookup.ok) return json({ error: { code: "DOCUMENT_LOOKUP_FAILED", message: "Could not load the private document. Confirm migrations 0044 and 0045 are applied." } }, 502, headers);
+    const documents = await lookup.json() as Array<JsonRecord>;
+    const document = documents[0];
+    if (!document) return json({ error: { code: "DOCUMENT_NOT_FOUND", message: "Document not found in your workspace." } }, 404, headers);
+    const contentType = String(document.content_type);
+    if (!["text/plain","text/html","text/csv"].includes(contentType)) return json({ error: { code: "DOCUMENT_FORMAT_NOT_EXTRACTABLE", message: "PDF files are stored privately but binary PDF text extraction is not available yet. TXT, HTML and CSV are supported." } }, 415, headers);
+    const object = await env.RESEARCH_FILES.get(String(document.object_key));
+    if (!object) return json({ error: { code: "DOCUMENT_OBJECT_MISSING", message: "The private document object is missing." } }, 404, headers);
+    const bytes = await object.arrayBuffer();
+    if (bytes.byteLength < 1 || bytes.byteLength > 5 * 1024 * 1024) return json({ error: { code: "DOCUMENT_SIZE_INVALID", message: "The stored document size is outside the accepted limit." } }, 413, headers);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    const actualHash = Array.from(new Uint8Array(digest)).map(value => value.toString(16).padStart(2,"0")).join("");
+    if (actualHash !== document.content_sha256 || bytes.byteLength !== Number(document.byte_size)) return json({ error: { code: "DOCUMENT_INTEGRITY_FAILED", message: "The stored document no longer matches its verified upload metadata." } }, 409, headers);
+    let decodedText: string;
+    try { decodedText = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+    catch { return json({ error: { code: "DOCUMENT_ENCODING_INVALID", message: "Only valid UTF-8 text documents can be extracted." } }, 415, headers); }
+    let plan: ReturnType<typeof buildResearchDocumentIngestionPlan>;
+    try {
+      plan = buildResearchDocumentIngestionPlan({
+        id: String(document.id),
+        research_run_id: String(document.research_run_id),
+        original_filename: String(document.original_filename),
+        content_type: contentType,
+        content_sha256: actualHash
+      }, decodedText);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "DOCUMENT_EXTRACTION_FAILED";
+      return json({ error: { code: message.includes("TOO_LARGE") ? "DOCUMENT_TEXT_TOO_LARGE" : "DOCUMENT_EXTRACTION_REJECTED", message: message.slice(0,240) } }, 422, headers);
+    }
+    const sourceResponse = await fetch(new URL("/rest/v1/research_sources?on_conflict=research_run_id,url&select=id", env.SUPABASE_URL!), {
+      method: "POST",
+      headers: { ...dbHeaders, prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({ user_id: ownerId, ...plan.source, evidence_status: "unreviewed" }),
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!sourceResponse.ok) return json({ error: { code: "DOCUMENT_SOURCE_SAVE_FAILED", message: "Could not create the private document's research source record." } }, 502, headers);
+    const sourceRows = await sourceResponse.json() as Array<JsonRecord>;
+    const sourceId = typeof sourceRows?.[0]?.id === "string" ? String(sourceRows[0].id) : "";
+    if (!sourceId) return json({ error: { code: "DOCUMENT_SOURCE_ID_MISSING", message: "The research source was saved but its ID was not returned." } }, 502, headers);
+    const passageRows = plan.passages.map(passage => ({
+      user_id: ownerId,
+      research_run_id: String(document.research_run_id),
+      research_source_id: sourceId,
+      research_document_id: documentId,
+      passage_text: passage.passage_text,
+      locator_type: passage.locator_type,
+      locator_value: passage.locator_value,
+      content_sha256: actualHash,
+      extraction_method: passage.extraction_method,
+      review_status: "unreviewed"
+    }));
+    if (passageRows.length) {
+      const passagesResponse = await fetch(new URL("/rest/v1/research_evidence_passages?on_conflict=research_document_id,locator_type,locator_value&select=id", env.SUPABASE_URL!), {
+        method: "POST",
+        headers: { ...dbHeaders, prefer: "resolution=merge-duplicates,return=representation" },
+        body: JSON.stringify(passageRows),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!passagesResponse.ok) return json({ error: { code: "DOCUMENT_PASSAGE_SAVE_FAILED", message: "The source was saved, but its passages could not be stored. Confirm migration 0045 is applied and retry extraction." } }, 502, headers);
+      const savedPassages = await passagesResponse.json() as Array<JsonRecord>;
+      if (!Array.isArray(savedPassages) || savedPassages.length !== passageRows.length) {
+        return json({ error: { code: "DOCUMENT_PASSAGE_COUNT_MISMATCH", message: "The evidence service did not confirm every extracted passage. Retry extraction safely." } }, 502, headers);
+      }
+    }
+    const statusResponse = await fetch(new URL("/rest/v1/research_documents?id=eq." + documentId, env.SUPABASE_URL!), {
+      method: "PATCH", headers: { ...dbHeaders, prefer: "return=representation" },
+      body: JSON.stringify({ ingestion_status: "extracted" }), signal: AbortSignal.timeout(10000)
+    });
+    if (!statusResponse.ok) return json({ error: { code: "DOCUMENT_STATUS_UPDATE_FAILED", message: "Passages were stored, but the document status could not be updated. Retry extraction safely." } }, 502, headers);
+    return json({ data: {
+      document_id: documentId, research_run_id: document.research_run_id, source_id: sourceId,
+      passages_saved: passageRows.length, extraction_method: plan.extraction_method,
+      truncated: plan.truncated, review_status: "unreviewed",
+      claim_verification: "not_performed", idempotent: true
+    } }, 200, headers);
+  } catch {
+    return json({ error: { code: "DOCUMENT_EXTRACTION_FAILED", message: "Could not extract the private research document. No claim verification was performed." } }, 502, headers);
+  }
+}
+
+async function handleResearchReport(request: Request, env: Env, headers: Headers): Promise<Response> {
+  if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET." } }, 405, headers);
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to export research." } }, 401, headers);
+  const runId = new URL(request.url).searchParams.get("research_run_id") || "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) {
+    return json({ error: { code: "INVALID_RESEARCH_RUN_ID", message: "A valid research run ID is required." } }, 400, headers);
+  }
+  try {
+    const ownerId = await verifiedUserId(token, env);
+    if (!ownerId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+    const queries: Array<[string,string]> = [
+      ["run", "research_runs?select=id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at&id=eq."+runId+"&limit=1"],
+      ["sources", "research_sources?select=id,title,url,publisher,published_at,excerpt,evidence_status,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["opportunities", "research_opportunities?select=id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["passages", "research_evidence_passages?select=id,research_source_id,research_document_id,passage_text,locator_type,locator_value,extraction_method,review_status,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["claims", "research_claims?select=id,claim_text,claim_type,verification_status,confidence,reviewer_note,created_at&research_run_id=eq."+runId+"&order=created_at.asc&limit=200"],
+      ["links", "research_claim_evidence?select=id,claim_id,passage_id,relationship,reviewer_note&research_run_id=eq."+runId+"&order=created_at.asc&limit=500"]
+    ];
+    const entries = await Promise.all(queries.map(async ([key,path]) => {
+      const response = await fetch(new URL("/rest/v1/"+path, env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(12000) });
+      if (!response.ok) throw new Error("RESEARCH_REPORT_QUERY_FAILED:"+key);
+      return [key, await response.json()] as const;
+    }));
+    const data = Object.fromEntries(entries) as Record<string, unknown>;
+    const runs = data.run as JsonRecord[];
+    if (!Array.isArray(runs) || runs.length !== 1) return json({ error: { code: "RESEARCH_RUN_NOT_FOUND", message: "Research brief not found in your workspace." } }, 404, headers);
+    return json({ data: {
+      generated_at: new Date().toISOString(),
+      verification_notice: "Claim statuses are owner review labels, not independent proof. Unverified claims must not be presented as established facts.",
+      run: runs[0],
+      sources: data.sources,
+      opportunities: data.opportunities,
+      passages: data.passages,
+      claims: data.claims,
+      claim_evidence: data.links
+    } }, 200, headers);
+  } catch {
+    return json({ error: { code: "RESEARCH_REPORT_UNAVAILABLE", message: "Could not assemble the evidence-backed report. Confirm migrations 0005 and 0043 are applied." } }, 502, headers);
+  }
+}
+
+type ResearchResource = "research_runs" | "research_sources" | "research_opportunities" | "research_evidence_passages" | "research_claims" | "research_claim_evidence";
 const RESEARCH_FIELDS: Record<ResearchResource, string[]> = {
   research_runs: ["title","research_question","market_scope","status","summary","findings","methodology","completed_at"],
   research_sources: ["research_run_id","source_type","title","url","publisher","published_at","excerpt","relevance_score","evidence_status","metadata"],
-  research_opportunities: ["research_run_id","title","customer_problem","target_customer","proposed_solution","revenue_model","validation_score","risks","validation_steps","status"]
+  research_opportunities: ["research_run_id","title","customer_problem","target_customer","proposed_solution","revenue_model","validation_score","risks","validation_steps","status"],
+  research_evidence_passages: ["research_run_id","research_source_id","research_document_id","passage_text","locator_type","locator_value","content_sha256","extraction_method","review_status","reviewer_note"],
+  research_claims: ["research_run_id","claim_text","claim_type","verification_status","confidence","reviewer_note"],
+  research_claim_evidence: ["research_run_id","claim_id","passage_id","relationship","reviewer_note"]
 };
 const RESEARCH_COLUMNS: Record<ResearchResource, string> = {
   research_runs: "id,title,research_question,market_scope,status,summary,findings,methodology,created_at,updated_at,completed_at",
   research_sources: "id,research_run_id,source_type,title,url,publisher,published_at,retrieved_at,excerpt,relevance_score,evidence_status,metadata,created_at",
-  research_opportunities: "id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status,created_at,updated_at"
+  research_opportunities: "id,research_run_id,title,customer_problem,target_customer,proposed_solution,revenue_model,validation_score,risks,validation_steps,status,created_at,updated_at",
+  research_evidence_passages: "id,research_run_id,research_source_id,research_document_id,passage_text,locator_type,locator_value,content_sha256,extraction_method,review_status,reviewer_note,created_at,updated_at",
+  research_claims: "id,research_run_id,claim_text,claim_type,verification_status,confidence,reviewer_note,created_at,updated_at",
+  research_claim_evidence: "id,research_run_id,claim_id,passage_id,relationship,reviewer_note,created_at"
 };
 async function handleResearchResource(request: Request, env: Env, headers: Headers, resource: ResearchResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -287,7 +525,7 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
   }
   const fields = RESEARCH_FIELDS[resource];
   let endpoint = "/rest/v1/" + resource + "?select=" + RESEARCH_COLUMNS[resource];
-  const params = new URLSearchParams({ order: resource === "research_sources" ? "created_at.desc" : "updated_at.desc", limit: "100" });
+  const params = new URLSearchParams({ order: resource === "research_sources" || resource === "research_claim_evidence" ? "created_at.desc" : "updated_at.desc", limit: "100" });
   if (resource !== "research_runs" && runId) params.set("research_run_id", "eq." + runId);
   if (method === "GET") endpoint += "&" + params.toString();
   let body: JsonRecord | undefined;
@@ -295,12 +533,32 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
     const input = await readJson(request);
     if (!input) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
     for (const key of Object.keys(input)) if (!fields.includes(key)) return json({ error: { code: "INVALID_BODY", message: "Unsupported research field: " + key } }, 400, headers);
-    const required = resource === "research_runs" ? ["title","research_question"] : resource === "research_sources" ? ["research_run_id","title","url"] : ["research_run_id","title","customer_problem"];
-    if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" ? 5000 : key === "url" ? 2048 : key === "customer_problem" ? 5000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
+    const required = resource === "research_runs" ? ["title","research_question"]
+      : resource === "research_sources" ? ["research_run_id","title","url"]
+      : resource === "research_opportunities" ? ["research_run_id","title","customer_problem"]
+      : resource === "research_evidence_passages" ? ["research_run_id","research_source_id","passage_text"]
+      : resource === "research_claims" ? ["research_run_id","claim_text"]
+      : ["research_run_id","claim_id","passage_id","relationship"];
+    if (method === "POST" && required.some(key => !validText(input[key], key === "research_question" || key === "customer_problem" ? 5000 : key === "url" ? 2048 : key === "passage_text" ? 12000 : key === "claim_text" ? 3000 : 500))) return json({ error: { code: "INVALID_BODY", message: "Required research fields are missing or invalid." } }, 400, headers);
     if (method === "PATCH" && Object.keys(input).length === 0) return json({ error: { code: "INVALID_BODY", message: "At least one field is required." } }, 400, headers);
+    if (resource === "research_sources" && input.url !== undefined) {
+      try { const parsed = new URL(String(input.url)); if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) throw new Error(); }
+      catch { return json({ error: { code: "INVALID_SOURCE_URL", message: "Research source URLs must be valid HTTPS links without embedded credentials." } }, 400, headers); }
+    }
+    if (resource === "research_evidence_passages" && input.research_document_id !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(input.research_document_id))) return json({ error: { code: "INVALID_DOCUMENT_ID", message: "A valid research_document_id is required." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.passage_text !== undefined && (typeof input.passage_text !== "string" || input.passage_text.length < 1 || input.passage_text.length > 12000)) return json({ error: { code: "INVALID_PASSAGE", message: "Passages must contain 1–12,000 characters." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.locator_type !== undefined && !["page","paragraph","section","timestamp","row","cell_range","unspecified"].includes(String(input.locator_type))) return json({ error: { code: "INVALID_LOCATOR", message: "Invalid evidence locator type." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.review_status !== undefined && !["unreviewed","relevant","irrelevant","disputed"].includes(String(input.review_status))) return json({ error: { code: "INVALID_REVIEW_STATUS", message: "Invalid passage review status." } }, 400, headers);
+    if (resource === "research_evidence_passages" && input.extraction_method !== undefined && !["manual","pdf_text","html_text","csv_text","transcript","other"].includes(String(input.extraction_method))) return json({ error: { code: "INVALID_EXTRACTION_METHOD", message: "Invalid extraction method." } }, 400, headers);
+    if (resource === "research_claims" && input.claim_text !== undefined && (typeof input.claim_text !== "string" || input.claim_text.length < 1 || input.claim_text.length > 3000)) return json({ error: { code: "INVALID_CLAIM", message: "Claims must contain 1–3,000 characters." } }, 400, headers);
+    if (resource === "research_claims" && input.claim_type !== undefined && !["finding","interpretation","hypothesis","recommendation"].includes(String(input.claim_type))) return json({ error: { code: "INVALID_CLAIM_TYPE", message: "Invalid claim type." } }, 400, headers);
+    if (resource === "research_claims" && input.verification_status !== undefined && !["unverified","supported","mixed","contradicted","insufficient_evidence"].includes(String(input.verification_status))) return json({ error: { code: "INVALID_VERIFICATION_STATUS", message: "Invalid claim verification status." } }, 400, headers);
+    if (resource === "research_claims" && input.confidence !== undefined && (typeof input.confidence !== "number" || input.confidence < 0 || input.confidence > 100)) return json({ error: { code: "INVALID_CONFIDENCE", message: "Confidence must be between 0 and 100." } }, 400, headers);
+    if (resource === "research_claim_evidence" && input.relationship !== undefined && !["supports","contradicts","context"].includes(String(input.relationship))) return json({ error: { code: "INVALID_RELATIONSHIP", message: "Invalid claim/evidence relationship." } }, 400, headers);
     if (resource === "research_runs" && input.status !== undefined && !["draft","queued","running","completed","failed","cancelled"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid research status." } }, 400, headers);
     if (resource === "research_sources" && input.evidence_status !== undefined && !["unreviewed","supports","contradicts","context","rejected"].includes(String(input.evidence_status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid evidence status." } }, 400, headers);
     if (resource === "research_opportunities" && input.status !== undefined && !["discovered","investigating","validated","rejected","pursuing"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid opportunity status." } }, 400, headers);
+    for (const key of ["research_source_id","claim_id","passage_id"]) if (input[key] !== undefined && !/^[0-9a-f-]{36}$/i.test(String(input[key]))) return json({ error: { code: "INVALID_ID", message: "A valid " + key + " is required." } }, 400, headers);
     if (resource !== "research_runs" && input.research_run_id !== undefined && !/^[0-9a-f-]{36}$/i.test(String(input.research_run_id))) return json({ error: { code: "INVALID_ID", message: "A valid research_run_id is required." } }, 400, headers);
     body = { ...input };
     if (method === "POST") body.user_id = ownerId;
@@ -321,18 +579,24 @@ async function handleResearchResource(request: Request, env: Env, headers: Heade
 }
 
 
-type BusinessResource = "products" | "partner_candidates" | "leads" | "offers";
+type BusinessResource = "products" | "partner_candidates" | "leads" | "offers" | "marketing_assets" | "customer_support_cases" | "creative_briefs";
 const BUSINESS_FIELDS: Record<BusinessResource, string[]> = {
   products: ["research_run_id","name","summary","target_customer","customer_problem","proposed_solution","product_type","outline","price_amount","price_currency","status","validation_notes"],
   partner_candidates: ["name","platform","profile_url","niche","follower_count","average_views","business_email","has_competing_offer","score_components","total_score","recommendation","evidence","due_diligence","status"],
   leads: ["name","organisation","email","website","source","source_url","customer_problem","fit_score","stage","do_not_contact","notes","last_contacted_at"],
-  offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"]
+  offers: ["product_id","name","target_customer","promised_outcome","deliverables","exclusions","price_amount","price_currency","delivery_cost","payment_fee_percent","partner_share_percent","status","assumptions"],
+  marketing_assets: ["title","asset_type","platform","campaign_name","objective","audience","content","status","metadata"],
+  customer_support_cases: ["customer_name","customer_email","subject","issue_description","priority","status","response_draft","internal_notes","source","resolved_at"],
+  creative_briefs: ["title","asset_type","brief","generation_prompt","target_platform","aspect_ratio","reference_urls","status","output_url","notes"]
 };
 const BUSINESS_COLUMNS: Record<BusinessResource, string> = {
   products: "id,research_run_id,name,summary,target_customer,customer_problem,proposed_solution,product_type,outline,price_amount,price_currency,status,validation_notes,created_at,updated_at",
   partner_candidates: "id,name,platform,profile_url,niche,follower_count,average_views,business_email,has_competing_offer,score_components,total_score,recommendation,evidence,due_diligence,status,created_at,updated_at",
   leads: "id,name,organisation,email,website,source,source_url,customer_problem,fit_score,stage,do_not_contact,notes,last_contacted_at,created_at,updated_at",
-  offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at"
+  offers: "id,product_id,name,target_customer,promised_outcome,deliverables,exclusions,price_amount,price_currency,delivery_cost,payment_fee_percent,partner_share_percent,status,assumptions,created_at,updated_at",
+  marketing_assets: "id,title,asset_type,platform,campaign_name,objective,audience,content,status,metadata,created_at,updated_at",
+  customer_support_cases: "id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at,resolved_at",
+  creative_briefs: "id,title,asset_type,brief,generation_prompt,target_platform,aspect_ratio,reference_urls,status,output_url,notes,created_at,updated_at"
 };
 async function handleBusinessResource(request: Request, env: Env, headers: Headers, resource: BusinessResource): Promise<Response> {
   if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
@@ -380,6 +644,27 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (input.stage !== undefined && !["new","qualified","contacted","proposal","won","lost","do_not_contact"].includes(String(input.stage))) return json({ error: { code: "INVALID_STAGE", message: "Invalid lead stage." } }, 400, headers);
       if (input.fit_score !== undefined && input.fit_score !== null && (typeof input.fit_score !== "number" || input.fit_score < 0 || input.fit_score > 100)) return json({ error: { code: "INVALID_SCORE", message: "Lead fit score must be between 0 and 100." } }, 400, headers);
       if (input.do_not_contact !== undefined && typeof input.do_not_contact !== "boolean") return json({ error: { code: "INVALID_CONSENT", message: "do_not_contact must be true or false." } }, 400, headers);
+    } else if (resource === "creative_briefs") {
+      const assetTypes = ["image","video","audio","brand_identity","presentation","other"];
+      if (method === "POST" && (!validText(input.title, 200) || !validText(input.brief, 10000) || typeof input.asset_type !== "string" || !assetTypes.includes(input.asset_type))) return json({ error: { code: "INVALID_CREATIVE_BRIEF", message: "Title, supported asset type and brief are required." } }, 400, headers);
+      if (input.asset_type !== undefined && (typeof input.asset_type !== "string" || !assetTypes.includes(input.asset_type))) return json({ error: { code: "INVALID_ASSET_TYPE", message: "Invalid creative asset type." } }, 400, headers);
+      if (input.status !== undefined && !["draft","ready","in_progress","complete","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid creative brief status." } }, 400, headers);
+      for (const [key,max] of [["generation_prompt",10000],["target_platform",100],["aspect_ratio",40],["output_url",2048],["notes",5000]] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "string" || input[key].length > max)) return json({ error: { code: "INVALID_CREATIVE_FIELD", message: key + " must be text within its allowed length." } }, 400, headers);
+      if (input.reference_urls !== undefined && (!Array.isArray(input.reference_urls) || input.reference_urls.length > 20 || input.reference_urls.some((v: unknown) => typeof v !== "string" || v.length > 2048 || !/^https:\/\/[^\s]+$/i.test(v)))) return json({ error: { code: "INVALID_REFERENCE_URLS", message: "Reference URLs must be an array of up to 20 HTTPS links." } }, 400, headers);
+      if (input.output_url !== undefined && input.output_url !== null) { try { const parsed = new URL(String(input.output_url)); if (parsed.protocol !== "https:") throw new Error(); } catch { return json({ error: { code: "INVALID_OUTPUT_URL", message: "Output URL must use HTTPS." } }, 400, headers); } }
+    } else if (resource === "customer_support_cases") {
+      if (method === "POST" && (!validText(input.customer_name, 200) || !validText(input.subject, 240) || !validText(input.issue_description, 10000))) return json({ error: { code: "INVALID_SUPPORT_CASE", message: "Customer name, subject and issue description are required." } }, 400, headers);
+      if (input.customer_email !== undefined && input.customer_email !== null && (typeof input.customer_email !== "string" || input.customer_email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.customer_email))) return json({ error: { code: "INVALID_CUSTOMER_EMAIL", message: "Customer email must be a valid email address." } }, 400, headers);
+      if (input.priority !== undefined && !["low","normal","high","urgent"].includes(String(input.priority))) return json({ error: { code: "INVALID_PRIORITY", message: "Invalid support priority." } }, 400, headers);
+      if (input.status !== undefined && !["open","investigating","waiting_on_customer","resolved","closed"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid support case status." } }, 400, headers);
+      for (const [key,max] of [["response_draft",10000],["internal_notes",10000],["source",100]] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "string" || input[key].length > max)) return json({ error: { code: "INVALID_SUPPORT_FIELD", message: key + " exceeds its allowed length." } }, 400, headers);
+    } else if (resource === "marketing_assets") {
+      const assetTypes = ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"];
+      if (method === "POST" && (!validText(input.title, 200) || !validText(input.content, 30000) || typeof input.asset_type !== "string" || !assetTypes.includes(input.asset_type))) return json({ error: { code: "INVALID_BODY", message: "A title, supported asset type and content are required for the marketing draft." } }, 400, headers);
+      if (input.asset_type !== undefined && (typeof input.asset_type !== "string" || !assetTypes.includes(input.asset_type))) return json({ error: { code: "INVALID_ASSET_TYPE", message: "Invalid marketing asset type." } }, 400, headers);
+      for (const [key,max] of [["platform",80],["campaign_name",200],["objective",2000],["audience",1000]] as const) if (input[key] !== undefined && input[key] !== null && (typeof input[key] !== "string" || input[key].length > max)) return json({ error: { code: "INVALID_MARKETING_FIELD", message: key + " must be text within its allowed length." } }, 400, headers);
+      if (input.metadata !== undefined && (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata))) return json({ error: { code: "INVALID_METADATA", message: "Marketing metadata must be an object." } }, 400, headers);
+      if (input.status !== undefined && !["draft","review","approved","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid marketing asset status." } }, 400, headers);
     } else if (resource === "offers") {
       if (method === "POST" && !validText(input.name, 200)) return json({ error: { code: "INVALID_BODY", message: "Offer name is required." } }, 400, headers);
       if (input.status !== undefined && !["draft","validating","ready","active","archived"].includes(String(input.status))) return json({ error: { code: "INVALID_STATUS", message: "Invalid offer status." } }, 400, headers);
@@ -424,6 +709,10 @@ async function handleBusinessResource(request: Request, env: Env, headers: Heade
       if (resource === "partner_candidates" && body.status === undefined) body.status = "new";
       if (resource === "leads" && body.stage === undefined) body.stage = "new";
       if (resource === "offers" && body.status === undefined) body.status = "draft";
+      if (resource === "marketing_assets" && body.status === undefined) body.status = "draft";
+      if (resource === "customer_support_cases" && body.status === undefined) body.status = "open";
+      if (resource === "creative_briefs" && body.status === undefined) body.status = "draft";
+      if (resource === "customer_support_cases" && body.priority === undefined) body.priority = "normal";
     }
     if (method === "PATCH") endpoint += "&id=eq." + encodeURIComponent(id!);
   }
@@ -608,6 +897,46 @@ async function handleChatGPTHistoryImport(request: Request, env: Env, headers: H
   }
 }
 
+
+type CollectionReadResource = "collection_providers" | "collection_actors" | "collection_runs" | "collection_datasets" | "collection_items";
+const COLLECTION_READ_COLUMNS: Record<CollectionReadResource, string> = {
+  collection_providers: "id,provider_key,display_name,provider_type,status,access_mode,capabilities,quota_state,last_health_check_at,last_error_code,created_at,updated_at",
+  collection_actors: "id,actor_key,version,name,description,category,input_schema,output_schema,required_capabilities,policy_tags,is_enabled,is_system,created_at,updated_at",
+  collection_runs: "id,actor_id,provider_id,job_id,actor_key,actor_version,provider_key,status,input,checkpoint,counters,quota_estimate,quota_actual,error,started_at,finished_at,created_at,updated_at",
+  collection_datasets: "id,run_id,name,item_count,schema_version,metadata,created_at",
+  collection_items: "id,dataset_id,run_id,item_key,source_url,source_platform,source_type,observed_at,collected_at,access_method,permission_context,record,content_hash,created_at"
+};
+
+async function handleCollectionRead(request: Request, env: Env, headers: Headers, resource: CollectionReadResource): Promise<Response> {
+  if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+  if (request.method !== "GET") return json({ error: { code: "READ_ONLY", message: "Collection records are read-only until the execution adapters and write validation are complete." } }, 405, headers);
+  const token = bearerToken(request);
+  if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access collection data." } }, 401, headers);
+  try {
+    const userId = await verifiedUserId(token, env);
+    if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+    const url = new URL(request.url);
+    const params = new URLSearchParams({
+      select: COLLECTION_READ_COLUMNS[resource],
+      order: resource === "collection_items" ? "collected_at.desc" : "created_at.desc",
+      limit: resource === "collection_items" ? "200" : "100"
+    });
+    for (const key of ["status","provider_key","actor_key","run_id","dataset_id"] as const) {
+      const value = url.searchParams.get(key);
+      if (value && value.length <= 160 && /^[a-zA-Z0-9_-]+$/.test(value)) params.set(key, "eq." + value);
+    }
+    const response = await fetch(new URL("/rest/v1/" + resource + "?" + params.toString(), env.SUPABASE_URL!), {
+      headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+      signal: AbortSignal.timeout(12000)
+    });
+    const raw = await response.text();
+    const payload = raw ? JSON.parse(raw) : [];
+    if (!response.ok) return json({ error: { code: "COLLECTION_STORAGE_FAILED", message: response.status >= 500 ? "Collection storage failed. The collection migration may not have been applied yet." : (payload?.message ?? "The collection request was rejected.") } }, response.status >= 500 ? 502 : response.status, headers);
+    return json({ data: payload }, 200, headers);
+  } catch {
+    return json({ error: { code: "COLLECTION_STORAGE_UNAVAILABLE", message: "Could not read collection data. Confirm the database migration and authentication configuration." } }, 502, headers);
+  }
+}
 
 async function handleCapabilities(request: Request, env: Env, headers: Headers): Promise<Response> {
   const token = bearerToken(request);
@@ -995,6 +1324,838 @@ export default {
     }
     if (origin && !allowedOrigin(origin, env)) return json({ error: { code: "ORIGIN_NOT_ALLOWED", message: "This origin is not allowed." } }, 403);
 
+
+
+    if (url.pathname === "/api/v1/whop/sales") {
+      if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } }, 405, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view Whop sales reports." } }, 401, headers);
+      if (!configured(env) || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)) return json({ error: { code: "SALES_REPORT_NOT_CONFIGURED", message: "GiGo server-side database access is not configured." } }, 503, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        if (userId !== env.WHOP_OWNER_USER_ID) return json({ error: { code: "FORBIDDEN", message: "Whop sales reports are restricted to the configured GiGo owner." } }, 403, headers);
+        const rows = await serviceRest(env, "/rest/v1/whop_payment_events?select=whop_event_id,event_type,payment_id,product_id,plan_id,partner_id,amount,currency,payment_status,occurred_at,received_at&order=received_at.desc&limit=500") as Array<JsonRecord>;
+        const totals = new Map<string, { currency: string; successful_payments: number; observed_sales_amount: number; refunds: number; observed_refund_amount: number; failed_payments: number; disputes: number }>();
+        const partners = new Map<string, { partner_id: string; successful_payments: number; observed_sales_amount: number; currency: string }>();
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const currency = typeof row.currency === "string" ? row.currency : "UNKNOWN";
+          const amount = typeof row.amount === "number" ? row.amount : Number(row.amount ?? 0);
+          const safeAmount = Number.isFinite(amount) && amount >= 0 ? amount : 0;
+          if (!totals.has(currency)) totals.set(currency, { currency, successful_payments: 0, observed_sales_amount: 0, refunds: 0, observed_refund_amount: 0, failed_payments: 0, disputes: 0 });
+          const total = totals.get(currency)!;
+          if (row.event_type === "payment.succeeded") {
+            total.successful_payments++;
+            total.observed_sales_amount += safeAmount;
+            if (typeof row.partner_id === "string" && row.partner_id) {
+              const partnerKey = currency + ":" + row.partner_id;
+              if (!partners.has(partnerKey)) partners.set(partnerKey, { partner_id: row.partner_id, successful_payments: 0, observed_sales_amount: 0, currency });
+              const partner = partners.get(partnerKey)!;
+              partner.successful_payments++;
+              partner.observed_sales_amount += safeAmount;
+            }
+          } else if (row.event_type === "payment.failed") total.failed_payments++;
+          else if (row.event_type === "refund.created") { total.refunds++; total.observed_refund_amount += safeAmount; }
+          else if (row.event_type === "dispute.created") total.disputes++;
+        }
+        return json({ data: { source: "verified_whop_webhook_events", event_count: Array.isArray(rows) ? rows.length : 0, limited_to_latest: 500, currencies: Array.from(totals.values()), partner_sales: Array.from(partners.values()), payout_access: false, commission_calculation: "not_configured", note: "Amounts are observed webhook values, not reconciled net proceeds. Refunds, fees and partner commission rules must be confirmed before any 50/50 share is reported." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "SALES_REPORT_FAILED", message: "Could not read the Whop sales ledger. Confirm migration 0047 is applied." } }, 502, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/webhooks/whop") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      const webhookSecret = env.WHOP_WEBHOOK_SECRET ?? "";
+      const ownerId = env.WHOP_OWNER_USER_ID ?? "";
+      const expectedAccountId = env.WHOP_ACCOUNT_ID ?? "";
+      if (!webhookSecret || !/^biz_[A-Za-z0-9_-]{4,120}$/.test(expectedAccountId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ownerId)) {
+        return json({ error: { code: "WHOP_WEBHOOK_NOT_CONFIGURED", message: "Configure the Whop webhook secret, GiGo owner user ID and expected Whop account ID as Worker settings." } }, 503, headers);
+      }
+      const declaredLength = Number(request.headers.get("content-length") ?? "0");
+      if (declaredLength > 256 * 1024) return json({ error: { code: "WEBHOOK_TOO_LARGE", message: "Webhook payload exceeds the size limit." } }, 413, headers);
+      let rawBody = "";
+      try { rawBody = await request.text(); } catch { return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Could not read the webhook payload." } }, 400, headers); }
+      if (new TextEncoder().encode(rawBody).byteLength > 256 * 1024) return json({ error: { code: "WEBHOOK_TOO_LARGE", message: "Webhook payload exceeds the size limit." } }, 413, headers);
+      if (!await verifyWhopWebhook(request, rawBody, webhookSecret)) return json({ error: { code: "INVALID_WEBHOOK_SIGNATURE", message: "Webhook signature verification failed." } }, 401, headers);
+      let payload: unknown;
+      try { payload = JSON.parse(rawBody); } catch { return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Webhook payload must be valid JSON." } }, 400, headers); }
+      const eventId = request.headers.get("webhook-id") ?? "";
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: { code: "INVALID_WEBHOOK_BODY", message: "Whop event envelope is invalid." } }, 400, headers);
+      const envelope = payload as JsonRecord;
+      const eventData = envelope.data && typeof envelope.data === "object" && !Array.isArray(envelope.data) ? envelope.data as JsonRecord : {};
+      const company = eventData.company && typeof eventData.company === "object" && !Array.isArray(eventData.company) ? eventData.company as JsonRecord : {};
+      const eventAccountId = typeof envelope.account_id === "string" ? envelope.account_id
+        : typeof envelope.company_id === "string" ? envelope.company_id
+        : typeof eventData.company_id === "string" ? eventData.company_id
+        : typeof company.id === "string" ? company.id : "";
+      if (!eventAccountId || eventAccountId !== expectedAccountId) return json({ error: { code: "WHOP_ACCOUNT_MISMATCH", message: "This event does not belong to the configured Whop account." } }, 403, headers);
+      const event = normalizeWhopSalesEvent(eventId, payload);
+      if (!event) return new Response(null, { status: 204, headers });
+      try {
+        await serviceRest(env,
+          "/rest/v1/whop_payment_events?on_conflict=user_id%2Cwhop_event_id",
+          "POST",
+          {
+            user_id: ownerId,
+            whop_event_id: event.eventId,
+            event_type: event.eventType,
+            payment_id: event.paymentId,
+            product_id: event.productId,
+            plan_id: event.planId,
+            partner_id: event.partnerId,
+            amount: event.amount,
+            currency: event.currency,
+            payment_status: event.paymentStatus,
+            occurred_at: event.occurredAt,
+            safe_metadata: event.safeMetadata
+          },
+          "resolution=ignore-duplicates,return=minimal"
+        );
+        return new Response(null, { status: 204, headers });
+      } catch {
+        return json({ error: { code: "WHOP_EVENT_STORE_FAILED", message: "Verified Whop event could not be saved; the provider may retry delivery." } }, 503, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/collection/quotas") {
+      if (request.method !== "GET" && request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage collection quotas." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const authHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (request.method === "GET") {
+          const period = new Date();
+          period.setUTCDate(1);
+          const periodStart = period.toISOString().slice(0, 10);
+          const [policyResponse, usageResponse] = await Promise.all([
+            fetch(new URL("/rest/v1/collection_provider_quota_policies?select=provider_key,enabled,monthly_request_limit,max_cost_per_run_usd,updated_at&order=provider_key.asc", env.SUPABASE_URL!), { headers: authHeaders, signal: AbortSignal.timeout(10000) }),
+            fetch(new URL("/rest/v1/collection_provider_usage_monthly?select=provider_key,period_start,requests_reserved,updated_at&period_start=eq." + periodStart, env.SUPABASE_URL!), { headers: authHeaders, signal: AbortSignal.timeout(10000) })
+          ]);
+          if (!policyResponse.ok || !usageResponse.ok) return json({ error: { code: "COLLECTION_QUOTA_READ_FAILED", message: "Could not read collection quota settings. Confirm migration 0048 is applied." } }, 502, headers);
+          const [policies, usage] = await Promise.all([policyResponse.json(), usageResponse.json()]);
+          return json({ data: { policies: Array.isArray(policies) ? policies : [], usage: Array.isArray(usage) ? usage : [], period_start: periodStart } }, 200, headers);
+        }
+        const input = await readJson(request);
+        if (!input || typeof input !== "object" || Array.isArray(input)) return json({ error: { code: "INVALID_QUOTA_POLICY", message: "A quota policy object is required." } }, 400, headers);
+        const providerKey = input.provider_key;
+        const enabled = input.enabled;
+        const monthlyLimit = input.monthly_request_limit;
+        const maxCost = input.max_cost_per_run_usd;
+        if ((providerKey !== "apify" && providerKey !== "decodo") || typeof enabled !== "boolean"
+          || typeof monthlyLimit !== "number" || !Number.isInteger(monthlyLimit) || monthlyLimit < 0 || monthlyLimit > 100000
+          || (providerKey === "apify" && (typeof maxCost !== "number" || !Number.isFinite(maxCost) || maxCost < 0.0001 || maxCost > 100))
+          || (providerKey === "decodo" && maxCost !== null)
+          || (enabled && monthlyLimit < 1)) {
+          return json({ error: { code: "INVALID_QUOTA_POLICY", message: "Apify needs a monthly request limit and a per-run USD cap; Decodo needs a monthly request limit and no cost cap. Enabled limits must be at least one." } }, 400, headers);
+        }
+        const response = await fetch(new URL("/rest/v1/collection_provider_quota_policies?on_conflict=user_id%2Cprovider_key", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { ...authHeaders, "content-type": "application/json", prefer: "resolution=merge-duplicates,return=representation" },
+          body: JSON.stringify({ user_id: userId, provider_key: providerKey, enabled, monthly_request_limit: monthlyLimit, max_cost_per_run_usd: maxCost }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "COLLECTION_QUOTA_SAVE_FAILED", message: "Could not save quota policy. Confirm migration 0048 and owner permissions." } }, response.status >= 500 ? 502 : response.status, headers);
+        const rows = await response.json() as Array<Record<string, unknown>>;
+        return json({ data: { policy: Array.isArray(rows) ? rows[0] ?? null : null, execution_enabled: false } }, 200, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_QUOTA_FAILED", message: "Could not process collection quota settings." } }, 502, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/collection/providers/register") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to register a collection provider." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const input = await readJson(request);
+        if (!isSafeHttpProviderRegistrationRequest(input)) return json({ error: { code: "INVALID_PROVIDER_REGISTRATION", message: "Only the GiGo Safe HTTP Batch provider can be registered through this endpoint." } }, 400, headers);
+        const row = buildSafeHttpProviderRegistration(userId);
+        const response = await fetch(new URL("/rest/v1/collection_providers?on_conflict=user_id%2Cprovider_key", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json", prefer: "resolution=merge-duplicates,return=representation" },
+          body: JSON.stringify(row),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "PROVIDER_REGISTRATION_FAILED", message: "Could not register the provider. Confirm migrations 0010 and 0017 are applied." } }, response.status >= 500 ? 502 : response.status, headers);
+        const records = await response.json() as Array<Record<string, unknown>>;
+        const provider = Array.isArray(records) ? records[0] : null;
+        return json({ data: { provider, ready: false, execution_enabled: false, next_step: "Configure the GitHub Actions repository secrets and complete the separate runner verification before any collection job can execute." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "PROVIDER_REGISTRATION_FAILED", message: "Could not register the collection provider." } }, 502, headers);
+      }
+    }
+
+    const cancelCollectionRunMatch = url.pathname.match(/^\/api\/v1\/collection\/runs\/([0-9a-f-]{36})\/cancel$/i);
+    if (cancelCollectionRunMatch) {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to cancel a collection run." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const response = await fetch(new URL("/rest/v1/rpc/gigo_cancel_collection_run", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_run_id: cancelCollectionRunMatch[1] }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "CANCELLATION_FAILED", message: "The database could not process the cancellation. Confirm migrations 0010 and 0017 are applied." } }, 502, headers);
+        const cancelled = await response.json();
+        if (cancelled !== true) return json({ error: { code: "RUN_NOT_CANCELLABLE", message: "The run was not found, is already terminal, or its job has already been claimed." } }, 409, headers);
+        return json({ data: { run_id: cancelCollectionRunMatch[1], status: "cancellation_accepted" } }, 200, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_CANCEL_FAILED", message: "Could not cancel the collection run." } }, 502, headers);
+      }
+    }
+
+    const collectionReadRoutes: Record<string, CollectionReadResource> = {
+      "/api/v1/collection/providers": "collection_providers",
+      "/api/v1/collection/actors": "collection_actors",
+      "/api/v1/collection/runs": "collection_runs",
+      "/api/v1/collection/datasets": "collection_datasets",
+      "/api/v1/collection/items": "collection_items"
+    };
+    const collectionResource = collectionReadRoutes[url.pathname];
+    // The runs path supports both GET (list) and POST (atomic enqueue).
+    // Only dispatch the read handler for GET so POST reaches the enqueue route below.
+    if (collectionResource && request.method === "GET") return handleCollectionRead(request, env, headers, collectionResource);
+
+    if (url.pathname === "/api/v1/collection/insights") {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to access collection intelligence." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        if (request.method === "GET") {
+          const runId = url.searchParams.get("run_id");
+          const query = new URLSearchParams({
+            select: "id,run_id,dataset_id,insight_key,insight_type,title,summary,structured_data,confidence,review_status,created_by,created_at,updated_at,evidence:collection_insight_evidence(id,item_id,evidence_role,note,item:collection_items(id,item_key,source_url,source_type,record))",
+            order: "created_at.desc",
+            limit: "100"
+          });
+          if (runId) {
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) return json({ error: { code: "INVALID_RUN_ID", message: "run_id must be a valid UUID." } }, 400, headers);
+            query.set("run_id", "eq." + runId);
+          }
+          const response = await fetch(new URL("/rest/v1/collection_insights?" + query.toString(), env.SUPABASE_URL!), {
+            headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "COLLECTION_INTELLIGENCE_READ_FAILED", message: "Could not load collection insights. Confirm migration 0019 has been applied." } }, 502, headers);
+          const data = await response.json();
+          return json({ data }, 200, headers);
+        }
+        if (request.method === "POST") {
+          const body = await readJson(request);
+          const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+          const allowedTypes = ["market_signal","customer_problem","competitor","product_opportunity","lead_candidate","trend","risk","fact","other"];
+          if (!body || !uuid(body.run_id) || !uuid(body.dataset_id)
+            || typeof body.insight_key !== "string" || body.insight_key.length < 1 || body.insight_key.length > 160
+            || typeof body.insight_type !== "string" || !allowedTypes.includes(body.insight_type)
+            || typeof body.title !== "string" || body.title.trim().length < 1 || body.title.length > 240
+            || typeof body.summary !== "string" || body.summary.trim().length < 1 || body.summary.length > 8000
+            || (body.structured_data !== undefined && (!body.structured_data || typeof body.structured_data !== "object" || Array.isArray(body.structured_data)))
+            || (body.confidence !== undefined && body.confidence !== null && (typeof body.confidence !== "number" || !Number.isFinite(body.confidence) || body.confidence < 0 || body.confidence > 1))
+            || !Array.isArray(body.evidence_item_ids) || body.evidence_item_ids.length < 1 || body.evidence_item_ids.length > 25
+            || !body.evidence_item_ids.every(uuid) || new Set(body.evidence_item_ids).size !== body.evidence_item_ids.length) {
+            return json({ error: { code: "INVALID_INSIGHT", message: "Provide valid run/dataset IDs, an allowed insight type, a title, summary, optional structured data/confidence, and 1–25 unique evidence item IDs." } }, 400, headers);
+          }
+          const response = await fetch(new URL("/rest/v1/rpc/gigo_create_collection_insight", env.SUPABASE_URL!), {
+            method: "POST",
+            headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+            body: JSON.stringify({
+              p_run_id: body.run_id, p_dataset_id: body.dataset_id, p_insight_key: body.insight_key,
+              p_insight_type: body.insight_type, p_title: body.title.trim(), p_summary: body.summary.trim(),
+              p_structured_data: body.structured_data ?? {}, p_confidence: body.confidence ?? null,
+              p_evidence_item_ids: body.evidence_item_ids
+            }),
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "COLLECTION_INSIGHT_CREATE_FAILED", message: "Could not save the insight. Evidence must belong to the selected owner's run and dataset; confirm migration 0019 has been applied." } }, 400, headers);
+          const insightId = await response.json();
+          return json({ data: { id: insightId, review_status: "needs_review", evidence_count: body.evidence_item_ids.length } }, 201, headers);
+        }
+        return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_INTELLIGENCE_FAILED", message: "Could not process the collection intelligence request." } }, 502, headers);
+      }
+    }
+
+
+    const insightReviewMatch = url.pathname.match(/^\/api\/v1\/collection\/insights\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/review$/i);
+    if (insightReviewMatch) {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported for insight review." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to review collection insights." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const body = await readJson(request);
+        const allowedStatuses = ["accepted", "rejected", "superseded"];
+        if (!body || typeof body.review_status !== "string" || !allowedStatuses.includes(body.review_status)
+          || (body.note !== undefined && body.note !== null && (typeof body.note !== "string" || body.note.length > 2000))) {
+          return json({ error: { code: "INVALID_REVIEW", message: "Choose accepted, rejected or superseded and optionally provide a note up to 2,000 characters." } }, 400, headers);
+        }
+        const response = await fetch(new URL("/rest/v1/rpc/gigo_review_collection_insight", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_insight_id: insightReviewMatch[1], p_review_status: body.review_status, p_note: body.note ?? null }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "INSIGHT_REVIEW_REJECTED", message: "The insight could not be reviewed. It may not belong to this account or the requested status transition may not be allowed." } }, 409, headers);
+        const result = await response.json();
+        return json({ data: { id: insightReviewMatch[1], review_status: body.review_status, review_recorded: result === true } }, 200, headers);
+      } catch {
+        return json({ error: { code: "INSIGHT_REVIEW_FAILED", message: "Could not record the insight review." } }, 502, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/collection/runs") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to create a collection run." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const body = await readJson(request);
+        if (!body || typeof body.actor_key !== "string" || body.actor_key.length > 96
+          || typeof body.provider_key !== "string" || body.provider_key.length > 64) {
+          return json({ error: { code: "INVALID_BODY", message: "actor_key, provider_key and actor_input are required." } }, 400, headers);
+        }
+        const actor = getCollectionActor(body.actor_key);
+        if (!actor) return json({ error: { code: "UNKNOWN_ACTOR", message: "That collection actor is not in the catalogue." } }, 404, headers);
+        if (!actor.validateInput(body.actor_input)) return json({ error: { code: "INVALID_ACTOR_INPUT", message: "The supplied actor input does not match the actor's schema or safety limits." } }, 400, headers);
+        const providerKey = body.provider_key.trim().toLowerCase();
+        if (!/^[a-z][a-z0-9_-]{1,63}$/.test(providerKey)) return json({ error: { code: "INVALID_PROVIDER", message: "provider_key is invalid." } }, 400, headers);
+        const providerResponse = await fetch(new URL("/rest/v1/collection_providers?select=id,provider_key,status,capabilities,quota_state&provider_key=eq." + encodeURIComponent(providerKey) + "&limit=1", env.SUPABASE_URL!), {
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!providerResponse.ok) return json({ error: { code: "PROVIDER_LOOKUP_FAILED", message: "Could not verify the selected provider." } }, 502, headers);
+        const connected = await providerResponse.json() as ConnectedCollectionProvider[];
+        const providerCandidate = planCollectionProviders(actor.requiredCapabilities, listCollectionProviders(), Array.isArray(connected) ? connected : [])
+          .find((candidate) => candidate.providerKey === providerKey);
+        if (!providerCandidate?.ready) return json({ error: { code: "PROVIDER_NOT_READY", message: "The selected provider is not verified, healthy or authorised for this actor." } }, 409, headers);
+        const datasetName = typeof body.dataset_name === "string" ? body.dataset_name.trim() : "Collected data";
+        if (!datasetName || datasetName.length > 180) return json({ error: { code: "INVALID_DATASET_NAME", message: "dataset_name must contain 1 to 180 characters." } }, 400, headers);
+        const response = await fetch(new URL("/rest/v1/rpc/gigo_create_collection_run", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_actor_key: actor.key, p_actor_version: actor.version, p_input: body.actor_input, p_provider_key: providerKey, p_dataset_name: datasetName }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "COLLECTION_ENQUEUE_FAILED", message: "Could not create the collection run. Confirm migration 0012 is applied." } }, 502, headers);
+        const created = await response.json() as Record<string, unknown>;
+        return json({ data: { ...created, execution_enabled: false, note: "The run, dataset and durable job are queued atomically. Collection execution remains disabled until the dedicated worker is deployed." } }, 202, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_ENQUEUE_FAILED", message: "Could not create the collection run." } }, 502, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/collection/plan") {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to plan a collection." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const input = await readJson(request);
+        if (!input || typeof input.actor_key !== "string" || input.actor_key.length > 96) return json({ error: { code: "INVALID_BODY", message: "actor_key and actor_input are required." } }, 400, headers);
+        const actor = getCollectionActor(input.actor_key);
+        if (!actor) return json({ error: { code: "UNKNOWN_ACTOR", message: "That collection actor is not in the catalogue." } }, 404, headers);
+        if (!actor.validateInput(input.actor_input)) return json({ error: { code: "INVALID_ACTOR_INPUT", message: "The supplied actor input does not match its schema or safety limits." } }, 400, headers);
+        const providerResponse = await fetch(new URL("/rest/v1/collection_providers?select=id,provider_key,status,capabilities,quota_state", env.SUPABASE_URL!), {
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!providerResponse.ok) return json({ error: { code: "PROVIDER_LOOKUP_FAILED", message: "Could not inspect your configured collection providers. Confirm migration 0010 has been applied." } }, 502, headers);
+        const connected = await providerResponse.json() as ConnectedCollectionProvider[];
+        const candidates = planCollectionProviders(actor.requiredCapabilities, listCollectionProviders(), Array.isArray(connected) ? connected : []);
+        const selected = candidates.find((candidate) => candidate.ready);
+        return json({ data: { actor: { key: actor.key, version: actor.version }, valid: true, required_capabilities: actor.requiredCapabilities, candidates, selected_provider: selected ?? null, can_execute: false, reason: selected ? "A healthy provider is available, but execution remains disabled until the durable collection worker is implemented." : "No connected healthy provider currently satisfies this actor's requirements." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "COLLECTION_PLAN_FAILED", message: "Could not build the collection plan." } }, 502, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/collection/catalogue") {
+      if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } }, 405, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view collection capabilities." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const registeredAdapters = listRegisteredCollectionAdapters();
+        return json({ data: { providers: listCollectionProviders(), actors: listCollectionActors().map(({ validateInput, ...actor }) => actor), verification: getCollectionProviderVerificationSummary(), registered_adapters: registeredAdapters, execution_enabled: false, note: "Catalogue only: adapter registration and durable execution are not enabled. No collection job can execute yet." } }, 200, headers);
+      } catch {
+        return json({ error: { code: "AUTH_PROVIDER_UNAVAILABLE", message: "Could not verify your account." } }, 502, headers);
+      }
+    }
+
+
+    const leadEvidenceRouteMatch = url.pathname.match(/^\/api\/v1\/leads\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/(social-profiles|evidence)$/i);
+    if (leadEvidenceRouteMatch) {
+      const leadId = leadEvidenceRouteMatch[1];
+      const kind = leadEvidenceRouteMatch[2] === "social-profiles" ? "lead_social_profiles" : "lead_evidence";
+      if (!["GET", "POST"].includes(request.method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage lead evidence." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const columns = kind === "lead_social_profiles"
+          ? "id,lead_id,platform,profile_url,handle,display_name,account_type,follower_count,typical_views,engagement_rate,niche,public_contact_route,verified_at,source_item_id,source_dataset_id,source_run_id,metadata,created_at,updated_at"
+          : "id,lead_id,evidence_type,source_url,source_title,excerpt,observed_at,confidence,source_item_id,source_dataset_id,source_run_id,notes,created_at";
+        if (request.method === "GET") {
+          const query = new URLSearchParams({ select: columns, lead_id: "eq." + leadId, order: "created_at.desc", limit: "100" });
+          const response = await fetch(new URL("/rest/v1/" + kind + "?" + query.toString(), env.SUPABASE_URL!), {
+            headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" },
+            signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "LEAD_EVIDENCE_READ_FAILED", message: "Could not load lead evidence. Confirm migration 0021 has been applied." } }, 502, headers);
+          return json({ data: await response.json() }, 200, headers);
+        }
+        const body = await readJson(request);
+        if (!body) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+        const profilePlatforms = ["youtube","instagram","tiktok","facebook","x","linkedin","other"];
+        const evidenceTypes = ["audience_fit","typical_reach","engagement","credibility","business_contact","customer_problem","buying_intent","competitor_conflict","reputation","other"];
+        const optionalText = (key: string, max: number) => body[key] === undefined || body[key] === null || (typeof body[key] === "string" && (body[key] as string).length <= max);
+        const validHttps = (value: unknown) => {
+          if (typeof value !== "string" || value.length < 8 || value.length > 2048) return false;
+          try { const parsed = new URL(value); return parsed.protocol === "https:" && !parsed.username && !parsed.password; } catch { return false; }
+        };
+        const uuidOrNull = (value: unknown) => value === undefined || value === null || (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+        const sourceFieldsValid = ["source_item_id","source_dataset_id","source_run_id"].every(k => uuidOrNull(body[k]))
+          && (["source_item_id","source_dataset_id","source_run_id"].every(k => body[k] === undefined || body[k] === null)
+            || ["source_item_id","source_dataset_id","source_run_id"].every(k => typeof body[k] === "string"));
+        const record: JsonRecord = { user_id: userId, lead_id: leadId };
+        if (kind === "lead_social_profiles") {
+          if (typeof body.platform !== "string" || !profilePlatforms.includes(body.platform) || !validHttps(body.profile_url)
+            || !optionalText("handle", 200) || !optionalText("display_name", 240) || !optionalText("account_type", 100)
+            || !optionalText("niche", 240) || !optionalText("public_contact_route", 500)
+            || !sourceFieldsValid || (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata)))) {
+            return json({ error: { code: "INVALID_PROFILE", message: "Provide a supported platform, HTTPS profile URL, valid optional fields and complete source provenance when supplied." } }, 400, headers);
+          }
+          record.platform = body.platform;
+          record.profile_url = body.profile_url;
+          for (const key of ["handle","display_name","account_type","follower_count","typical_views","engagement_rate","niche","public_contact_route","verified_at","source_item_id","source_dataset_id","source_run_id","metadata"]) if (body[key] !== undefined) record[key] = body[key];
+          for (const key of ["follower_count","typical_views"]) if (record[key] !== undefined && (!Number.isSafeInteger(record[key]) || Number(record[key]) < 0)) return json({ error: { code: "INVALID_PROFILE", message: key + " must be a non-negative whole number." } }, 400, headers);
+          if (record.engagement_rate !== undefined && (typeof record.engagement_rate !== "number" || record.engagement_rate < 0 || record.engagement_rate > 100)) return json({ error: { code: "INVALID_PROFILE", message: "engagement_rate must be between 0 and 100." } }, 400, headers);
+        } else {
+          if (typeof body.evidence_type !== "string" || !evidenceTypes.includes(body.evidence_type) || !validHttps(body.source_url)
+            || !optionalText("source_title", 500) || !optionalText("excerpt", 5000) || !optionalText("notes", 3000)
+            || !sourceFieldsValid || (body.confidence !== undefined && (typeof body.confidence !== "number" || body.confidence < 0 || body.confidence > 1))) {
+            return json({ error: { code: "INVALID_EVIDENCE", message: "Provide a supported evidence type, HTTPS source URL and valid evidence details." } }, 400, headers);
+          }
+          record.evidence_type = body.evidence_type;
+          record.source_url = body.source_url;
+          for (const key of ["source_title","excerpt","observed_at","confidence","source_item_id","source_dataset_id","source_run_id","notes"]) if (body[key] !== undefined) record[key] = body[key];
+        }
+        const response = await fetch(new URL("/rest/v1/" + kind + "?select=" + columns, env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json", prefer: "return=representation" },
+          body: JSON.stringify(record),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "LEAD_EVIDENCE_WRITE_FAILED", message: "Could not save this record. Confirm the lead belongs to your account and migration 0021 has been applied." } }, response.status === 400 ? 400 : response.status === 401 ? 401 : 502, headers);
+        return json({ data: await response.json() }, 201, headers);
+      } catch {
+        return json({ error: { code: "LEAD_EVIDENCE_UNAVAILABLE", message: "Could not complete the lead evidence request." } }, 502, headers);
+      }
+    }
+
+
+    if (url.pathname === "/api/v1/autonomy" || url.pathname === "/api/v1/autonomy/initialize" || url.pathname === "/api/v1/autonomy/pause" || url.pathname === "/api/v1/autonomy/policies") {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage GiGo autonomy." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+        if (url.pathname === "/api/v1/autonomy") {
+          if (request.method !== "GET") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET." } }, 405, headers);
+          const [pauseResponse, policyResponse] = await Promise.all([
+            fetch(new URL("/rest/v1/autonomy_control_state?select=is_paused,pause_reason,paused_at,updated_at&user_id=eq." + encodeURIComponent(userId) + "&limit=1", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) }),
+            fetch(new URL("/rest/v1/autonomy_policies?select=scope,enabled,require_approval,limits,policy_version,updated_at&user_id=eq." + encodeURIComponent(userId) + "&order=scope.asc", env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) })
+          ]);
+          if (!pauseResponse.ok || !policyResponse.ok) return json({ error: { code: "AUTONOMY_READ_FAILED", message: "Could not read durable autonomy settings. Confirm migration 0037 is applied." } }, 502, headers);
+          const pauses = await pauseResponse.json() as Array<JsonRecord>;
+          const policies = await policyResponse.json() as Array<JsonRecord>;
+          return json({ data: { initialized: pauses.length === 1, is_paused: pauses.length !== 1 || pauses[0]?.is_paused !== false, pause_reason: pauses[0]?.pause_reason ?? "Missing pause state is treated as paused.", policies: Array.isArray(policies) ? policies : [], financial_execution: "hard_denied", external_execution_available: false } }, 200, headers);
+        }
+        if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } }, 405, headers);
+        const body = await readJson(request);
+        if (!body) return json({ error: { code: "INVALID_BODY", message: "A valid JSON body is required." } }, 400, headers);
+        let rpcName = "";
+        let rpcBody: JsonRecord = {};
+        if (url.pathname === "/api/v1/autonomy/initialize") {
+          if (Object.keys(body).length) return json({ error: { code: "INVALID_BODY", message: "Initialization accepts an empty body only." } }, 400, headers);
+          rpcName = "gigo_initialize_autonomy_defaults";
+        } else if (url.pathname === "/api/v1/autonomy/pause") {
+          if (Object.keys(body).some(key => !["is_paused","reason"].includes(key)) || typeof body.is_paused !== "boolean" || (body.reason !== undefined && (typeof body.reason !== "string" || body.reason.length > 500))) return json({ error: { code: "INVALID_PAUSE_REQUEST", message: "Provide is_paused as a boolean and an optional reason up to 500 characters." } }, 400, headers);
+          rpcName = "gigo_set_autonomy_pause";
+          rpcBody = { p_is_paused: body.is_paused, p_reason: body.reason ?? null };
+        } else {
+          const scopes = ["observe","analyse","draft","internal_execute","external_execute"];
+          if (Object.keys(body).some(key => !["scope","enabled","require_approval","limits"].includes(key)) || typeof body.scope !== "string" || !scopes.includes(body.scope) || typeof body.enabled !== "boolean" || typeof body.require_approval !== "boolean" || (body.limits !== undefined && (!body.limits || typeof body.limits !== "object" || Array.isArray(body.limits))) || (body.scope === "external_execute" && body.require_approval !== true)) return json({ error: { code: "INVALID_AUTONOMY_POLICY", message: "Provide a supported non-financial scope, enabled flag, approval flag and optional limits object. External execution must always require approval." } }, 400, headers);
+          rpcName = "gigo_set_autonomy_policy";
+          rpcBody = { p_scope: body.scope, p_enabled: body.enabled, p_require_approval: body.require_approval, p_limits: body.limits ?? {} };
+        }
+        const rpcResponse = await fetch(new URL("/rest/v1/rpc/" + rpcName, env.SUPABASE_URL!), { method: "POST", headers: dbHeaders, body: JSON.stringify(rpcBody), signal: AbortSignal.timeout(10000) });
+        if (!rpcResponse.ok) return json({ error: { code: "AUTONOMY_UPDATE_FAILED", message: "Could not update autonomy settings. Confirm the required database migration is applied." } }, rpcResponse.status === 401 ? 401 : rpcResponse.status === 403 ? 403 : 409, headers);
+        const result = await rpcResponse.json().catch(() => true);
+        return json({ data: { updated: true, result } }, 200, headers);
+      } catch {
+        return json({ error: { code: "AUTONOMY_SETTINGS_UNAVAILABLE", message: "Could not complete the autonomy settings request." } }, 502, headers);
+      }
+    }
+
+    const autonomyApprovalRevokeMatch = url.pathname.match(/^\/api\/v1\/autonomy\/approvals\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/revoke$/i);
+    if (url.pathname === "/api/v1/autonomy/audit" || url.pathname === "/api/v1/autonomy/approvals" || autonomyApprovalRevokeMatch) {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to view autonomy records." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json", "content-type": "application/json" };
+        if (request.method === "GET" && url.pathname === "/api/v1/autonomy/audit") {
+          const requested = Number(url.searchParams.get("limit") || 30);
+          const limit = Number.isInteger(requested) ? Math.max(1, Math.min(100, requested)) : 30;
+          const query = new URLSearchParams({ select: "id,tool_name,action_class,decision,reason_code,policy_version,approval_id,target_ref,result_summary,created_at", user_id: "eq." + userId, order: "created_at.desc", limit: String(limit) });
+          const result = await fetch(new URL("/rest/v1/autonomy_audit_events?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!result.ok) return json({ error: { code: "AUTONOMY_AUDIT_READ_FAILED", message: "Could not read the audit history. Confirm migration 0037 is applied." } }, 502, headers);
+          return json({ data: { events: await result.json() } }, 200, headers);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/autonomy/approvals") {
+          const query = new URLSearchParams({ select: "id,tool_name,action_class,target_ref,parameters_sha256,max_actions,used_actions,expires_at,approved_at,revoked_at", user_id: "eq." + userId, order: "created_at.desc", limit: "100" });
+          const result = await fetch(new URL("/rest/v1/autonomy_approvals?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!result.ok) return json({ error: { code: "AUTONOMY_APPROVAL_READ_FAILED", message: "Could not read approvals. Confirm migration 0037 is applied." } }, 502, headers);
+          return json({ data: { approvals: await result.json() } }, 200, headers);
+        }
+        if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST as appropriate." } }, 405, headers);
+        if (autonomyApprovalRevokeMatch) {
+          const body = await readJson(request);
+          if (!body || Object.keys(body).length) return json({ error: { code: "INVALID_BODY", message: "Revocation accepts an empty JSON body only." } }, 400, headers);
+          const result = await fetch(new URL("/rest/v1/rpc/gigo_revoke_autonomy_approval", env.SUPABASE_URL!), { method: "POST", headers: dbHeaders, body: JSON.stringify({ p_approval_id: autonomyApprovalRevokeMatch[1] }), signal: AbortSignal.timeout(10000) });
+          if (!result.ok) return json({ error: { code: "AUTONOMY_APPROVAL_REVOKE_FAILED", message: "Could not revoke this approval. Confirm migration 0037 is applied and it belongs to you." } }, 409, headers);
+          return json({ data: { revoked: await result.json() } }, 200, headers);
+        }
+        const body = await readJson(request);
+        const toolName = typeof body?.tool_name === "string" ? body.tool_name.trim() : "";
+        const targetRef = typeof body?.target_ref === "string" ? body.target_ref.trim() : "";
+        const parametersHash = typeof body?.parameters_sha256 === "string" ? body.parameters_sha256 : "";
+        const maxActions = body?.max_actions;
+        const expiresAt = typeof body?.expires_at === "string" ? Date.parse(body.expires_at) : NaN;
+        if (!body || Object.keys(body).some(key => !["tool_name","target_ref","parameters_sha256","max_actions","expires_at"].includes(key)) || !/^[a-z][a-z0-9_.-]{0,119}$/.test(toolName) || !targetRef || targetRef.length > 500 || !/^[0-9a-f]{64}$/.test(parametersHash) || !Number.isInteger(maxActions) || Number(maxActions) < 1 || Number(maxActions) > 1000 || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + 30 * 86400000) {
+          return json({ error: { code: "INVALID_AUTONOMY_APPROVAL", message: "Provide a tool, exact target, SHA-256 parameter hash, action limit and expiry within 30 days." } }, 400, headers);
+        }
+        const result = await fetch(new URL("/rest/v1/rpc/gigo_create_autonomy_approval", env.SUPABASE_URL!), { method: "POST", headers: dbHeaders, body: JSON.stringify({ p_tool_name: toolName, p_target_ref: targetRef, p_parameters_sha256: parametersHash, p_max_actions: maxActions, p_expires_at: new Date(expiresAt).toISOString() }), signal: AbortSignal.timeout(10000) });
+        if (!result.ok) return json({ error: { code: "AUTONOMY_APPROVAL_CREATE_FAILED", message: "Could not create this approval. Financial actions cannot be approved." } }, 409, headers);
+        return json({ data: { approval: await result.json() } }, 201, headers);
+      } catch {
+        return json({ error: { code: "AUTONOMY_RECORDS_UNAVAILABLE", message: "Could not complete the autonomy records request." } }, 502, headers);
+      }
+    }
+
+    if (url.pathname === "/api/v1/settings/message-signature") {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage your message signature." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (request.method === "GET") {
+          const query = new URLSearchParams({ select: "signature_name,updated_at", user_id: "eq." + userId, limit: "1" });
+          const response = await fetch(new URL("/rest/v1/owner_message_settings?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) return json({ error: { code: "SIGNATURE_READ_FAILED", message: "Could not read your signature. Confirm migration 0038 is applied." } }, 502, headers);
+          const rows = await response.json() as Array<JsonRecord>;
+          return json({ data: { signature_name: rows[0]?.signature_name ?? null, configured: rows.length > 0 } }, 200, headers);
+        }
+        if (request.method === "POST") {
+          const body = await readJson(request);
+          const signatureName = typeof body?.signature_name === "string" ? body.signature_name.trim() : "";
+          if (!body || Object.keys(body).some(k => k !== "signature_name") || signatureName.length < 1 || signatureName.length > 80 || /[\\r\\n\\t]/.test(signatureName)) {
+            return json({ error: { code: "INVALID_SIGNATURE", message: "Provide one plain-text signature name of 1 to 80 characters." } }, 400, headers);
+          }
+          const response = await fetch(new URL("/rest/v1/rpc/gigo_set_owner_message_signature", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json" },
+            body: JSON.stringify({ p_signature_name: signatureName }), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "SIGNATURE_UPDATE_FAILED", message: "Could not save your signature. Confirm migration 0038 is applied." } }, 409, headers);
+          return json({ data: { signature_name: signatureName, configured: true } }, 200, headers);
+        }
+        return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use GET or POST." } }, 405, headers);
+      } catch {
+        return json({ error: { code: "SIGNATURE_SETTINGS_UNAVAILABLE", message: "Could not complete the signature settings request." } }, 502, headers);
+      }
+    }
+
+    const outreachCampaignKindMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/kind$/i);
+    if (outreachCampaignKindMatch) {
+      if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } }, 405, headers);
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to change this campaign." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const body = await readJson(request);
+        const campaignKind = body?.campaign_kind;
+        if (!body || Object.keys(body).some(key => key !== "campaign_kind") || (campaignKind !== "general" && campaignKind !== "partnership")) {
+          return json({ error: { code: "INVALID_CAMPAIGN_KIND", message: "campaign_kind must be either general or partnership." } }, 400, headers);
+        }
+        const result = await fetch(new URL("/rest/v1/rpc/gigo_set_outreach_campaign_kind", env.SUPABASE_URL!), {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ p_campaign_id: outreachCampaignKindMatch[1], p_campaign_kind: campaignKind }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (!result.ok) return json({ error: { code: "CAMPAIGN_KIND_UPDATE_FAILED", message: "Could not change this campaign. Confirm migration 0038 is applied and the campaign is still an editable draft owned by you." } }, result.status === 401 ? 401 : result.status === 403 ? 403 : 409, headers);
+        return json({ data: { campaign_id: outreachCampaignKindMatch[1], campaign_kind: campaignKind, updated: true } }, 200, headers);
+      } catch {
+        return json({ error: { code: "CAMPAIGN_KIND_SETTINGS_UNAVAILABLE", message: "Could not complete the campaign settings request." } }, 502, headers);
+      }
+    }
+
+    const outreachRecipientEligibilityMatch = url.pathname.match(/^\/api\/v1\/outreach\/recipients\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12})\/eligibility$/i);
+    const outreachPrepareMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/prepare$/i);
+    const outreachCampaignApprovalMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/approve$/i);
+    const outreachRecipientsMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/recipients$/i);
+    const outreachTemplatesMatch = url.pathname.match(/^\/api\/v1\/outreach\/campaigns\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/templates$/i);
+    if (url.pathname === "/api/v1/outreach/campaigns" || outreachCampaignApprovalMatch || outreachRecipientsMatch || outreachTemplatesMatch || outreachPrepareMatch || outreachRecipientEligibilityMatch) {
+      if (!configured(env)) return json({ error: { code: "DATABASE_NOT_CONFIGURED", message: "GiGo database connection is not configured." } }, 503, headers);
+      const token = bearerToken(request);
+      if (!token) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in to manage outreach campaigns." } }, 401, headers);
+      try {
+        const userId = await verifiedUserId(token, env);
+        if (!userId) return json({ error: { code: "INVALID_SESSION", message: "Your session has expired. Sign in again." } }, 401, headers);
+        const dbHeaders = { apikey: env.SUPABASE_ANON_KEY!, authorization: "Bearer " + token, accept: "application/json" };
+        if (outreachRecipientEligibilityMatch) {
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+          const body = await readJson(request);
+          const status = typeof body?.contact_authorization_status === "string" ? body.contact_authorization_status : "";
+          const basis = typeof body?.contact_authorization_basis === "string" ? body.contact_authorization_basis : "";
+          const allowedBases = ["consent","existing_relationship","legitimate_interest_assessed","other_documented"];
+          const evidenceUrl = typeof body?.contact_authorization_evidence_url === "string" ? body.contact_authorization_evidence_url.trim() : "";
+          if (!body || !["approved","blocked","unreviewed"].includes(status)
+            || (status === "approved" && (!allowedBases.includes(basis)
+              || !/^https:\/\/[^\s]+$/i.test(evidenceUrl) || evidenceUrl.length > 2048
+              || body.marketing_contact_registered !== true))) {
+            return json({ error: { code: "INVALID_CONTACT_AUTHORIZATION", message: "Approval requires a documented basis, HTTPS evidence URL and confirmation that the contact is registered in the provider's marketing audience. Review local law and provider rules before approval." } }, 400, headers);
+          }
+          const update = status === "approved"
+            ? { contact_authorization_status: "approved", contact_authorization_basis: basis, contact_authorization_evidence_url: evidenceUrl, contact_authorization_reviewed_at: new Date().toISOString(), marketing_contact_registered: true }
+            : { contact_authorization_status: status, contact_authorization_basis: null, contact_authorization_evidence_url: null, contact_authorization_reviewed_at: null, marketing_contact_registered: false };
+          const response = await fetch(new URL("/rest/v1/outreach_recipients?id=eq." + outreachRecipientEligibilityMatch[1] + "&select=id,email,contact_authorization_status,contact_authorization_basis,contact_authorization_evidence_url,contact_authorization_reviewed_at,marketing_contact_registered", env.SUPABASE_URL!), {
+            method: "PATCH", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(update), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "CONTACT_AUTHORIZATION_UPDATE_FAILED", message: "Could not update recipient contact authorization." } }, 409, headers);
+          const rows = await response.json() as unknown[];
+          if (!rows.length) return json({ error: { code: "RECIPIENT_NOT_FOUND", message: "Recipient not found for this account." } }, 404, headers);
+          return json({ data: rows }, 200, headers);
+        }
+        if (outreachPrepareMatch) {
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+          const body = await readJson(request);
+          const requestedRecipientId = body?.recipient_id;
+          const validUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+          if (body && requestedRecipientId !== undefined && !validUuid(requestedRecipientId)) return json({ error: { code: "INVALID_RECIPIENT", message: "recipient_id must be a valid ID." } }, 400, headers);
+          if (body && Object.keys(body).some(key => key !== "recipient_id")) return json({ error: { code: "INVALID_BODY", message: "Only recipient_id may be supplied. GiGo renders approved content from trusted database records." } }, 400, headers);
+
+          const campaignId = outreachPrepareMatch[1];
+          const recipientParams = new URLSearchParams({
+            select: "id",
+            campaign_id: "eq." + campaignId,
+            status: "in.(queued,ready)",
+            contact_authorization_status: "eq.approved",
+            marketing_contact_registered: "eq.true",
+            order: "created_at.asc",
+            limit: "25"
+          });
+          if (requestedRecipientId) recipientParams.set("id", "eq." + String(requestedRecipientId));
+          const recipientResponse = await fetch(new URL("/rest/v1/outreach_recipients?" + recipientParams.toString(), env.SUPABASE_URL!), {
+            headers: dbHeaders, signal: AbortSignal.timeout(10000)
+          });
+          if (!recipientResponse.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load campaign recipients." } }, 502, headers);
+          const recipients = await recipientResponse.json() as Array<JsonRecord>;
+          const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+          if (!serviceKey) return json({ error: { code: "SERVICE_DATABASE_NOT_CONFIGURED", message: "Secure outbox preparation is not configured." } }, 503, headers);
+          const serviceHeaders: Record<string, string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json" };
+          if (!serviceKey.startsWith("sb_secret_")) serviceHeaders.authorization = "Bearer " + serviceKey;
+
+          const prepared: Array<JsonRecord> = [];
+          const skipped: Array<JsonRecord> = [];
+          for (const recipient of recipients) {
+            const rpcResponse = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), {
+              method: "POST",
+              headers: serviceHeaders,
+              body: JSON.stringify({ p_owner_id: userId, p_campaign_id: campaignId, p_recipient_id: recipient.id }),
+              signal: AbortSignal.timeout(15000)
+            });
+            if (!rpcResponse.ok) {
+              skipped.push({ recipient_id: recipient.id, reason: "database_rejected_preparation" });
+              continue;
+            }
+            prepared.push({ recipient_id: recipient.id, result: await rpcResponse.json() });
+          }
+          return json({ data: {
+            campaign_id: campaignId, prepared, skipped,
+            prepared_recipients: prepared.length, skipped_recipients: skipped.length,
+            provider_send_performed: false, content_rendered_by_database: true
+          } }, 200, headers);
+        }
+        if (outreachCampaignApprovalMatch) {
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." } }, 405, headers);
+          const body = await readJson(request);
+          const validTime = (value: unknown) => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value);
+          const delays = body?.followup_delays_days;
+          if (!body || typeof body.sender_email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.sender_email)
+            || typeof body.sender_name !== "string" || !body.sender_name.trim() || body.sender_name.length > 200
+            || !Number.isInteger(body.max_recipients) || Number(body.max_recipients) < 1 || Number(body.max_recipients) > 10000
+            || !Number.isInteger(body.max_messages_per_recipient) || Number(body.max_messages_per_recipient) < 1 || Number(body.max_messages_per_recipient) > 6
+            || body.initial_send_enabled !== true || typeof body.followups_enabled !== "boolean"
+            || !Array.isArray(delays) || delays.length > 5 || delays.some((v: unknown) => !Number.isInteger(v) || Number(v) < 1 || Number(v) > 30)
+            || (body.followups_enabled && delays.length === 0) || (!body.followups_enabled && delays.length !== 0)
+            || !validTime(body.send_window_start) || !validTime(body.send_window_end)
+            || typeof body.timezone !== "string" || !body.timezone.trim() || body.timezone.length > 100
+            || (body.quiet_hours_start !== undefined && body.quiet_hours_start !== null && !validTime(body.quiet_hours_start))
+            || (body.quiet_hours_end !== undefined && body.quiet_hours_end !== null && !validTime(body.quiet_hours_end))) {
+            return json({ error: { code: "INVALID_CAMPAIGN_POLICY", message: "Provide a valid sender, bounded recipient/message limits, initial-send permission, follow-up schedule, sending window and timezone." } }, 400, headers);
+          }
+          const rpcBody = {
+            p_campaign_id: outreachCampaignApprovalMatch[1],
+            p_sender_email: body.sender_email.trim().toLowerCase(),
+            p_sender_name: body.sender_name.trim(),
+            p_max_recipients: body.max_recipients,
+            p_max_messages_per_recipient: body.max_messages_per_recipient,
+            p_initial_send_enabled: body.initial_send_enabled,
+            p_followups_enabled: body.followups_enabled,
+            p_followup_delays_days: delays,
+            p_send_window_start: body.send_window_start,
+            p_send_window_end: body.send_window_end,
+            p_timezone: body.timezone.trim(),
+            p_quiet_hours_start: body.quiet_hours_start ?? null,
+            p_quiet_hours_end: body.quiet_hours_end ?? null
+          };
+          const response = await fetch(new URL("/rest/v1/rpc/gigo_approve_outreach_campaign", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json" }, body: JSON.stringify(rpcBody), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "CAMPAIGN_APPROVAL_FAILED", message: "The campaign could not be approved. Confirm migrations 0022 and 0023 are applied and that the campaign has eligible recipients." } }, 409, headers);
+          const approved = await response.json();
+          if (approved !== true) return json({ error: { code: "CAMPAIGN_NOT_FOUND", message: "The campaign was not found in your workspace." } }, 404, headers);
+          return json({ data: { campaign_id: outreachCampaignApprovalMatch[1], approval_status: "approved", status: "active", policy: rpcBody } }, 200, headers);
+        }
+        if (outreachRecipientsMatch) {
+          const campaignId = outreachRecipientsMatch[1];
+          if (request.method === "GET") {
+            const query = new URLSearchParams({ select: "id,campaign_id,lead_id,email,recipient_name,organisation,status,contact_authorization_status,contact_authorization_basis,contact_authorization_evidence_url,contact_authorization_reviewed_at,marketing_contact_registered,followup_count,last_message_at,next_action_at,stop_reason,created_at,updated_at", campaign_id: "eq." + campaignId, order: "created_at.desc", limit: "200" });
+            const response = await fetch(new URL("/rest/v1/outreach_recipients?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+            if (!response.ok) return json({ error: { code: "RECIPIENT_READ_FAILED", message: "Could not load campaign recipients. Confirm migration 0022 has been applied." } }, 502, headers);
+            return json({ data: await response.json() }, 200, headers);
+          }
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+          const body = await readJson(request);
+          const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+          const leadId = body?.lead_id;
+          const validUuid = (v: unknown) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+          if (!body || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320
+            || (leadId !== undefined && leadId !== null && !validUuid(leadId))
+            || (body.recipient_name !== undefined && body.recipient_name !== null && (typeof body.recipient_name !== "string" || body.recipient_name.length > 240))
+            || (body.organisation !== undefined && body.organisation !== null && (typeof body.organisation !== "string" || body.organisation.length > 240))) {
+            return json({ error: { code: "INVALID_RECIPIENT", message: "Provide a valid email and optional lead ID, name and organisation." } }, 400, headers);
+          }
+          const suppressionQuery = new URLSearchParams({ select: "id", email: "eq." + email, limit: "1" });
+          const suppression = await fetch(new URL("/rest/v1/outreach_suppressions?" + suppressionQuery.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!suppression.ok) return json({ error: { code: "SUPPRESSION_CHECK_FAILED", message: "Could not verify the do-not-contact list. No recipient was added." } }, 502, headers);
+          const blocked = await suppression.json() as unknown[];
+          if (blocked.length) return json({ error: { code: "RECIPIENT_SUPPRESSED", message: "This address is on the do-not-contact list and cannot be added." } }, 409, headers);
+          const record: JsonRecord = { user_id: userId, campaign_id: campaignId, email: email, lead_id: leadId ?? null, recipient_name: body.recipient_name ?? null, organisation: body.organisation ?? null };
+          const response = await fetch(new URL("/rest/v1/outreach_recipients?select=id,campaign_id,lead_id,email,recipient_name,organisation,status,created_at", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(record), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "RECIPIENT_CREATE_FAILED", message: "Could not add this recipient. Check campaign ownership and duplicate addresses." } }, 409, headers);
+          return json({ data: await response.json() }, 201, headers);
+        }
+
+        if (outreachTemplatesMatch) {
+          const campaignId = outreachTemplatesMatch[1];
+          if (request.method === "GET") {
+            const query = new URLSearchParams({ select: "id,campaign_id,sequence_number,message_type,subject_template,body_template,personalization_fields,approved_at,created_at,updated_at", campaign_id: "eq." + campaignId, order: "sequence_number.asc", limit: "6" });
+            const response = await fetch(new URL("/rest/v1/outreach_templates?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+            if (!response.ok) return json({ error: { code: "TEMPLATE_READ_FAILED", message: "Could not load campaign templates. Confirm migration 0025 has been applied." } }, 502, headers);
+            return json({ data: await response.json() }, 200, headers);
+          }
+          if (request.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+          const body = await readJson(request);
+          const sequence = body?.sequence_number;
+          const fields: unknown[] = Array.isArray(body?.personalization_fields) ? body.personalization_fields : [];
+          const allowedFields = ["first_name","organisation","niche","specific_observation","offer_summary"];
+          const templateText = String(body?.subject_template ?? "") + "\n" + String(body?.body_template ?? "");
+          const placeholders = Array.from(templateText.matchAll(/\{\{([a-z_]+)\}\}/g), match => match[1]);
+          if (!body || (body.personalization_fields !== undefined && !Array.isArray(body.personalization_fields)) || fields.length > allowedFields.length
+            || fields.some((v: unknown) => typeof v !== "string" || !allowedFields.includes(v))
+            || placeholders.some(field => !allowedFields.includes(field) || !fields.includes(field))
+            || !Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5
+            || typeof body.subject_template !== "string" || !body.subject_template.trim() || body.subject_template.length > 300
+            || typeof body.body_template !== "string" || !body.body_template.trim() || body.body_template.length > 20000) {
+            return json({ error: { code: "INVALID_TEMPLATE", message: "Provide sequence 0–5, a subject, a message body and supported personalization fields." } }, 400, headers);
+          }
+          const template = {
+            user_id: userId,
+            campaign_id: campaignId,
+            sequence_number: sequence,
+            message_type: Number(sequence) === 0 ? "initial" : "follow_up",
+            subject_template: body.subject_template.trim(),
+            body_template: body.body_template.trim(),
+            personalization_fields: fields
+          };
+          const response = await fetch(new URL("/rest/v1/outreach_templates?select=id,campaign_id,sequence_number,message_type,subject_template,body_template,personalization_fields,approved_at,created_at", env.SUPABASE_URL!), {
+            method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(template), signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) return json({ error: { code: "TEMPLATE_CREATE_FAILED", message: "Could not save the template. Check campaign ownership, duplicate sequence numbers and approval status." } }, 409, headers);
+          return json({ data: await response.json() }, 201, headers);
+        }
+        if (!["GET","POST"].includes(request.method)) return json({ error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and POST are supported." } }, 405, headers);
+        if (request.method === "GET") {
+          const query = new URLSearchParams({ select: "id,name,objective,audience_definition,offer_summary,campaign_kind,status,approval_status,approved_sender_email,approved_sender_name,approved_policy,max_recipients,max_messages_per_recipient,initial_send_enabled,followups_enabled,followup_delays_days,send_window_start,send_window_end,timezone,quiet_hours_start,quiet_hours_end,approved_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
+          const response = await fetch(new URL("/rest/v1/outreach_campaigns?" + query.toString(), env.SUPABASE_URL!), { headers: dbHeaders, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) return json({ error: { code: "CAMPAIGN_READ_FAILED", message: "Could not load outreach campaigns. Confirm migration 0022 has been applied." } }, 502, headers);
+          return json({ data: await response.json() }, 200, headers);
+        }
+        const body = await readJson(request);
+        if (!body || typeof body.name !== "string" || !body.name.trim() || body.name.length > 180
+          || typeof body.objective !== "string" || !body.objective.trim() || body.objective.length > 3000
+          || (body.offer_summary !== undefined && body.offer_summary !== null && (typeof body.offer_summary !== "string" || body.offer_summary.length > 5000))
+          || (body.audience_definition !== undefined && (!body.audience_definition || typeof body.audience_definition !== "object" || Array.isArray(body.audience_definition)))) {
+          return json({ error: { code: "INVALID_CAMPAIGN", message: "Provide a campaign name, objective and optional audience definition and offer summary." } }, 400, headers);
+        }
+        const record: JsonRecord = { user_id: userId, name: body.name.trim(), objective: body.objective.trim(), audience_definition: body.audience_definition ?? {}, offer_summary: body.offer_summary ?? null, status: "draft" };
+        const response = await fetch(new URL("/rest/v1/outreach_campaigns?select=id,name,objective,audience_definition,offer_summary,status,approval_status,created_at", env.SUPABASE_URL!), {
+          method: "POST", headers: { ...dbHeaders, "content-type": "application/json", prefer: "return=representation" }, body: JSON.stringify(record), signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return json({ error: { code: "CAMPAIGN_CREATE_FAILED", message: "Could not create the outreach campaign." } }, 502, headers);
+        return json({ data: await response.json() }, 201, headers);
+      } catch {
+        return json({ error: { code: "OUTREACH_REQUEST_FAILED", message: "Could not complete the outreach request." } }, 502, headers);
+      }
+    }
+
     if (request.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/api/v1/status")) {
       return json({ data: { service: "gigo-api", status: "ok", environment: env.APP_ENV ?? "unknown", version: "0.2.0", auth_configured: configured(env) } }, 200, headers);
     }
@@ -1005,12 +2166,19 @@ export default {
     const resource = resourceRoutes[url.pathname];
     if (resource) return handleResource(request, env, headers, resource);
 
+    if (url.pathname === "/api/v1/research/report") return handleResearchReport(request, env, headers);
+    if (url.pathname === "/api/v1/research/documents/extract") return handleResearchDocumentExtraction(request, env, headers);
+    if (url.pathname === "/api/v1/research/documents") return handleResearchDocuments(request, env, headers);
+
     const researchRoutes: Record<string, ResearchResource> = {
       "/api/v1/research/runs": "research_runs",
       "/api/v1/research/sources": "research_sources",
       "/api/v1/research/opportunities": "research_opportunities",
+      "/api/v1/research/evidence-passages": "research_evidence_passages",
+      "/api/v1/research/claims": "research_claims",
+      "/api/v1/research/claim-evidence": "research_claim_evidence",
     };
-    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers" };
+    const businessRoutes: Record<string, BusinessResource> = { "/api/v1/products": "products", "/api/v1/partners": "partner_candidates", "/api/v1/leads": "leads", "/api/v1/offers": "offers", "/api/v1/marketing/assets": "marketing_assets", "/api/v1/customers/cases": "customer_support_cases", "/api/v1/creative/briefs": "creative_briefs" };
     const businessResource = businessRoutes[url.pathname];
     if (businessResource) return handleBusinessResource(request, env, headers, businessResource);
 

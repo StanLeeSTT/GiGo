@@ -1,3 +1,4 @@
+import { getAutonomyPolicySummary } from "./autonomy";
 export type ToolState = "available" | "planned";
 export interface AssistantTool {
   id: string;
@@ -40,19 +41,33 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
   { id:"leads.create", module:"Lead Intelligence & CRM", description:"Save a prospect in CRM without contacting them.", state:"available", method:"POST", endpoint:"/api/v1/leads", approval:"none" },
   { id:"offers.list", module:"Offer Builder", description:"List saved offer drafts and economics assumptions.", state:"available", method:"GET", endpoint:"/api/v1/offers", approval:"none" },
   { id:"offers.create", module:"Offer Builder", description:"Save an offer draft and calculate indicative unit economics.", state:"available", method:"POST", endpoint:"/api/v1/offers", approval:"none" },
-  { id:"marketing.write_assets", module:"Ghostwriter & Marketing Studio", description:"Draft platform-specific marketing and sales assets.", state:"planned", approval:"none" },
-  { id:"outreach.prepare_campaign", module:"Outreach Studio", description:"Prepare personalised outreach and follow-up sequences.", state:"planned", approval:"required" },
+  { id:"marketing.list_assets", module:"Ghostwriter & Marketing Studio", description:"List the owner’s saved marketing drafts and internal review state.", state:"available", method:"GET", endpoint:"/api/v1/marketing/assets", approval:"none" },
+  { id:"marketing.write_assets", module:"Ghostwriter & Marketing Studio", description:"Save platform-specific marketing drafts for owner review; does not publish or send.", state:"available", method:"POST", endpoint:"/api/v1/marketing/assets", approval:"none" },
+  { id:"outreach.list_campaigns", module:"Outreach Studio", description:"List owner-private outreach campaign drafts and approval state.", state:"available", method:"GET", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
+  { id:"outreach.create_campaign", module:"Outreach Studio", description:"Create a draft campaign; partnership kind applies the 50/50 net revenue terms. Never approves or sends.", state:"available", method:"POST", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
+  { id:"outreach.add_recipient", module:"Outreach Studio", description:"Add a prospective recipient to a draft campaign; contact eligibility remains unapproved.", state:"available", method:"POST", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
+  { id:"outreach.add_template", module:"Outreach Studio", description:"Save an unapproved campaign message template for review.", state:"available", method:"POST", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
+  { id:"outreach.prepare_campaign", module:"Outreach Studio", description:"Prepare database-rendered drafts for owner-approved active campaigns and eligible registered contacts; does not send.", state:"available", method:"POST", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
   { id:"outreach.send", module:"Outreach Studio", description:"Send approved outreach to external recipients.", state:"planned", approval:"required" },
   { id:"launch.publish", module:"Launch & Distribution", description:"Publish approved launch content or campaigns.", state:"planned", approval:"required" },
   { id:"commerce.manage_payments", module:"Store, Payments & Fulfilment", description:"Connect checkout, payments and fulfilment providers.", state:"planned", approval:"required" },
-  { id:"creative.generate_assets", module:"Creative Studios", description:"Create approved campaign and product creative assets.", state:"planned", approval:"none" },
-  { id:"customers.support", module:"Customer Success & Support", description:"Prepare customer support responses and workflows.", state:"planned", approval:"required" },
-  { id:"analytics.review_performance", module:"Analytics", description:"Analyse business, campaign and product performance.", state:"planned", approval:"none" },
-  { id:"learning.plan_and_track", module:"Learning & Accountability", description:"Create learning plans, milestones and reminders.", state:"planned", approval:"none" }
+  { id:"creative.list_briefs", module:"Creative Studio", description:"List private creative briefs and production status.", state:"available", method:"GET", endpoint:"/api/v1/creative/briefs", approval:"none" },
+  { id:"creative.generate_assets", module:"Creative Studio", description:"Save creative briefs and prompts for owner review; does not generate or publish media.", state:"available", method:"POST", endpoint:"/api/v1/creative/briefs", approval:"none" },
+  { id:"creative.update_brief", module:"Creative Studio", description:"Update creative production status, output URL and notes.", state:"available", method:"PATCH", endpoint:"/api/v1/creative/briefs", approval:"none" },
+  { id:"customers.list_cases", module:"Customer Success & Support", description:"List owner-private support cases and draft responses.", state:"available", method:"GET", endpoint:"/api/v1/customers/cases", approval:"none" },
+  { id:"customers.create_case", module:"Customer Success & Support", description:"Create an internal support case without contacting the customer.", state:"available", method:"POST", endpoint:"/api/v1/customers/cases", approval:"none" },
+  { id:"customers.update_case", module:"Customer Success & Support", description:"Update support case status, notes or response draft; never sends the response.", state:"available", method:"PATCH", endpoint:"/api/v1/customers/cases", approval:"none" },
+  { id:"analytics.snapshot", module:"Analytics", description:"Read counts and workflow status from owner-scoped business records; no fabricated financial metrics.", state:"available", method:"GET", endpoint:"/api/v1/assistant/chat (tool runtime)", approval:"none" },
+  { id:"learning.list_plans", module:"Learning & Accountability", description:"List saved learning plans.", state:"available", method:"GET", endpoint:"/api/v1/projects", approval:"none" },
+  { id:"learning.create_plan", module:"Learning & Accountability", description:"Create an internal learning plan.", state:"available", method:"POST", endpoint:"/api/v1/projects", approval:"none" },
+  { id:"learning.list_milestones", module:"Learning & Accountability", description:"List study milestones for a learning plan.", state:"available", method:"GET", endpoint:"/api/v1/tasks", approval:"none" },
+  { id:"learning.add_milestone", module:"Learning & Accountability", description:"Add an internal study milestone.", state:"available", method:"POST", endpoint:"/api/v1/tasks", approval:"none" },
+  { id:"learning.update_milestone", module:"Learning & Accountability", description:"Update a study milestone status.", state:"available", method:"PATCH", endpoint:"/api/v1/tasks", approval:"none" }
 ];
 export function getAssistantCapabilities() {
   return {
     assistant: { name:"GiGo", architecture:"permissioned-tool-registry", ai_runtime:"connected" },
+    autonomy: getAutonomyPolicySummary(),
     summary: {
       total_tools: ASSISTANT_TOOLS.length,
       available_tools: ASSISTANT_TOOLS.filter(tool => tool.state === "available").length,

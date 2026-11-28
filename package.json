@@ -7,11 +7,14 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test",
+    "db:bundle": "node scripts/build-supabase-bundle.mjs",
+    "db:bundle:check": "node scripts/build-supabase-bundle.mjs --check"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261117.1",
+    "@cloudflare/workers-types": "5.20261119.1",
     "typescript": "^5.9.3",
-    "wrangler": "^4.45.0"
+    "wrangler": "4.166.0"
   }
 }

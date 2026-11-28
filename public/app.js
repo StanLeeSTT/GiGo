@@ -11,7 +11,6 @@ const signoutButton = document.querySelector("#signout-button");
 const authDescription = document.querySelector("#auth-description");
 const authTabs = document.querySelector(".auth-tabs");
 const resendButton = document.querySelector("#resend-confirmation");
-const authTabs = document.querySelector(".auth-tabs");
 
 let authMode = "login";
 let authConfigured = false;

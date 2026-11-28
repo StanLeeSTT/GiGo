@@ -1,0 +1,128 @@
+import type { CollectionAdapter, CollectionExecutionContext } from "./types";
+
+const API_BASE = "https://api.apify.com/v2";
+const MAX_PAGES_PER_RUN = 10;
+const MAX_RESPONSE_ITEMS = 10;
+const MAX_ITEM_CHARS = 30000;
+const ALLOWED_ACTOR = "apify~web-scraper";
+
+function publicHttpsUrl(value: string): URL {
+  if (typeof value !== "string" || value.length < 1 || value.length > 2048) throw new Error("Apify URL must be a bounded public HTTPS URL.");
+  const url = new URL(value);
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")
+    || !host.includes(".") || host === "localhost" || host.endsWith(".localhost")
+    || host.endsWith(".local") || host.endsWith(".internal")
+    || /^[0-9.]+$/.test(host) || host.includes(":")) {
+    throw new Error("Apify collection accepts only credential-free public HTTPS URLs.");
+  }
+  return url;
+}
+
+function checkpointUrlKey(value: string): string {
+  const url = new URL(value);
+  url.hash = "";
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
+}
+
+function boundedText(value: unknown, max = MAX_ITEM_CHARS): string {
+  return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+async function hash(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export interface ApifyAdapterConfig {
+  apiToken: string;
+  /** Monthly quota and per-run spending cap are read from the durable owner policy. */
+  maxPagesPerRun?: number;
+  fetcher?: typeof fetch;
+}
+
+export function createApifyAdapter(config: ApifyAdapterConfig): CollectionAdapter {
+  const token = config.apiToken.trim();
+  const fetcher = config.fetcher ?? fetch;
+  const maxPages = Math.min(MAX_PAGES_PER_RUN, Math.max(1, Math.floor(config.maxPagesPerRun ?? 5)));
+  if (!token || token.length > 512) throw new Error("APIFY_API_TOKEN is not configured.");
+
+  return {
+    key: "apify",
+    executionModes: ["batch_runner", "external_api"],
+    supports: capabilities => capabilities.every(capability => capability === "web_fetch"),
+    async execute(_actor, input, context: CollectionExecutionContext) {
+      const supplied = Array.isArray(input.urls) ? input.urls.slice(0, maxPages) as string[] : [];
+      if (!supplied.length || supplied.length > MAX_PAGES_PER_RUN) throw new Error("Apify requires between 1 and 10 permitted public URLs.");
+      const urls = supplied.map(value => publicHttpsUrl(value).toString());
+      const completedUrls = Array.isArray(context.checkpoint?.completed_urls)
+        ? (context.checkpoint.completed_urls as unknown[]).filter((value): value is string => typeof value === "string" && value.length <= 2048)
+        : [];
+      const completed = new Set<string>();
+      for (const value of completedUrls) { try { completed.add(checkpointUrlKey(value)); } catch { /* Ignore invalid checkpoint entries. */ } }
+      const pending = urls.filter(url => !completed.has(checkpointUrlKey(url)));
+      if (!pending.length) return { status: "completed", counters: { pages: Number(context.checkpoint?.pages ?? 0), items: 0, requests: Number(context.checkpoint?.requests ?? 0) }, checkpoint: context.checkpoint };
+
+      if (context.signal.aborted) throw new Error("Collection cancelled.");
+      const quota = await context.reserveProviderUsage(1);
+      if (quota.maxCostPerRunUsd === null) throw new Error("Apify is disabled until an owner-approved per-run USD ceiling is configured.");
+      const endpoint = new URL(API_BASE + "/acts/" + ALLOWED_ACTOR + "/run-sync-get-dataset-items");
+      endpoint.searchParams.set("timeout", "60");
+      endpoint.searchParams.set("memory", "1024");
+      endpoint.searchParams.set("maxItems", String(pending.length));
+      endpoint.searchParams.set("maxTotalChargeUsd", quota.maxCostPerRunUsd.toFixed(4));
+      const response = await fetcher(endpoint.toString(), {
+        method: "POST",
+        headers: { authorization: "Bearer " + token, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          startUrls: pending.map(url => ({ url })),
+          maxPagesPerCrawl: pending.length,
+          maxCrawlDepth: 0,
+          maxResultsPerCrawl: pending.length,
+          saveHtml: false,
+          saveMarkdown: false,
+          saveScreenshots: false
+        }),
+        signal: AbortSignal.timeout(70000)
+      });
+      if (response.status === 429) throw new Error("Apify rate limit reached; retry after the provider's retry window.");
+      if (response.status >= 500) throw new Error("Apify is temporarily unavailable (HTTP " + response.status + ").");
+      if (!response.ok) throw new Error("Apify rejected the collection request (HTTP " + response.status + ").");
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) throw new Error("Apify returned an invalid dataset response.");
+
+      let items = 0;
+      const completedThisRun = new Set<string>();
+      for (const raw of payload.slice(0, Math.min(MAX_RESPONSE_ITEMS, pending.length))) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const record = raw as Record<string, unknown>;
+        const rawUrl = typeof record.url === "string" ? record.url : "";
+        let finalUrl: string;
+        try { finalUrl = publicHttpsUrl(rawUrl).toString(); } catch { continue; }
+        const title = boundedText(record.pageTitle ?? record.title, 500);
+        const text = boundedText(record.text ?? record.markdown);
+        const itemKey = await hash(finalUrl);
+        await context.emitItem({
+          itemKey,
+          sourceUrl: finalUrl,
+          sourcePlatform: "web",
+          sourceType: "web_page",
+          observedAt: new Date().toISOString(),
+          accessMethod: "apify_web_scraper_actor",
+          permissionContext: { provider: "apify", actor: ALLOWED_ACTOR, public_url: true, authentication: false, owner_authorized: true, site_access_policy_review_required: true },
+          record: { url: finalUrl, title: title || null, content_excerpt: text, provider: "apify" }
+        });
+        items++;
+        const matchedRequest = pending.find(url => checkpointUrlKey(url) === checkpointUrlKey(finalUrl));
+        if (matchedRequest) completedThisRun.add(matchedRequest);
+      }
+      const nextCompleted = [...new Set([...completedUrls, ...completedThisRun])];
+      const pages = Number(context.checkpoint?.pages ?? 0) + items;
+      const requests = Number(context.checkpoint?.requests ?? 0) + 1;
+      const checkpoint = { completed_urls: nextCompleted, pages, requests };
+      await context.reportProgress({ pages, items, requests, checkpoint });
+      return { status: completedThisRun.size < pending.length ? "partial" : "completed", counters: { pages, items, requests }, checkpoint };
+    }
+  };
+}

@@ -1,9 +1,12 @@
+import { authorizeToolAction, classifyToolAction, type ToolActionClass } from "./autonomy";
 import { getAssistantCapabilities } from "./registry";
 import { callAIModel, providerPoolStatus } from "./providers";
 
 export interface AssistantRuntimeEnv {
   SUPABASE_URL?: string;
   SUPABASE_ANON_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   AI_PROVIDER_POOL?: string;
   AI_API_BASE_URL?: string;
   AI_API_KEY?: string;
@@ -54,6 +57,25 @@ const TOOL_DEFINITIONS = [
   { type: "function", function: { name: "leads_create", description: "Save a prospect in the owner's CRM. This does not contact the person. Preserve do-not-contact preferences.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, organisation: { type: ["string","null"], maxLength: 200 }, email: { type: ["string","null"], maxLength: 320 }, website: { type: ["string","null"], maxLength: 2048 }, source: { type: ["string","null"], maxLength: 200 }, source_url: { type: ["string","null"], maxLength: 2048 }, customer_problem: { type: ["string","null"], maxLength: 5000 }, fit_score: { type: ["number","null"], minimum: 0, maximum: 100 }, stage: { type: "string", enum: ["new","qualified","contacted","proposal","won","lost","do_not_contact"] }, do_not_contact: { type: "boolean" }, notes: { type: ["string","null"], maxLength: 10000 } }, required: ["name"], additionalProperties: false } } },
   { type: "function", function: { name: "offers_list", description: "List saved offers and their pricing assumptions.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
   { type: "function", function: { name: "offers_create", description: "Create an offer draft and calculate indicative net-before-tax economics from price, delivery cost, payment fee and partner share assumptions. This is an estimate, not a guarantee.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 200 }, product_id: { type: ["string","null"] }, target_customer: { type: ["string","null"], maxLength: 2000 }, promised_outcome: { type: ["string","null"], maxLength: 5000 }, deliverables: { type: "array", items: { type: "string" } }, exclusions: { type: ["string","null"], maxLength: 5000 }, price_amount: { type: ["number","null"], minimum: 0 }, price_currency: { type: "string", minLength: 3, maxLength: 3 }, delivery_cost: { type: ["number","null"], minimum: 0 }, payment_fee_percent: { type: ["number","null"], minimum: 0, maximum: 100 }, partner_share_percent: { type: ["number","null"], minimum: 0, maximum: 100 } }, required: ["name"], additionalProperties: false } } },
+  { type: "function", function: { name: "marketing_list_assets", description: "List the owner's saved marketing drafts and internal review status. This does not publish or send anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "marketing_create_asset", description: "Save a marketing draft for owner review. Never publish, send email, buy ads or claim that a post was published.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, asset_type: { type: "string", enum: ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"] }, platform: { type: ["string","null"], maxLength: 80 }, campaign_name: { type: ["string","null"], maxLength: 200 }, objective: { type: ["string","null"], maxLength: 2000 }, audience: { type: ["string","null"], maxLength: 1000 }, content: { type: "string", minLength: 1, maxLength: 30000 } }, required: ["title","asset_type","content"], additionalProperties: false } } },
+  { type: "function", function: { name: "creative_list_briefs", description: "List the owner's private creative briefs and production status. Does not generate or publish media.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "creative_create_brief", description: "Save a creative brief and generation prompt for owner review. This tool does not itself generate media or publish assets.", parameters: { type: "object", properties: { title: { type: "string", minLength: 1, maxLength: 200 }, asset_type: { type: "string", enum: ["image","video","audio","brand_identity","presentation","other"] }, brief: { type: "string", minLength: 1, maxLength: 10000 }, generation_prompt: { type: ["string","null"], maxLength: 10000 }, target_platform: { type: ["string","null"], maxLength: 100 }, aspect_ratio: { type: ["string","null"], maxLength: 40 }, reference_urls: { type: "array", items: { type: "string", maxLength: 2048 }, maxItems: 20 }, notes: { type: ["string","null"], maxLength: 5000 } }, required: ["title","asset_type","brief"], additionalProperties: false } } },
+  { type: "function", function: { name: "creative_update_brief", description: "Update creative brief production status, output URL or notes. Does not generate or publish media.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: ["string","null"], enum: ["draft","ready","in_progress","complete","archived",null] }, output_url: { type: ["string","null"], maxLength: 2048 }, notes: { type: ["string","null"], maxLength: 5000 } }, required: ["id"], additionalProperties: false } } },
+  { type: "function", function: { name: "customers_list_cases", description: "List the owner's private customer support cases and response drafts. Does not contact customers.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "customers_create_case", description: "Save a customer support case for internal tracking. Never send a message, issue a refund or change an account.", parameters: { type: "object", properties: { customer_name: { type: "string", minLength: 1, maxLength: 200 }, customer_email: { type: ["string","null"], maxLength: 320 }, subject: { type: "string", minLength: 1, maxLength: 240 }, issue_description: { type: "string", minLength: 1, maxLength: 10000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] }, source: { type: ["string","null"], maxLength: 100 } }, required: ["customer_name","subject","issue_description"], additionalProperties: false } } },
+  { type: "function", function: { name: "customers_update_case", description: "Update an internal support case status, response draft or notes. The response remains a draft and is never sent.", parameters: { type: "object", properties: { id: { type: "string" }, status: { type: ["string","null"], enum: ["open","investigating","waiting_on_customer","resolved","closed",null] }, response_draft: { type: ["string","null"], maxLength: 10000 }, internal_notes: { type: ["string","null"], maxLength: 10000 } }, required: ["id"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_list_plans", description: "List the owner's saved Learning: projects and progress.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "learning_create_plan", description: "Create an internal learning plan project. Does not enroll in courses or send reminders.", parameters: { type: "object", properties: { goal: { type: "string", minLength: 1, maxLength: 160 }, outcome: { type: ["string","null"], maxLength: 5000 } }, required: ["goal"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_list_milestones", description: "List milestones for one of the owner's learning plans.", parameters: { type: "object", properties: { project_id: { type: "string", minLength: 36, maxLength: 36 } }, required: ["project_id"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_add_milestone", description: "Add an internal study milestone to a learning plan.", parameters: { type: "object", properties: { project_id: { type: "string", minLength: 36, maxLength: 36 }, title: { type: "string", minLength: 1, maxLength: 240 }, description: { type: ["string","null"], maxLength: 5000 }, priority: { type: "string", enum: ["low","normal","high","urgent"] } }, required: ["project_id","title"], additionalProperties: false } } },
+  { type: "function", function: { name: "learning_update_milestone", description: "Update the status of a learning milestone.", parameters: { type: "object", properties: { task_id: { type: "string", minLength: 36, maxLength: 36 }, status: { type: "string", enum: ["todo","in_progress","blocked","done","cancelled"] } }, required: ["task_id","status"], additionalProperties: false } } },
+  { type: "function", function: { name: "analytics_snapshot", description: "Read counts and workflow status from the owner's saved business records. Does not infer revenue or profit.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_list_campaigns", description: "List the owner's outreach campaign drafts and approval status. Does not contact anyone.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_create_campaign", description: "Create an unapproved outreach campaign draft. Does not approve or send messages.", parameters: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 180 }, objective: { type: "string", minLength: 1, maxLength: 3000 }, offer_summary: { type: ["string","null"], maxLength: 5000 }, audience_definition: { type: "object" }, campaign_kind: { type: "string", enum: ["general","partnership"] } }, required: ["name","objective"], additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_add_recipient", description: "Add a recipient to a draft campaign. Contact eligibility remains unreviewed until the owner reviews evidence and provider registration in Outreach Studio. Never contact the recipient.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, email: { type: "string", minLength: 5, maxLength: 320 }, recipient_name: { type: ["string","null"], maxLength: 240 }, organisation: { type: ["string","null"], maxLength: 240 } }, required: ["campaign_id","email"], additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_add_template", description: "Save an unapproved outreach template for owner review. The database enforces final message rendering, signature and partnership terms. Does not send messages.", parameters: { type: "object", properties: { campaign_id: { type: "string" }, sequence_number: { type: "integer", minimum: 0, maximum: 5 }, subject_template: { type: "string", minLength: 1, maxLength: 80 }, body_template: { type: "string", minLength: 1, maxLength: 340 }, personalization_fields: { type: "array", items: { type: "string", enum: ["first_name","organisation","niche","specific_observation","offer_summary"] }, maxItems: 5 } }, required: ["campaign_id","sequence_number","subject_template","body_template"], additionalProperties: false } } },
+  { type: "function", function: { name: "outreach_prepare_campaign", description: "Prepare database-rendered message drafts only for recipients already approved for contact and registered with the provider. Campaign must already be owner-approved. This never sends messages.", parameters: { type: "object", properties: { campaign_id: { type: "string" } }, required: ["campaign_id"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_list", description: "List the owner's durable GiGo job queue, including pending, processing and completed jobs.", parameters: { type: "object", properties: { status: { type: "string", enum: ["pending","processing","completed","failed","paused","waiting_for_quota","waiting_for_worker","awaiting_approval","cancelled"] } }, additionalProperties: false } } },
   { type: "function", function: { name: "jobs_create", description: "Queue an internal GiGo task for the background runner. The runner processes eligible jobs on scheduler cycles. Never use it to send messages, publish, contact people, spend money or make commitments.", parameters: { type: "object", properties: { job_type: { type: "string", enum: ["research_scan","business_review","daily_briefing","lead_review","custom"] }, task_prompt: { type: "string", minLength: 1, maxLength: 5000 } }, required: ["job_type","task_prompt"], additionalProperties: false } } },
   { type: "function", function: { name: "jobs_cancel", description: "Cancel one pending or paused GiGo job owned by the user. This cannot stop a task that is already executing.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"], additionalProperties: false } } },
@@ -293,6 +315,216 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
     }) as Row[];
     return { created: rows?.[0] ?? null, economics };
   }
+  if (name === "marketing_list_assets") {
+    return { assets: await db(env, token, "/rest/v1/marketing_assets?select=id,title,asset_type,platform,campaign_name,objective,audience,content,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "marketing_create_asset") {
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const content = typeof args.content === "string" ? args.content.trim() : "";
+    const assetType = typeof args.asset_type === "string" ? args.asset_type : "";
+    const allowed = ["social_post","email_copy","landing_page","advertisement","video_script","blog_article","other"];
+    if (!title || title.length > 200 || !content || content.length > 30000 || !allowed.includes(assetType)) return { error: "A title, supported asset type and content are required." };
+    const optionalLimits: Array<[string,number]> = [["platform",80],["campaign_name",200],["objective",2000],["audience",1000]];
+    for (const [key,max] of optionalLimits) if (args[key] !== undefined && args[key] !== null && (typeof args[key] !== "string" || String(args[key]).length > max)) return { error: key + " must be text within its allowed length." };
+    const rows = await db(env, token, "/rest/v1/marketing_assets?select=id,title,asset_type,status,created_at", "POST", {
+      user_id: ownerId, title, asset_type: assetType, content,
+      platform: args.platform ?? null, campaign_name: args.campaign_name ?? null,
+      objective: args.objective ?? null, audience: args.audience ?? null, status: "draft", metadata: { created_by: "assistant" }
+    }) as Row[];
+    return { saved_draft: rows?.[0] ?? null, published: false, sent: false };
+  }
+  if (name === "creative_list_briefs") {
+    return { briefs: await db(env, token, "/rest/v1/creative_briefs?select=id,title,asset_type,brief,generation_prompt,target_platform,aspect_ratio,reference_urls,status,output_url,notes,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "creative_create_brief") {
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const brief = typeof args.brief === "string" ? args.brief.trim() : "";
+    const assetType = typeof args.asset_type === "string" ? args.asset_type : "";
+    const allowed = ["image","video","audio","brand_identity","presentation","other"];
+    if (!title || title.length > 200 || !brief || brief.length > 10000 || !allowed.includes(assetType)) return { error: "Title, supported asset type and brief are required." };
+    for (const [key,max] of [["generation_prompt",10000],["target_platform",100],["aspect_ratio",40],["notes",5000]] as const) if (args[key] !== undefined && args[key] !== null && (typeof args[key] !== "string" || String(args[key]).length > max)) return { error: key + " must be text within its allowed length." };
+    const refs = Array.isArray(args.reference_urls) ? args.reference_urls : [];
+    if (refs.length > 20 || refs.some((value: unknown) => typeof value !== "string" || value.length > 2048 || !/^https:\/\/[^\s]+$/i.test(value))) return { error: "Reference URLs must be up to 20 HTTPS links." };
+    const rows = await db(env, token, "/rest/v1/creative_briefs?select=id,title,asset_type,status,created_at", "POST", {
+      user_id: ownerId, title, asset_type: assetType, brief, generation_prompt: args.generation_prompt ?? null,
+      target_platform: args.target_platform ?? null, aspect_ratio: args.aspect_ratio ?? null,
+      reference_urls: refs, notes: args.notes ?? null, status: "draft"
+    }) as Row[];
+    return { saved_brief: rows?.[0] ?? null, media_generated: false, published: false };
+  }
+  if (name === "creative_update_brief") {
+    if (!validUuid(args.id)) return { error: "A valid creative brief ID is required." };
+    const patch: Row = {};
+    if (args.status !== undefined && args.status !== null) {
+      if (!["draft","ready","in_progress","complete","archived"].includes(String(args.status))) return { error: "Invalid creative production status." };
+      patch.status = args.status;
+    }
+    if (args.output_url !== undefined) {
+      if (args.output_url !== null) { try { const parsed = new URL(String(args.output_url)); if (parsed.protocol !== "https:") throw new Error(); } catch { return { error: "Output URL must use HTTPS." }; } }
+      patch.output_url = args.output_url;
+    }
+    if (args.notes !== undefined) {
+      if (args.notes !== null && (typeof args.notes !== "string" || args.notes.length > 5000)) return { error: "Notes must be text up to 5,000 characters or null." };
+      patch.notes = args.notes;
+    }
+    if (!Object.keys(patch).length) return { error: "Provide a production status, output URL or notes update." };
+    const rows = await db(env, token, "/rest/v1/creative_briefs?select=id,status,output_url,notes&id=eq." + encodeURIComponent(args.id), "PATCH", patch) as Row[];
+    return { updated_brief: rows?.[0] ?? null, media_published: false };
+  }
+  if (name === "customers_list_cases") {
+    return { cases: await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,customer_email,subject,issue_description,priority,status,response_draft,internal_notes,source,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "customers_create_case") {
+    const customerName = typeof args.customer_name === "string" ? args.customer_name.trim() : "";
+    const subject = typeof args.subject === "string" ? args.subject.trim() : "";
+    const issue = typeof args.issue_description === "string" ? args.issue_description.trim() : "";
+    const priority = args.priority ?? "normal";
+    const email = args.customer_email ?? null;
+    if (!customerName || customerName.length > 200 || !subject || subject.length > 240 || !issue || issue.length > 10000) return { error: "Customer name, subject and issue description are required within the allowed limits." };
+    if (!["low","normal","high","urgent"].includes(String(priority))) return { error: "Priority must be low, normal, high or urgent." };
+    if (email !== null && (typeof email !== "string" || email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return { error: "Customer email must be a valid email address or null." };
+    const source = args.source ?? null;
+    if (source !== null && (typeof source !== "string" || source.length > 100)) return { error: "Source must be text up to 100 characters or null." };
+    const rows = await db(env, token, "/rest/v1/customer_support_cases?select=id,customer_name,subject,priority,status,created_at", "POST", {
+      user_id: ownerId, customer_name: customerName, customer_email: email, subject, issue_description: issue,
+      priority, source, status: "open"
+    }) as Row[];
+    return { saved_case: rows?.[0] ?? null, customer_contacted: false };
+  }
+  if (name === "customers_update_case") {
+    if (!validUuid(args.id)) return { error: "A valid support case ID is required." };
+    const patch: Row = {};
+    if (args.status !== undefined && args.status !== null) {
+      if (!["open","investigating","waiting_on_customer","resolved","closed"].includes(String(args.status))) return { error: "Invalid support case status." };
+      patch.status = args.status;
+    }
+    if (args.response_draft !== undefined) {
+      if (args.response_draft !== null && (typeof args.response_draft !== "string" || args.response_draft.length > 10000)) return { error: "Response draft must be text up to 10,000 characters or null." };
+      patch.response_draft = args.response_draft;
+    }
+    if (args.internal_notes !== undefined) {
+      if (args.internal_notes !== null && (typeof args.internal_notes !== "string" || args.internal_notes.length > 10000)) return { error: "Internal notes must be text up to 10,000 characters or null." };
+      patch.internal_notes = args.internal_notes;
+    }
+    if (!Object.keys(patch).length) return { error: "Provide a status, response draft or internal notes update." };
+    const rows = await db(env, token, "/rest/v1/customer_support_cases?select=id,status,response_draft,internal_notes&id=eq." + encodeURIComponent(args.id), "PATCH", patch) as Row[];
+    return { updated_case: rows?.[0] ?? null, response_sent: false };
+  }
+
+
+  if (name === "learning_list_plans") {
+    const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[];
+    return { plans: (Array.isArray(rows) ? rows : []).filter(row => String(row.name ?? "").startsWith("Learning: ")) };
+  }
+  if (name === "learning_create_plan") {
+    const goal = typeof args.goal === "string" ? args.goal.trim() : "";
+    const outcome = args.outcome === undefined || args.outcome === null ? null : String(args.outcome).trim();
+    if (!goal || goal.length > 160 || (outcome !== null && outcome.length > 5000)) return { error: "A learning goal and valid optional outcome are required." };
+    const rows = await db(env, token, "/rest/v1/projects?select=id,name,description,status,created_at", "POST", { user_id: ownerId, name: "Learning: " + goal, description: outcome || "Learning plan managed in GiGo." }) as Row[];
+    return { learning_plan: rows?.[0] ?? null, course_enrollment_performed: false, reminders_created: false };
+  }
+  if (name === "learning_list_milestones") {
+    const projectId = typeof args.project_id === "string" ? args.project_id : "";
+    if (!validUuid(projectId)) return { error: "A valid learning plan ID is required." };
+    const projects = await db(env, token, "/rest/v1/projects?select=id,name&id=eq." + encodeURIComponent(projectId) + "&limit=1") as Row[];
+    if (!Array.isArray(projects) || !String(projects[0]?.name ?? "").startsWith("Learning: ")) return { error: "Learning plan not found." };
+    return { milestones: await db(env, token, "/rest/v1/tasks?select=id,project_id,title,description,status,priority,due_date,created_at,updated_at&project_id=eq." + encodeURIComponent(projectId) + "&order=created_at.asc&limit=200") as Row[] };
+  }
+  if (name === "learning_add_milestone") {
+    const projectId = typeof args.project_id === "string" ? args.project_id : "";
+    const title = typeof args.title === "string" ? args.title.trim() : "";
+    const description = args.description === undefined || args.description === null ? null : String(args.description);
+    const priority = args.priority ?? "normal";
+    if (!validUuid(projectId) || !title || title.length > 240 || (description !== null && description.length > 5000) || !["low","normal","high","urgent"].includes(String(priority))) return { error: "A valid learning plan, milestone title and supported priority are required." };
+    const projects = await db(env, token, "/rest/v1/projects?select=id,name&id=eq." + encodeURIComponent(projectId) + "&limit=1") as Row[];
+    if (!Array.isArray(projects) || !String(projects[0]?.name ?? "").startsWith("Learning: ")) return { error: "Learning plan not found." };
+    const rows = await db(env, token, "/rest/v1/tasks?select=id,title,status,priority,project_id", "POST", { user_id: ownerId, project_id: projectId, title: "Study: " + title, description, priority, status: "todo" }) as Row[];
+    return { milestone: rows?.[0] ?? null };
+  }
+  if (name === "learning_update_milestone") {
+    const taskId = typeof args.task_id === "string" ? args.task_id : "";
+    const nextStatus = String(args.status ?? "");
+    if (!validUuid(taskId) || !["todo","in_progress","blocked","done","cancelled"].includes(nextStatus)) return { error: "A valid milestone ID and supported status are required." };
+    const rows = await db(env, token, "/rest/v1/tasks?select=id,title,status,project_id&id=eq." + encodeURIComponent(taskId) + "&user_id=eq." + encodeURIComponent(ownerId), "PATCH", { status: nextStatus }) as Row[];
+    return { milestone: rows?.[0] ?? null };
+  }
+  if (name === "analytics_snapshot") {
+    const tables = ["projects","tasks","research_runs","partner_candidates","leads","offers","outreach_campaigns","marketing_assets","creative_briefs","customer_support_cases"];
+    const results = await Promise.all(tables.map(async table => {
+      const rows = await db(env, token, "/rest/v1/" + table + "?select=id&limit=1000") as Row[];
+      return [table, Array.isArray(rows) ? rows.length : 0] as const;
+    }));
+    const counts = Object.fromEntries(results);
+    return { counts, count_limit_per_table: 1000, counts_may_be_truncated: true, financial_metrics: "not_available_without_transaction_data", money_movement_performed: false };
+  }
+  if (name === "outreach_list_campaigns") {
+    return { campaigns: await db(env, token, "/rest/v1/outreach_campaigns?select=id,name,objective,offer_summary,status,approval_status,created_at,updated_at&order=updated_at.desc&limit=100") as Row[] };
+  }
+  if (name === "outreach_create_campaign") {
+    const nameValue = typeof args.name === "string" ? args.name.trim() : "";
+    const objective = typeof args.objective === "string" ? args.objective.trim() : "";
+    const offer = args.offer_summary ?? null;
+    const audience = args.audience_definition ?? {};
+    if (!nameValue || nameValue.length > 180 || !objective || objective.length > 3000) return { error: "Campaign name and objective are required within their limits." };
+    if (offer !== null && (typeof offer !== "string" || offer.length > 5000)) return { error: "offer_summary must be text up to 5,000 characters or null." };
+    if (!audience || typeof audience !== "object" || Array.isArray(audience)) return { error: "audience_definition must be an object." };
+    const rows = await db(env, token, "/rest/v1/outreach_campaigns?select=id,name,status,approval_status,created_at", "POST", { user_id: ownerId, name: nameValue, objective, offer_summary: offer, audience_definition: audience, status: "draft" }) as Row[];
+    const campaign = rows?.[0] ?? null;
+    let campaignKindSet = (args.campaign_kind ?? "general") === "general";
+    if (campaign && args.campaign_kind === "partnership") {
+      try {
+        await db(env, token, "/rest/v1/rpc/gigo_set_outreach_campaign_kind", "POST", { p_campaign_id: campaign.id, p_campaign_kind: "partnership" });
+        campaignKindSet = true;
+      } catch { campaignKindSet = false; }
+    }
+    return { campaign, campaign_kind: args.campaign_kind ?? "general", campaign_kind_set: campaignKindSet, approved: false, provider_send_performed: false };
+  }
+  if (name === "outreach_add_recipient") {
+    if (!validUuid(args.campaign_id)) return { error: "A valid campaign ID is required." };
+    const email = typeof args.email === "string" ? args.email.trim().toLowerCase() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) return { error: "A valid recipient email is required." };
+    for (const [key,max] of [["recipient_name",240],["organisation",240]] as const) if (args[key] !== undefined && args[key] !== null && (typeof args[key] !== "string" || String(args[key]).length > max)) return { error: key + " must be text within its allowed length." };
+    const campaign = await db(env, token, "/rest/v1/outreach_campaigns?select=id,status,approval_status&id=eq." + encodeURIComponent(args.campaign_id) + "&limit=1") as Row[];
+    if (!Array.isArray(campaign) || !campaign.length || campaign[0].status !== "draft" || campaign[0].approval_status !== "not_requested") return { error: "Recipients can only be added to your unapproved draft campaign." };
+    const suppressed = await db(env, token, "/rest/v1/outreach_suppressions?select=id&email=eq." + encodeURIComponent(email) + "&limit=1") as Row[];
+    if (Array.isArray(suppressed) && suppressed.length) return { error: "This address is on the do-not-contact list and cannot be added." };
+    const rows = await db(env, token, "/rest/v1/outreach_recipients?select=id,email,status,contact_authorization_status,marketing_contact_registered,created_at", "POST", { user_id: ownerId, campaign_id: args.campaign_id, email, recipient_name: args.recipient_name ?? null, organisation: args.organisation ?? null }) as Row[];
+    return { recipient: rows?.[0] ?? null, contact_eligibility: "unreviewed", contacted: false };
+  }
+  if (name === "outreach_add_template") {
+    if (!validUuid(args.campaign_id)) return { error: "A valid campaign ID is required." };
+    const sequence = args.sequence_number;
+    if (!Number.isInteger(sequence) || Number(sequence) < 0 || Number(sequence) > 5) return { error: "sequence_number must be between 0 and 5." };
+    const subject = typeof args.subject_template === "string" ? args.subject_template.trim() : "";
+    const body = typeof args.body_template === "string" ? args.body_template.trim() : "";
+    if (!subject || subject.length > 80 || !body || body.length > 340) return { error: "Subject must be at most 80 characters and body template at most 340 characters before signature and partnership terms." };
+    const allowedFields = ["first_name","organisation","niche","specific_observation","offer_summary"];
+    const fields = Array.isArray(args.personalization_fields) ? args.personalization_fields : [];
+    if (fields.length > 5 || fields.some((v: unknown) => typeof v !== "string" || !allowedFields.includes(v))) return { error: "Unsupported personalization field." };
+    const campaign = await db(env, token, "/rest/v1/outreach_campaigns?select=id,status,approval_status&id=eq." + encodeURIComponent(args.campaign_id) + "&limit=1") as Row[];
+    if (!Array.isArray(campaign) || !campaign.length || campaign[0].status !== "draft" || campaign[0].approval_status !== "not_requested") return { error: "Templates can only be added to your unapproved draft campaign." };
+    const placeholders = [...(subject + "\n" + body).matchAll(/\{\{([a-z_]+)\}\}/g)].map(m => m[1]);
+    if (placeholders.some(field => !allowedFields.includes(field) || !fields.includes(field))) return { error: "Every template placeholder must be listed in the supported personalization fields." };
+    const rows = await db(env, token, "/rest/v1/outreach_templates?select=id,campaign_id,sequence_number,approved_at,created_at", "POST", { user_id: ownerId, campaign_id: args.campaign_id, sequence_number: sequence, message_type: sequence === 0 ? "initial" : "follow_up", subject_template: subject, body_template: body, personalization_fields: fields }) as Row[];
+    return { template: rows?.[0] ?? null, approved: false, sent: false };
+  }
+  if (name === "outreach_prepare_campaign") {
+    if (!validUuid(args.campaign_id)) return { error: "A valid campaign ID is required." };
+    const campaign = await db(env, token, "/rest/v1/outreach_campaigns?select=id,status,approval_status&id=eq." + encodeURIComponent(args.campaign_id) + "&limit=1") as Row[];
+    if (!Array.isArray(campaign) || !campaign.length || campaign[0].status !== "active" || campaign[0].approval_status !== "approved") return { error: "Only an owner-approved active campaign can be prepared." };
+    const recipients = await db(env, token, "/rest/v1/outreach_recipients?select=id&campaign_id=eq." + encodeURIComponent(args.campaign_id) + "&status=in.(queued,ready)&contact_authorization_status=eq.approved&marketing_contact_registered=eq.true&order=created_at.asc&limit=25") as Row[];
+    const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceKey) return { error: "Secure outbox preparation is not configured." };
+    const headers: Record<string,string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json" };
+    if (!serviceKey.startsWith("sb_secret_")) headers.authorization = "Bearer " + serviceKey;
+    const prepared: Row[] = [], skipped: Row[] = [];
+    for (const recipient of recipients || []) {
+      const response = await fetch(new URL("/rest/v1/rpc/gigo_prepare_outreach_sequence", env.SUPABASE_URL!), { method: "POST", headers, body: JSON.stringify({ p_owner_id: ownerId, p_campaign_id: args.campaign_id, p_recipient_id: recipient.id }), signal: AbortSignal.timeout(15000) });
+      if (!response.ok) skipped.push({ recipient_id: recipient.id, reason: "database_rejected_preparation" });
+      else prepared.push({ recipient_id: recipient.id, result: await response.json() });
+    }
+    return { prepared_recipients: prepared.length, skipped_recipients: skipped.length, prepared, skipped, provider_send_performed: false };
+  }
   if (name === "jobs_list") {
     const params = new URLSearchParams({ select: "id,job_type,status,input,progress,checkpoint,attempts,last_error,run_after,started_at,finished_at,created_at,updated_at", order: "created_at.desc", limit: "100" });
     if (args.status !== undefined) {
@@ -477,6 +709,49 @@ async function executeTool(name: string, args: Row, env: AssistantRuntimeEnv, to
 
 
 
+type DurableAutonomyGate = { allowed: boolean; action: ToolActionClass; reason: string; decision: "allowed" | "denied" | "approval_required" | "paused"; policyVersion: number | null };
+
+async function durableAutonomyGate(env: AssistantRuntimeEnv, token: string, ownerId: string, toolName: string): Promise<DurableAutonomyGate> {
+  const action = classifyToolAction(toolName);
+  const staticDecision = authorizeToolAction(toolName);
+  if (action === "financial" || action === "unknown") {
+    return { allowed: false, action, reason: staticDecision.reason, decision: "denied", policyVersion: null };
+  }
+  if (action === "external_execute") {
+    return { allowed: false, action, reason: "External execution remains blocked until exact campaign-bound approval consumption and sender controls are connected.", decision: "approval_required", policyVersion: null };
+  }
+  const pauseRows = await db(env, token, "/rest/v1/autonomy_control_state?select=is_paused&user_id=eq." + encodeURIComponent(ownerId) + "&limit=1") as Row[];
+  if (!Array.isArray(pauseRows) || pauseRows.length !== 1 || pauseRows[0]?.is_paused !== false) {
+    return { allowed: false, action, reason: "GiGo is globally paused or its pause state is missing. Initialize governance and explicitly unpause before tool execution.", decision: "paused", policyVersion: null };
+  }
+  const policyRows = await db(env, token, "/rest/v1/autonomy_policies?select=enabled,require_approval,policy_version&user_id=eq." + encodeURIComponent(ownerId) + "&scope=eq." + encodeURIComponent(action) + "&limit=1") as Row[];
+  if (!Array.isArray(policyRows) || policyRows.length !== 1) {
+    return { allowed: false, action, reason: "No durable owner policy exists for this action scope. The action is denied.", decision: "denied", policyVersion: null };
+  }
+  const policy = policyRows[0];
+  const policyVersion = Number.isInteger(policy.policy_version) ? Number(policy.policy_version) : null;
+  if (policy.enabled !== true) {
+    return { allowed: false, action, reason: "The durable owner policy has disabled this action scope.", decision: "denied", policyVersion };
+  }
+  if (policy.require_approval === true) {
+    return { allowed: false, action, reason: "This action scope requires an approval workflow that is not yet connected to this tool.", decision: "approval_required", policyVersion };
+  }
+  return { allowed: true, action, reason: "Allowed by the current durable owner policy.", decision: "allowed", policyVersion };
+}
+
+async function writeAutonomyAudit(env: AssistantRuntimeEnv, event: Row): Promise<boolean> {
+  const serviceKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!env.SUPABASE_URL || !serviceKey) return false;
+  const headers: Record<string, string> = { apikey: serviceKey, "content-type": "application/json", accept: "application/json", prefer: "return=minimal" };
+  if (!serviceKey.startsWith("sb_secret_")) headers.authorization = "Bearer " + serviceKey;
+  try {
+    const result = await fetch(new URL("/rest/v1/autonomy_audit_events", env.SUPABASE_URL), {
+      method: "POST", headers, body: JSON.stringify(event), signal: AbortSignal.timeout(8000)
+    });
+    return result.ok;
+  } catch { return false; }
+}
+
 async function recordUsage(env: AssistantRuntimeEnv, token: string, ownerId: string, usage: unknown, provider: string, model: string, keyId: string): Promise<void> {
   if (!isObject(usage)) return;
   const prompt = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
@@ -597,8 +872,32 @@ export async function handleAssistantChat(request: Request, env: AssistantRuntim
           continue;
         }
         let result: Row;
-        try { result = await executeTool(name, args, env, token, ownerId, currentMessageId); }
-        catch { result = { error: "The requested workspace operation failed. No success is being reported." }; }
+        let gate: DurableAutonomyGate;
+        try {
+          gate = await durableAutonomyGate(env, token, ownerId, name);
+        } catch {
+          gate = { allowed: false, action: classifyToolAction(name), reason: "Durable autonomy policy storage is unavailable. The tool action was denied.", decision: "denied", policyVersion: null };
+        }
+        const auditBase = {
+          user_id: ownerId, tool_name: name.slice(0,120), action_class: gate.action,
+          policy_version: gate.policyVersion, target_ref: null, intent_sha256: null
+        };
+        if (!gate.allowed) {
+          await writeAutonomyAudit(env, { ...auditBase, decision: gate.decision, reason_code: gate.decision.toUpperCase(), idempotency_key: String(currentMessageId || "no-message") + ":" + callId + ":decision", result_summary: gate.reason.slice(0,1000) });
+          result = { error: gate.reason, autonomy_action: gate.action, approval_required: gate.decision === "approval_required" };
+        } else {
+          const audited = await writeAutonomyAudit(env, { ...auditBase, decision: "allowed", reason_code: "DURABLE_POLICY_ALLOWED", idempotency_key: String(currentMessageId || "no-message") + ":" + callId + ":decision", result_summary: gate.reason });
+          if (!audited) {
+            result = { error: "The required autonomy audit could not be written. The tool action was not executed.", autonomy_action: gate.action };
+          } else {
+            try {
+              result = await executeTool(name, args, env, token, ownerId, currentMessageId);
+            } catch {
+              result = { error: "The requested workspace operation failed. No success is being reported." };
+            }
+            await writeAutonomyAudit(env, { ...auditBase, decision: result.error ? "failed" : "completed", reason_code: result.error ? "TOOL_FAILED" : "TOOL_COMPLETED", idempotency_key: String(currentMessageId || "no-message") + ":" + callId + ":result", result_summary: result.error ? String(result.error).slice(0,1000) : "Tool returned successfully." });
+          }
+        }
         toolActivity.push({ name: name || "unknown_tool", status: result.error ? "failed" : "completed" });
         const toolContent = JSON.stringify(result);
         messages.push({ role: "tool", tool_call_id: callId, content: toolContent });
