@@ -139,12 +139,12 @@ drop policy if exists research_claim_evidence_owner_all on public.research_claim
 create policy research_claim_evidence_owner_all on public.research_claim_evidence
   for all using (
     user_id = auth.uid()
-    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_run_id)
-    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_run_id)
+    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_claim_evidence.research_run_id)
+    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_claim_evidence.research_run_id)
   ) with check (
     user_id = auth.uid()
-    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_run_id)
-    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_run_id)
+    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_claim_evidence.research_run_id)
+    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_claim_evidence.research_run_id)
   );
 
 comment on table public.research_evidence_passages is
