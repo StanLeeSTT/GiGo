@@ -79,18 +79,18 @@ create policy research_passages_owner_all on public.research_evidence_passages
   for all using (
     user_id = auth.uid()
     and exists (select 1 from public.research_runs r where r.id = research_run_id and r.user_id = auth.uid())
-    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_run_id)
+    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_evidence_passages.research_run_id)
     and (research_document_id is null or exists (
       select 1 from public.research_documents d
-      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_run_id
+      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_evidence_passages.research_run_id
     ))
   ) with check (
     user_id = auth.uid()
     and exists (select 1 from public.research_runs r where r.id = research_run_id and r.user_id = auth.uid())
-    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_run_id)
+    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_evidence_passages.research_run_id)
     and (research_document_id is null or exists (
       select 1 from public.research_documents d
-      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_run_id
+      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_evidence_passages.research_run_id
     ))
   );
 
