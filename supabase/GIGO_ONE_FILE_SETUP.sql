@@ -1455,13 +1455,13 @@ create policy collection_insight_evidence_owner_all on public.collection_insight
     user_id = auth.uid()
     and exists (
       select 1 from public.collection_insights i
-      where i.id = insight_id and i.run_id = run_id
-        and i.dataset_id = dataset_id and i.user_id = auth.uid()
+      where i.id = insight_id and i.run_id = collection_insight_evidence.run_id
+        and i.dataset_id = collection_insight_evidence.dataset_id and i.user_id = auth.uid()
     )
     and exists (
       select 1 from public.collection_items ci
-      where ci.id = item_id and ci.dataset_id = dataset_id
-        and ci.run_id = run_id and ci.user_id = auth.uid()
+      where ci.id = item_id and ci.dataset_id = collection_insight_evidence.dataset_id
+        and ci.run_id = collection_insight_evidence.run_id and ci.user_id = auth.uid()
     )
   );
 
@@ -4529,11 +4529,11 @@ create policy research_passages_owner_all on public.research_evidence_passages
   for all using (
     user_id = auth.uid()
     and exists (select 1 from public.research_runs r where r.id = research_run_id and r.user_id = auth.uid())
-    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_run_id)
+    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_evidence_passages.research_run_id)
   ) with check (
     user_id = auth.uid()
     and exists (select 1 from public.research_runs r where r.id = research_run_id and r.user_id = auth.uid())
-    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_run_id)
+    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_evidence_passages.research_run_id)
   );
 
 drop policy if exists research_claims_owner_all on public.research_claims;
@@ -4550,12 +4550,12 @@ drop policy if exists research_claim_evidence_owner_all on public.research_claim
 create policy research_claim_evidence_owner_all on public.research_claim_evidence
   for all using (
     user_id = auth.uid()
-    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_run_id)
-    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_run_id)
+    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_claim_evidence.research_run_id)
+    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_claim_evidence.research_run_id)
   ) with check (
     user_id = auth.uid()
-    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_run_id)
-    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_run_id)
+    and exists (select 1 from public.research_claims c where c.id = claim_id and c.user_id = auth.uid() and c.research_run_id = research_claim_evidence.research_run_id)
+    and exists (select 1 from public.research_evidence_passages p where p.id = passage_id and p.user_id = auth.uid() and p.research_run_id = research_claim_evidence.research_run_id)
   );
 
 comment on table public.research_evidence_passages is
@@ -4705,18 +4705,18 @@ create policy research_passages_owner_all on public.research_evidence_passages
   for all using (
     user_id = auth.uid()
     and exists (select 1 from public.research_runs r where r.id = research_run_id and r.user_id = auth.uid())
-    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_run_id)
+    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_evidence_passages.research_run_id)
     and (research_document_id is null or exists (
       select 1 from public.research_documents d
-      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_run_id
+      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_evidence_passages.research_run_id
     ))
   ) with check (
     user_id = auth.uid()
     and exists (select 1 from public.research_runs r where r.id = research_run_id and r.user_id = auth.uid())
-    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_run_id)
+    and exists (select 1 from public.research_sources s where s.id = research_source_id and s.user_id = auth.uid() and s.research_run_id = research_evidence_passages.research_run_id)
     and (research_document_id is null or exists (
       select 1 from public.research_documents d
-      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_run_id
+      where d.id = research_document_id and d.user_id = auth.uid() and d.research_run_id = research_evidence_passages.research_run_id
     ))
   );
 
